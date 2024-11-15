@@ -1,4 +1,4 @@
-# **pqc-bitcoin**
+# **pqcBitcoin**
 
 This repository is the result of a collaborative effort between [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsQ), working together to build a future-proof version of Bitcoin Core that can withstand the potential threats posed by quantum computers. The integration of Post-Quantum Cryptography (PQC) algorithms into Bitcoin Core is a key initiative in ensuring that Bitcoin remains secure in the advent of quantum computing.
 
@@ -71,7 +71,10 @@ For detailed testing instructions, refer to the Bitcoin Test Suite.
 make check
 ```
 
-## Validate PQC Key Generation: Test key generation using PQC algorithms
+## Validate PQC Key Generation: 
+
+Test key generation using PQC algorithms
+
 ```bash
 ./src/bitcoin-cli pqc-keygen
 ```
@@ -85,8 +88,3 @@ For discussions and issues, please open an issue on the GitHub repository.
 ## License
 
 This project is licensed under the MIT License. **Made with love by [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsQ))** 💖
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 86c7375c25cf5dccdf75b1344b891eedc2b47453
