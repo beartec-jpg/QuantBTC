@@ -85,3 +85,8 @@ For discussions and issues, please open an issue on the GitHub repository.
 ## License
 
 This project is licensed under the MIT License. **Made with love by [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsQ))** 💖
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> 86c7375c25cf5dccdf75b1344b891eedc2b47453
