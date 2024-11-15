@@ -31,44 +31,55 @@ To build and test the PQC-enabled Bitcoin Core:
 ```bash
 git clone https://github.com/your-username/pqc-bitcoin.git
 cd pqc-bitcoin
+```
 
-### Install Dependencies
+## Install Dependencies
 
-# Before building Bitcoin Core with PQC integration, install the necessary dependencies
+Before building Bitcoin Core with PQC integration, install the necessary dependencies
+```bash
 sudo apt-get update
 sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils curl
 sudo apt-get install libssl-dev libevent-dev libboost-all-dev libdb-dev libdb++-dev libminiupnpc-dev
+```
 
-### Build Bitcoin Core
+## Build Bitcoin Core
 
-# Once the dependencies are installed, you can build Bitcoin Core with PQC support
+Once the dependencies are installed, you can build Bitcoin Core with PQC support
+```bash
 ./autogen.sh
 ./configure --without-gui
 make
+```
 
-### Run PQC Bitcoin Core
+## Run PQC Bitcoin Core
 
-# After building Bitcoin Core, you can run the PQC-enabled Bitcoin Core in regtest mode for testing
+After building Bitcoin Core, you can run the PQC-enabled Bitcoin Core in regtest mode for testing
+```bash
 ./src/bitcoind -regtest
+```
 
-### Testing PQC Bitcoin
+## Testing PQC Bitcoin
 
-# The test framework ensures that the PQC algorithms integrate smoothly with Bitcoin Core’s existing features.
-# For detailed testing instructions, refer to the Bitcoin Test Suite.
+The test framework ensures that the PQC algorithms integrate smoothly with Bitcoin Core’s existing features.
+For detailed testing instructions, refer to the Bitcoin Test Suite.
 
-# To run tests:
+## To run tests:
+```bash
 make check
+```
 
-# Validate PQC Key Generation: Test key generation using PQC algorithms
+## Validate PQC Key Generation: Test key generation using PQC algorithms
+```bash
 ./src/bitcoin-cli pqc-keygen
+```
 
-### Contributions
+## Contributions
 
-# We welcome contributions to help make Bitcoin Core quantum-resistant. Feel free to fork this repository and submit pull requests.
+We welcome contributions to make Bitcoin Core quantum-resistant. Feel free to fork this repository and submit pull requests.
 
-# For discussions and issues, please open an issue on the GitHub repository.
+For discussions and issues, please open an issue on the GitHub repository.
 
-### License
+## License
 
-# This project is licensed under the MIT License – see the LICENSE file for details.
+This project is licensed under the MIT License.  
 
