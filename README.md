@@ -1,6 +1,9 @@
 # **pqc-bitcoin**
 
-This repository integrates Post-Quantum Cryptography (PQC) into Bitcoin Core, aiming to prepare Bitcoin for quantum-resistant algorithms.
+This repository is the result of a collaborative effort between [QBlock](https://link-to-qblock-account) & [Qbits](https://link-to-qbits-account), working together to build a future-proof version of Bitcoin Core that can withstand the potential threats posed by quantum computers. The integration of Post-Quantum Cryptography (PQC) algorithms into Bitcoin Core is a key initiative in ensuring that Bitcoin remains secure in the advent of quantum computing.
+
+Quantum computing represents a breakthrough in computational capabilities, but it also poses a significant risk to current cryptographic techniques, including the elliptic curve cryptography (ECC) widely used in Bitcoin today. These classical encryption methods could potentially be broken by powerful quantum computers, leading to vulnerabilities in blockchain technologies. To mitigate this, the integration of quantum-resistant algorithms into Bitcoin Core is imperative.
+
 
 ## **Overview**
 
@@ -81,5 +84,6 @@ For discussions and issues, please open an issue on the GitHub repository.
 
 ## License
 
-This project is licensed under the MIT License.  
+This project is licensed under the MIT License. **Made with love by [QBlock](https://link-to-qblock-account) & [Qbits](https://link-to-qbits-account)** 💖
+
 
