@@ -7,7 +7,7 @@ Quantum computing represents a breakthrough in computational capabilities, but i
 
 ## **Overview**
 
-Quantum computing poses a potential threat to current cryptographic methods, including those used in Bitcoin, like elliptic curve cryptography (ECC). This project investigates incorporating post-quantum cryptographic algorithms to secure Bitcoin transactions and wallets in the event of future quantum attacks.
+Quantum computers poses a potential threat to current cryptographic methods, including those used in Bitcoin, like elliptic curve cryptography (ECC). This project investigates incorporating post-quantum cryptographic algorithms to secure Bitcoin transactions and wallets in the event of future quantum attacks.
 
 The goal is to make Bitcoin Core quantum-resistant by adopting algorithms that remain secure even in a world with powerful quantum computers.
 
@@ -32,7 +32,7 @@ To build and test the PQC-enabled Bitcoin Core:
 ### **Clone the repository:**
 
 ```bash
-git clone https://github.com/your-username/pqc-bitcoin.git
+git clone https://github.com/qblockq/pqc-bitcoin.git
 cd pqc-bitcoin
 ```
 
