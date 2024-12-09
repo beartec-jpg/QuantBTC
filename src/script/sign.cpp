@@ -573,6 +573,58 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
     return sigdata.complete;
 }
 
+bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn, const CAmount& amount, int nHashType, SignatureData& sig_data)
+{
+    CScript script = fromPubKey;
+    bool complete = false;
+
+    txTo.vin[nIn].scriptSig.clear();
+    
+    // Try classical signature first
+    complete = ProduceSignature(provider, MutableTransactionSignatureCreator(&txTo, nIn, amount, nHashType), script, txTo.vin[nIn].scriptSig);
+    
+    // If PQC is enabled, add PQC signature
+    if (complete && pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
+        std::vector<unsigned char> script_sig = txTo.vin[nIn].scriptSig;
+        
+        // Extract key ID from script
+        std::vector<std::vector<unsigned char>> solutions;
+        txnouttype type;
+        if (Solver(script, type, solutions)) {
+            CKeyID keyid;
+            if (type == TX_PUBKEYHASH) {
+                keyid = CKeyID(uint160(solutions[0]));
+            } else if (type == TX_PUBKEY) {
+                keyid = CPubKey(solutions[0]).GetID();
+            }
+            
+            // Get hybrid key and create PQC signature
+            pqc::HybridKey hybridKey;
+            if (provider.GetHybridKey(keyid, hybridKey)) {
+                uint256 hash = SignatureHash(script, txTo, nIn, nHashType, amount);
+                std::vector<unsigned char> pqc_sig;
+                if (hybridKey.Sign(hash, pqc_sig)) {
+                    // Append PQC signature to script_sig
+                    script_sig.insert(script_sig.end(), pqc_sig.begin(), pqc_sig.end());
+                    txTo.vin[nIn].scriptSig = script_sig;
+                }
+            }
+        }
+    }
+    
+    return complete;
+}
+
+bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, CMutableTransaction& txTo, unsigned int nIn, int nHashType, SignatureData& sig_data)
+{
+    assert(nIn < txTo.vin.size());
+    const CTxIn& txin = txTo.vin[nIn];
+    assert(txin.prevout.n < txFrom.vout.size());
+    const CTxOut& txout = txFrom.vout[txin.prevout.n];
+
+    return SignSignature(provider, txout.scriptPubKey, txTo, nIn, txout.nValue, nHashType, sig_data);
+}
+
 namespace {
 class SignatureExtractorChecker final : public DeferringSignatureChecker
 {

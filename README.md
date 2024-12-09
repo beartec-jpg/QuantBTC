@@ -25,33 +25,80 @@ The goal is to make Bitcoin Core quantum-resistant by adopting algorithms that r
 
 These algorithms are integrated into the Bitcoin codebase in a way that ensures both backward and forward compatibility with existing Bitcoin infrastructure.
 
+## **Post-Quantum Cryptography Support**
+
+This fork of Bitcoin Core implements post-quantum cryptography (PQC) to provide protection against quantum computer attacks while maintaining backward compatibility with the existing Bitcoin network.
+
+### **Implemented PQC Features**
+
+#### Key Management System
+- HybridKey class for managing both classical and PQC keys
+- Integration with Bitcoin's existing key management system
+- Support for hybrid key generation and signing
+
+#### Supported PQC Algorithms
+- **Kyber**: A lattice-based key encapsulation mechanism (KEM)
+- **FrodoKEM**: A KEM based on the learning with errors (LWE) problem
+- **NTRU**: A lattice-based public-key cryptosystem
+
+#### Configuration Options
+Enable PQC features using command-line arguments:
+```bash
+bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqchybridsig=1
+```
+
+Available options:
+- `-pqc=0|1`: Enable/disable all PQC features (default: 1)
+- `-pqchybridkeys=0|1`: Enable/disable hybrid key generation (default: 1)
+- `-pqchybridsig=0|1`: Enable/disable hybrid signatures (default: 1)
+- `-pqcalgo=algo1,algo2,...`: Specify enabled PQC algorithms (default: kyber,frodo,ntru)
+- `-pqcsig=sig1,sig2,...`: Specify enabled signature schemes (default: dilithium,falcon)
+
+For detailed documentation on PQC features, see [doc/pqc.md](doc/pqc.md).
+
 ## **Installation**
 
 To build and test the PQC-enabled Bitcoin Core:
 
-### **Clone the repository:**
+### Build Requirements
 
+* GCC 7+ or Clang 8+
+* CMake 3.13+
+* OpenSSL 1.1+
+* Boost 1.70+
+* Additional PQC-specific requirements:
+  - PQCRYPTO-NIST library (for Kyber and NTRU)
+  - FrodoKEM reference implementation
+
+### Build Steps
+
+1. Install dependencies:
 ```bash
-git clone https://github.com/qblockq/pqc-bitcoin.git
+# Ubuntu/Debian
+sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils python3
+sudo apt-get install libevent-dev libboost-dev libboost-system-dev libboost-filesystem-dev
+sudo apt-get install libsqlite3-dev libminiupnpc-dev libnatpmp-dev libzmq3-dev
+sudo apt-get install libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev qttools5-dev-tools
+
+# Install PQC dependencies
+git clone https://github.com/PQClean/PQClean.git
+cd PQClean && make
+sudo make install
+```
+
+2. Clone and build:
+```bash
+git clone https://github.com/QBlockQ/pqc-bitcoin.git
 cd pqc-bitcoin
-```
-
-## Install Dependencies
-
-Before building Bitcoin Core with PQC integration, install the necessary dependencies
-```bash
-sudo apt-get update
-sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils curl
-sudo apt-get install libssl-dev libevent-dev libboost-all-dev libdb-dev libdb++-dev libminiupnpc-dev
-```
-
-## Build Bitcoin Core
-
-Once the dependencies are installed, you can build Bitcoin Core with PQC support
-```bash
 ./autogen.sh
-./configure --without-gui
+./configure --with-pqc
 make
+make check  # Run tests
+```
+
+3. Run with PQC features:
+```bash
+./src/bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqchybridsig=1
 ```
 
 ## Run PQC Bitcoin Core

@@ -596,7 +596,19 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/sha512.h \
   crypto/siphash.cpp \
   crypto/siphash.h \
-  support/cleanse.cpp
+  support/cleanse.cpp \
+  crypto/pqc/kyber.cpp \
+  crypto/pqc/kyber.h \
+  crypto/pqc/frodokem.cpp \
+  crypto/pqc/frodokem.h \
+  crypto/pqc/ntru.cpp \
+  crypto/pqc/ntru.h \
+  crypto/pqc/pqc_manager.cpp \
+  crypto/pqc/pqc_manager.h \
+  crypto/pqc/pqc_config.cpp \
+  crypto/pqc/pqc_config.h \
+  crypto/pqc/hybrid_key.cpp \
+  crypto/pqc/hybrid_key.h
 
 # See explanation for -static in crypto_libbitcoin_crypto_base_la's LDFLAGS and
 # CXXFLAGS above
