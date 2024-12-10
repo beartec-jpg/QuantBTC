@@ -12,20 +12,15 @@
 #include <pubkey.h>
 #include <script/interpreter.h>
 #include <script/keyorigin.h>
-#include <script/signingprovider.h>
-#include <addresstype.h>
 #include <script/pqcscript.h>
 #include <crypto/pqc/hybrid_key.h>
 #include <uint256.h>
+#include <script/signingprovider.h>
 
 class CKey;
 class CKeyID;
 class CScript;
 class CTransaction;
-class SigningProvider;
-
-struct bilingual_str;
-struct CMutableTransaction;
 
 /** Interface for signature creators. */
 class BaseSignatureCreator {
@@ -54,16 +49,6 @@ public:
     const BaseSignatureChecker& Checker() const override { return checker; }
     bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* merkle_root, SigVersion sigversion) const override;
-};
-
-class SigningProvider {
-public:
-    virtual ~SigningProvider() {}
-    virtual bool GetCScript(const CScriptID &scriptid, CScript& script) const { return false; }
-    virtual bool GetPubKey(const CKeyID &address, CPubKey& pubkey) const { return false; }
-    virtual bool GetKey(const CKeyID &address, CKey& key) const { return false; }
-    virtual bool GetHybridKey(const CKeyID &address, pqc::HybridKey& key) const { return false; }
-    virtual bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const { return false; }
 };
 
 /** A signature checker that accepts all signatures */
