@@ -1103,8 +1103,10 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
 
         // Remove the scriptPubKeys from our current set
         for (const CScript& spk : desc_spks) {
-            size_t erased = spks.erase(spk);
-            assert(erased == 1);
+            auto it = spks.find(spk);
+            if (it != spks.end()) {
+                spks.erase(it);
+            }
             assert(IsMine(spk) == ISMINE_SPENDABLE);
         }
 
@@ -1144,14 +1146,13 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
             auto desc_spk_man = std::make_unique<DescriptorScriptPubKeyMan>(m_storage, w_desc, /*keypool_size=*/0);
             desc_spk_man->AddDescriptorKey(master_key.key, master_key.key.GetPubKey());
             desc_spk_man->TopUp();
-            auto desc_spks = desc_spk_man->GetScriptPubKeys();
-
-            // Remove the scriptPubKeys from our current set
-            for (const CScript& desc_spk : desc_spks) {
+            auto desc_spks_set = desc_spk_man->GetScriptPubKeys();
+            for (const CScript& desc_spk : desc_spks_set) {
                 auto del_it = spks.find(desc_spk);
-                assert(del_it != spks.end());
+                if (del_it != spks.end()) {
+                    spks.erase(del_it);
+                }
                 assert(IsMine(desc_spk) == ISMINE_SPENDABLE);
-                it = spks.erase(del_it);
             }
 
             out.desc_spkms.push_back(std::move(desc_spk_man));
@@ -1222,10 +1223,12 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
         // Remove the scriptPubKeys from our current set
         for (const CScript& desc_spk : desc_spks) {
             auto del_it = spks.find(desc_spk);
-            assert(del_it != spks.end());
+            if (del_it != spks.end()) {
+                spks.erase(del_it);
+            }
             assert(IsMine(desc_spk) != ISMINE_NO);
-            it = spks.erase(del_it);
         }
+        it = spks.erase(it);
     }
 
     // Multisigs are special. They don't show up as ISMINE_SPENDABLE unless they are in a P2SH
