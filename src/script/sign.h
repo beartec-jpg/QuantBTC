@@ -13,7 +13,8 @@
 #include <script/interpreter.h>
 #include <script/keyorigin.h>
 #include <script/signingprovider.h>
-#include <script/standard.h>
+#include <addresstype.h>
+#include <script/pqcscript.h>
 #include <crypto/pqc/hybrid_key.h>
 #include <uint256.h>
 
