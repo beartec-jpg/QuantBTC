@@ -4,19 +4,13 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <script/sign.h>
-
-#include <consensus/amount.h>
 #include <key.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
-#include <script/keyorigin.h>
-#include <script/miniscript.h>
-#include <script/script.h>
 #include <script/signingprovider.h>
-#include <script/solver.h>
+#include <script/standard.h>
 #include <uint256.h>
-#include <util/translation.h>
-#include <util/vector.h>
+#include <crypto/pqc/pqcconfig.h>
 
 typedef std::vector<unsigned char> valtype;
 
@@ -575,50 +569,45 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
 
 bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn, const CAmount& amount, int nHashType, SignatureData& sig_data)
 {
-    CScript script = fromPubKey;
-    bool complete = false;
+    assert(nIn < txTo.vin.size());
 
-    txTo.vin[nIn].scriptSig.clear();
-    
-    // Try classical signature first
-    complete = ProduceSignature(provider, MutableTransactionSignatureCreator(&txTo, nIn, amount, nHashType), script, txTo.vin[nIn].scriptSig);
-    
-    // If PQC is enabled, add PQC signature
+    MutableTransactionSignatureCreator creator(txTo, nIn, amount, nHashType);
+    bool complete = ProduceSignature(provider, creator, fromPubKey, sig_data);
+
     if (complete && pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
-        std::vector<unsigned char> script_sig = txTo.vin[nIn].scriptSig;
-        
-        // Extract key ID from script
+        std::vector<unsigned char> script_sig_data(txTo.vin[nIn].scriptSig.begin(), txTo.vin[nIn].scriptSig.end());
+        CKeyID keyid;
         std::vector<std::vector<unsigned char>> solutions;
-        txnouttype type;
-        if (Solver(script, type, solutions)) {
-            CKeyID keyid;
-            if (type == TX_PUBKEYHASH) {
+        TxoutType type;
+
+        if (Solver(fromPubKey, type, solutions)) {
+            if (type == TxoutType::PUBKEYHASH) {
                 keyid = CKeyID(uint160(solutions[0]));
-            } else if (type == TX_PUBKEY) {
+            } else if (type == TxoutType::PUBKEY) {
                 keyid = CPubKey(solutions[0]).GetID();
             }
-            
-            // Get hybrid key and create PQC signature
+
             pqc::HybridKey hybridKey;
             if (provider.GetHybridKey(keyid, hybridKey)) {
-                uint256 hash = SignatureHash(script, txTo, nIn, nHashType, amount);
-                std::vector<unsigned char> pqc_sig;
-                if (hybridKey.Sign(hash, pqc_sig)) {
-                    // Append PQC signature to script_sig
-                    script_sig.insert(script_sig.end(), pqc_sig.begin(), pqc_sig.end());
-                    txTo.vin[nIn].scriptSig = script_sig;
+                PrecomputedTransactionData txdata;
+                txdata.Init(txTo, {amount}, true);
+                uint256 hash = SignatureHash(fromPubKey, txTo, nIn, nHashType, amount, SigVersion::BASE, &txdata);
+                std::vector<unsigned char> hybrid_sig;
+                if (hybridKey.Sign(hash, hybrid_sig)) {
+                    script_sig_data.insert(script_sig_data.end(), hybrid_sig.begin(), hybrid_sig.end());
+                    txTo.vin[nIn].scriptSig = CScript(script_sig_data.begin(), script_sig_data.end());
                 }
             }
         }
     }
-    
+
     return complete;
 }
 
 bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, CMutableTransaction& txTo, unsigned int nIn, int nHashType, SignatureData& sig_data)
 {
     assert(nIn < txTo.vin.size());
-    const CTxIn& txin = txTo.vin[nIn];
+    CTxIn& txin = txTo.vin[nIn];
     assert(txin.prevout.n < txFrom.vout.size());
     const CTxOut& txout = txFrom.vout[txin.prevout.n];
 
