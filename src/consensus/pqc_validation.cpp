@@ -2,29 +2,15 @@
 #include <consensus/validation.h>
 #include <script/interpreter.h>
 #include <crypto/pqc/pqc_config.h>
+#include <consensus/pqc_witness.h>
 
 namespace Consensus {
 
 bool HasPQCSignatures(const CTransaction& tx) {
-    // Check each input for PQC signatures
+    // Check for witness version 2 (PQC)
     for (const auto& input : tx.vin) {
-        // PQC signatures are appended after classical signatures
-        // Format: [classical_sig_length][classical_sig][pqc_sig_length][pqc_sig]
-        const std::vector<unsigned char>& script_sig = input.scriptSig;
-        
-        // Basic size check
-        if (script_sig.size() < 2) {
-            continue;
-        }
-        
-        // Parse signature format
-        size_t classical_sig_len = script_sig[0];
-        if (script_sig.size() > classical_sig_len + 2) {
-            size_t pqc_sig_offset = classical_sig_len + 1;
-            size_t pqc_sig_len = script_sig[pqc_sig_offset];
-            
-            // Check if PQC signature is present
-            if (script_sig.size() >= pqc_sig_offset + 1 + pqc_sig_len) {
+        if (!input.witness.IsNull() && !input.witness.stack.empty()) {
+            if (input.witness.stack[0].size() > 0 && input.witness.stack[0][0] == WITNESS_V2_PQC) {
                 return true;
             }
         }
@@ -43,39 +29,25 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, ValidationSt
     // Check each input
     for (size_t i = 0; i < tx.vin.size(); i++) {
         const auto& input = tx.vin[i];
-        const std::vector<unsigned char>& script_sig = input.scriptSig;
         
-        // Parse signature format
-        if (script_sig.size() < 2) {
-            continue;
-        }
-        
-        size_t classical_sig_len = script_sig[0];
-        if (script_sig.size() <= classical_sig_len + 1) {
-            continue;
-        }
-        
-        size_t pqc_sig_offset = classical_sig_len + 1;
-        size_t pqc_sig_len = script_sig[pqc_sig_offset];
-        
-        // Check if PQC signature is present
-        if (script_sig.size() >= pqc_sig_offset + 1 + pqc_sig_len) {
-            pqc_found = true;
+        // Check for PQC witness data
+        if (!input.witness.IsNull() && !input.witness.stack.empty()) {
+            const auto& witness_stack = input.witness.stack;
             
-            // Extract PQC signature
-            std::vector<unsigned char> pqc_sig(
-                script_sig.begin() + pqc_sig_offset + 1,
-                script_sig.begin() + pqc_sig_offset + 1 + pqc_sig_len
-            );
-            
-            // Verify PQC signature
-            // Note: This requires access to the corresponding public key
-            // which should be available in the previous output's script
-            if (!VerifyPQCSignature(tx, i, pqc_sig)) {
-                return state.Invalid(ValidationInvalidReason::CONSENSUS,
-                                   false,
-                                   REJECT_INVALID, "bad-pqc-sig",
-                                   "PQC signature verification failed");
+            // Check if this is a PQC witness program
+            if (witness_stack[0].size() > 0 && witness_stack[0][0] == WITNESS_V2_PQC) {
+                pqc_found = true;
+                
+                // Extract PQC signature from witness
+                std::vector<unsigned char> pqc_sig = witness_stack[1];
+                
+                // Verify PQC signature
+                if (!VerifyPQCSignature(tx, i, pqc_sig)) {
+                    return state.Invalid(ValidationInvalidReason::CONSENSUS,
+                                       false,
+                                       REJECT_INVALID, "bad-pqc-sig",
+                                       "PQC signature verification failed");
+                }
             }
         }
     }
@@ -92,28 +64,24 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, ValidationSt
 }
 
 bool IsPQCRequired(int nHeight) {
-    // Define activation height for PQC requirement
-    // This should be coordinated with the network upgrade
-    static const int PQC_ACTIVATION_HEIGHT = 800000; // Example height
-    
-    return nHeight >= PQC_ACTIVATION_HEIGHT;
+    // Check if we've reached activation threshold
+    return IsPQCActivated(nHeight);
 }
 
 static bool VerifyPQCSignature(const CTransaction& tx, size_t nIn, const std::vector<unsigned char>& signature) {
-    // Get the corresponding public key from the previous output
-    // This is a placeholder - actual implementation needs to:
-    // 1. Get the previous output
-    // 2. Extract the public key
-    // 3. Verify using appropriate PQC algorithm
-    
     try {
         // Get previous output script
         const CTxOut& prevout = tx.vin[nIn].prevout;
         CScript prevScript = prevout.scriptPubKey;
         
-        // Extract public key
-        std::vector<unsigned char> pubKey;
-        // ... extract public key from prevScript ...
+        // Verify it's a PQC witness program
+        std::vector<unsigned char> program;
+        if (!prevScript.IsWitnessProgram(program) || program[0] != WITNESS_V2_PQC) {
+            return false;
+        }
+        
+        // Extract public key from witness program
+        std::vector<unsigned char> pubKey(program.begin() + 1, program.end());
         
         // Verify signature using PQC
         pqc::HybridKey key;
@@ -121,8 +89,8 @@ static bool VerifyPQCSignature(const CTransaction& tx, size_t nIn, const std::ve
             return false;
         }
         
-        // Create transaction hash for signing
-        uint256 hash = SignatureHash(prevScript, tx, nIn, SIGHASH_ALL, 0);
+        // Create transaction hash for signing (using witness v2 sighash)
+        uint256 hash = SignatureHashWitness(prevScript, tx, nIn, SIGHASH_ALL, 0);
         
         return key.Verify(hash, signature);
     } catch (const std::exception&) {

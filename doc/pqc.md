@@ -53,6 +53,38 @@ This ensures that transactions remain valid even if either classical or quantum 
 The PQC implementation maintains backward compatibility with existing Bitcoin nodes while allowing
 PQC-enabled nodes to exchange quantum-resistant signatures and keys.
 
+## Address Format
+
+PQC-enabled addresses use the Bech32m format with witness version 2 (prefix bc1z). This follows the SegWit address structure while providing a distinct prefix for PQC transactions.
+
+Example:
+```
+bc1z...  # PQC-enabled address
+```
+
+## Activation Mechanism
+
+The PQC feature activates through a SegWit-style soft fork:
+
+1. **Signaling Period**: Miners signal readiness using version bits
+2. **Activation Threshold**: Requires 95% of blocks in a 2016-block period to signal support
+3. **Grace Period**: Additional time after threshold reached before enforcement begins
+
+### Backward Compatibility
+
+The implementation follows SegWit principles for backward compatibility:
+- Old nodes see PQC transactions as anyone-can-spend
+- New nodes enforce both classical and quantum signatures
+- PQC signature data stored in witness area, not counting toward legacy block size
+
+### Block Size Considerations
+
+To maintain network performance:
+- PQC signatures stored in witness area (similar to SegWit)
+- Witness data has a 75% discount in weight calculations
+- Maximum block weight remains 4 million units
+- Effective capacity increased for PQC transactions through witness discount
+
 ## Security Considerations
 
 1. The hybrid approach ensures that security is maintained even if one system is compromised
