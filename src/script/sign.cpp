@@ -6,6 +6,7 @@
 #include <script/solver.h>
 #include <uint256.h>
 #include <crypto/pqc/pqcconfig.h>
+#include <crypto/pqc/hybrid_key.h>
 #include <util/translation.h>
 
 typedef std::vector<unsigned char> valtype;
@@ -585,7 +586,7 @@ bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, C
             }
 
             pqc::HybridKey hybridKey;
-            if (provider.GetHybridKey(keyid, hybridKey)) {
+            if (provider.GetHybridKey(keyid, hybridKey) && hybridKey.IsValid()) {
                 PrecomputedTransactionData txdata;
                 std::vector<CTxOut> spent_outputs = {CTxOut(amount, fromPubKey)};
                 txdata.Init(txTo, spent_outputs, true);

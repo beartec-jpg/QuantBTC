@@ -12,7 +12,9 @@
 #include <pubkey.h>
 #include <script/keyorigin.h>
 #include <script/script.h>
+#include <script/standard.h>
 #include <sync.h>
+#include <crypto/pqc/hybrid_key.h>
 
 struct ShortestVectorFirstComparator
 {
@@ -155,6 +157,7 @@ public:
     virtual bool HaveCScript(const CScriptID &scriptid) const { return false; }
     virtual bool GetPubKey(const CKeyID &address, CPubKey& pubkey) const { return false; }
     virtual bool GetKey(const CKeyID &address, CKey& key) const { return false; }
+    virtual bool HaveKey(const CKeyID &address) const { return false; }
     virtual bool GetKeyOrigin(const CKeyID& keyid, KeyOriginInfo& info) const { return false; }
     virtual bool GetHybridKey(const CKeyID &address, pqc::HybridKey& key) const { return false; }
     virtual bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const { return false; }
@@ -228,55 +231,11 @@ class FillableSigningProvider : public SigningProvider
 protected:
     using KeyMap = std::map<CKeyID, CKey>;
     using ScriptMap = std::map<CScriptID, CScript>;
+    using HybridKeyMap = std::map<CKeyID, pqc::HybridKey>;
 
-    /**
-     * Map of key id to unencrypted private keys known by the signing provider.
-     * Map may be empty if the provider has another source of keys, like an
-     * encrypted store.
-     */
     KeyMap mapKeys GUARDED_BY(cs_KeyStore);
-
-    /**
-     * Map of script id to scripts known by the signing provider.
-     *
-     * This map originally just held P2SH redeemScripts, and was used by wallet
-     * code to look up script ids referenced in "OP_HASH160 <script id>
-     * OP_EQUAL" P2SH outputs. Later in 605e8473a7d it was extended to hold
-     * P2WSH witnessScripts as well, and used to look up nested scripts
-     * referenced in "OP_0 <script hash>" P2WSH outputs. Later in commits
-     * f4691ab3a9d and 248f3a76a82, it was extended once again to hold segwit
-     * "OP_0 <key or script hash>" scriptPubKeys, in order to give the wallet a
-     * way to distinguish between segwit outputs that it generated addresses for
-     * and wanted to receive payments from, and segwit outputs that it never
-     * generated addresses for, but it could spend just because of having keys.
-     * (Before segwit activation it was also important to not treat segwit
-     * outputs to arbitrary wallet keys as payments, because these could be
-     * spent by anyone without even needing to sign with the keys.)
-     *
-     * Some of the scripts stored in mapScripts are memory-only and
-     * intentionally not saved to disk. Specifically, scripts added by
-     * ImplicitlyLearnRelatedKeyScripts(pubkey) calls are not written to disk so
-     * future wallet code can have flexibility to be more selective about what
-     * transaction outputs it recognizes as payments, instead of having to treat
-     * all outputs spending to keys it knows as payments. By contrast,
-     * mapScripts entries added by AddCScript(script),
-     * LearnRelatedScripts(pubkey, type), and LearnAllRelatedScripts(pubkey)
-     * calls are saved because they are all intentionally used to receive
-     * payments.
-     *
-     * The FillableSigningProvider::mapScripts script map should not be confused
-     * with LegacyScriptPubKeyMan::setWatchOnly script set. The two collections
-     * can hold the same scripts, but they serve different purposes. The
-     * setWatchOnly script set is intended to expand the set of outputs the
-     * wallet considers payments. Every output with a script it contains is
-     * considered to belong to the wallet, regardless of whether the script is
-     * solvable or signable. By contrast, the scripts in mapScripts are only
-     * used for solving, and to restrict which outputs are considered payments
-     * by the wallet. An output with a script in mapScripts, unlike
-     * setWatchOnly, is not automatically considered to belong to the wallet if
-     * it can't be solved and signed for.
-     */
     ScriptMap mapScripts GUARDED_BY(cs_KeyStore);
+    HybridKeyMap mapHybridKeys GUARDED_BY(cs_KeyStore);
 
     void ImplicitlyLearnRelatedKeyScripts(const CPubKey& pubkey) EXCLUSIVE_LOCKS_REQUIRED(cs_KeyStore);
 
@@ -293,13 +252,33 @@ public:
     virtual bool HaveCScript(const CScriptID &hash) const override;
     virtual std::set<CScriptID> GetCScripts() const;
     virtual bool GetCScript(const CScriptID &hash, CScript& redeemScriptOut) const override;
+
+    virtual bool AddHybridKey(const CKeyID& keyid, const pqc::HybridKey& hybrid_key)
+    {
+        LOCK(cs_KeyStore);
+        mapHybridKeys[keyid] = hybrid_key;
+        return true;
+    }
+
+    virtual bool GetHybridKey(const CKeyID& address, pqc::HybridKey& key) const override
+    {
+        LOCK(cs_KeyStore);
+        HybridKeyMap::const_iterator mi = mapHybridKeys.find(address);
+        if (mi != mapHybridKeys.end()) {
+            key = mi->second;
+            return true;
+        }
+        return false;
+    }
 };
 
 /** Return the CKeyID of the key involved in a script (if there is a unique one). */
 CKeyID GetKeyForDestination(const SigningProvider& store, const CTxDestination& dest);
 
 /** A signing provider to be used to interface with multiple signing providers at once. */
-class MultiSigningProvider: public SigningProvider {
+class MultiSigningProvider final : public SigningProvider
+{
+private:
     std::vector<std::unique_ptr<SigningProvider>> m_providers;
 
 public:
@@ -311,6 +290,15 @@ public:
     bool GetKey(const CKeyID& keyid, CKey& key) const override;
     bool GetTaprootSpendData(const XOnlyPubKey& output_key, TaprootSpendData& spenddata) const override;
     bool GetTaprootBuilder(const XOnlyPubKey& output_key, TaprootBuilder& builder) const override;
+    bool GetHybridKey(const CKeyID& keyid, pqc::HybridKey& key) const override
+    {
+        for (const auto& provider : m_providers) {
+            if (provider->GetHybridKey(keyid, key)) {
+                return true;
+            }
+        }
+        return false;
+    }
 };
 
 #endif // BITCOIN_SCRIPT_SIGNINGPROVIDER_H
