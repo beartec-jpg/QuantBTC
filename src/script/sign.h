@@ -16,11 +16,15 @@
 #include <crypto/pqc/hybrid_key.h>
 #include <uint256.h>
 #include <script/signingprovider.h>
+#include <util/string.h>
+#include <addresstype.h>
 
 class CKey;
 class CKeyID;
 class CScript;
 class CTransaction;
+struct bilingual_str;
+struct CMutableTransaction;
 
 /** Interface for signature creators. */
 class BaseSignatureCreator {
