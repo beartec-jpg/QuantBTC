@@ -1,6 +1,6 @@
 #include <consensus/pqc_witness.h>
 #include <hash.h>
-#include <script/standard.h>
+#include <addresstype.h>
 #include <bech32.h>
 #include <util/strencodings.h>
 
