@@ -1,16 +1,12 @@
-// Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
 #include <script/sign.h>
 #include <key.h>
 #include <policy/policy.h>
 #include <primitives/transaction.h>
 #include <script/signingprovider.h>
-#include <script/standard.h>
+#include <script/solver.h>
 #include <uint256.h>
 #include <crypto/pqc/pqcconfig.h>
+#include <util/translation.h>
 
 typedef std::vector<unsigned char> valtype;
 
@@ -580,7 +576,8 @@ bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, C
         std::vector<std::vector<unsigned char>> solutions;
         TxoutType type;
 
-        if (Solver(fromPubKey, type, solutions)) {
+        if (Solver(fromPubKey, solutions)) {
+            type = Solver(fromPubKey, solutions);
             if (type == TxoutType::PUBKEYHASH) {
                 keyid = CKeyID(uint160(solutions[0]));
             } else if (type == TxoutType::PUBKEY) {
@@ -590,7 +587,8 @@ bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, C
             pqc::HybridKey hybridKey;
             if (provider.GetHybridKey(keyid, hybridKey)) {
                 PrecomputedTransactionData txdata;
-                txdata.Init(txTo, {amount}, true);
+                std::vector<CTxOut> spent_outputs = {CTxOut(amount, fromPubKey)};
+                txdata.Init(txTo, spent_outputs, true);
                 uint256 hash = SignatureHash(fromPubKey, txTo, nIn, nHashType, amount, SigVersion::BASE, &txdata);
                 std::vector<unsigned char> hybrid_sig;
                 if (hybridKey.Sign(hash, hybrid_sig)) {
