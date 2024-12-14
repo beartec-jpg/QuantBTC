@@ -4,7 +4,6 @@ This repository is the result of a collaborative effort between [QBlock](https:/
 
 Quantum computing represents a breakthrough in computational capabilities, but it also poses a significant risk to current cryptographic techniques, including the elliptic curve cryptography (ECC) widely used in Bitcoin today. These classical encryption methods could potentially be broken by powerful quantum computers, leading to vulnerabilities in blockchain technologies. To mitigate this, the integration of quantum-resistant algorithms into Bitcoin Core is imperative.
 
-
 ## **Overview**
 
 Quantum computers poses a potential threat to current cryptographic methods, including those used in Bitcoin, like elliptic curve cryptography (ECC). This project investigates incorporating post-quantum cryptographic algorithms to secure Bitcoin transactions and wallets in the event of future quantum attacks.
@@ -19,11 +18,18 @@ The goal is to make Bitcoin Core quantum-resistant by adopting algorithms that r
 
 ## **Current PQC Algorithms Implemented**
 
+### Group 1: Digital Signature Algorithms
+- **SPHINCS+**: A stateless hash-based signature scheme with minimal security assumptions.
+- **CRYSTALS-Dilithium**: A lattice-based digital signature scheme.
+- **FALCON**: A fast lattice-based digital signature scheme optimized for small signatures.
+- **SQIsign**: An isogeny-based signature scheme.
+
+### Group 2: Key Encapsulation Mechanisms (KEM)
 - **Kyber**: A lattice-based key encapsulation mechanism (KEM) for public-key encryption.
 - **FrodoKEM**: A key encapsulation mechanism based on the hardness of the learning with errors (LWE) problem.
 - **NTRU**: A lattice-based public-key cryptosystem designed to be secure against quantum computers.
 
-These algorithms are integrated into the Bitcoin codebase in a way that ensures both backward and forward compatibility with existing Bitcoin infrastructure.
+These algorithms are integrated into the Bitcoin codebase in a way that ensures both backward and forward compatibility with existing Bitcoin infrastructure. Group 1 algorithms handle digital signatures for transaction signing, while Group 2 algorithms provide secure key exchange mechanisms for encrypted communications between nodes and wallets.
 
 ## **Post-Quantum Cryptography Support**
 
@@ -37,22 +43,29 @@ This fork of Bitcoin Core implements post-quantum cryptography (PQC) to provide 
 - Support for hybrid key generation and signing
 
 #### Supported PQC Algorithms
-- **Kyber**: A lattice-based key encapsulation mechanism (KEM)
-- **FrodoKEM**: A KEM based on the learning with errors (LWE) problem
-- **NTRU**: A lattice-based public-key cryptosystem
+##### Digital Signatures (Group 1)
+- **SPHINCS+**: Stateless hash-based signatures
+- **CRYSTALS-Dilithium**: Lattice-based signatures
+- **FALCON**: Fast lattice-based signatures
+- **SQIsign**: Isogeny-based signatures
+
+##### Key Encapsulation (Group 2)
+- **Kyber**: Lattice-based KEM
+- **FrodoKEM**: LWE-based KEM
+- **NTRU**: Lattice-based cryptosystem
 
 #### Configuration Options
 Enable PQC features using command-line arguments:
 ```bash
-bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqchybridsig=1
+bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqcsig=sphincs,dilithium -pqchybridsig=1
 ```
 
 Available options:
 - `-pqc=0|1`: Enable/disable all PQC features (default: 1)
 - `-pqchybridkeys=0|1`: Enable/disable hybrid key generation (default: 1)
 - `-pqchybridsig=0|1`: Enable/disable hybrid signatures (default: 1)
-- `-pqcalgo=algo1,algo2,...`: Specify enabled PQC algorithms (default: kyber,frodo,ntru)
-- `-pqcsig=sig1,sig2,...`: Specify enabled signature schemes (default: dilithium,falcon)
+- `-pqcalgo=algo1,algo2,...`: Specify enabled KEM algorithms (default: kyber,frodo,ntru)
+- `-pqcsig=sig1,sig2,...`: Specify enabled signature schemes (default: sphincs,dilithium,falcon,sqisign)
 
 For detailed documentation on PQC features, see [doc/pqc.md](doc/pqc.md).
 
