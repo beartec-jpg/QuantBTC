@@ -1,6 +1,5 @@
 #include "pqc_manager.h"
-#include "../random.h"
-#include <algorithm>
+#include <logging.h>
 
 namespace pqc {
 
@@ -10,11 +9,127 @@ PQCManager& PQCManager::GetInstance() {
 }
 
 bool PQCManager::Initialize(const std::vector<PQCAlgorithm>& algorithms) {
-    if (algorithms.empty()) {
+    m_enabledAlgorithms = algorithms;
+    
+    // Initialize signature algorithm instances if enabled
+    for (const auto& algo : algorithms) {
+        switch (algo) {
+            case PQCAlgorithm::SPHINCS:
+                m_sphincs = std::make_unique<SPHINCS>();
+                break;
+            case PQCAlgorithm::DILITHIUM:
+                m_dilithium = std::make_unique<Dilithium>();
+                break;
+            case PQCAlgorithm::FALCON:
+                m_falcon = std::make_unique<Falcon>();
+                break;
+            case PQCAlgorithm::SQISIGN:
+                m_sqisign = std::make_unique<SQIsign>();
+                break;
+            case PQCAlgorithm::KYBER:
+            case PQCAlgorithm::FRODOKEM:
+            case PQCAlgorithm::NTRU:
+                break;
+            default:
+                break;
+        }
+    }
+    return true;
+}
+
+bool PQCManager::GenerateSignatureKeyPair(PQCAlgorithm algo,
+                                        std::vector<unsigned char>& publicKey,
+                                        std::vector<unsigned char>& privateKey) {
+    try {
+        switch (algo) {
+            case PQCAlgorithm::SPHINCS:
+                if (!m_sphincs) return false;
+                return m_sphincs->GenerateKeyPair(publicKey, privateKey);
+            
+            case PQCAlgorithm::DILITHIUM:
+                if (!m_dilithium) return false;
+                return m_dilithium->GenerateKeyPair(publicKey, privateKey);
+            
+            case PQCAlgorithm::FALCON:
+                if (!m_falcon) return false;
+                return m_falcon->GenerateKeyPair(publicKey, privateKey);
+            
+            case PQCAlgorithm::SQISIGN:
+                if (!m_sqisign) return false;
+                return m_sqisign->GenerateKeyPair(publicKey, privateKey);
+            
+            default:
+                LogPrintf("PQCManager::GenerateSignatureKeyPair: Unsupported algorithm\n");
+                return false;
+        }
+    } catch (const std::exception& e) {
+        LogPrintf("PQCManager::GenerateSignatureKeyPair: %s\n", e.what());
         return false;
     }
-    m_enabledAlgorithms = algorithms;
-    return true;
+}
+
+bool PQCManager::Sign(PQCAlgorithm algo,
+                     const std::vector<unsigned char>& message,
+                     const std::vector<unsigned char>& privateKey,
+                     std::vector<unsigned char>& signature) {
+    try {
+        switch (algo) {
+            case PQCAlgorithm::SPHINCS:
+                if (!m_sphincs) return false;
+                return m_sphincs->Sign(message, privateKey, signature);
+            
+            case PQCAlgorithm::DILITHIUM:
+                if (!m_dilithium) return false;
+                return m_dilithium->Sign(message, privateKey, signature);
+            
+            case PQCAlgorithm::FALCON:
+                if (!m_falcon) return false;
+                return m_falcon->Sign(message, privateKey, signature);
+            
+            case PQCAlgorithm::SQISIGN:
+                if (!m_sqisign) return false;
+                return m_sqisign->Sign(message, privateKey, signature);
+            
+            default:
+                LogPrintf("PQCManager::Sign: Unsupported algorithm\n");
+                return false;
+        }
+    } catch (const std::exception& e) {
+        LogPrintf("PQCManager::Sign: %s\n", e.what());
+        return false;
+    }
+}
+
+bool PQCManager::Verify(PQCAlgorithm algo,
+                       const std::vector<unsigned char>& message,
+                       const std::vector<unsigned char>& signature,
+                       const std::vector<unsigned char>& publicKey) {
+    try {
+        switch (algo) {
+            case PQCAlgorithm::SPHINCS:
+                if (!m_sphincs) return false;
+                return m_sphincs->Verify(message, signature, publicKey);
+            
+            case PQCAlgorithm::DILITHIUM:
+                if (!m_dilithium) return false;
+                return m_dilithium->Verify(message, signature, publicKey);
+            
+            case PQCAlgorithm::FALCON:
+                if (!m_falcon) return false;
+                return m_falcon->Verify(message, signature, publicKey);
+            
+            case PQCAlgorithm::SQISIGN:
+                if (!m_sqisign) return false;
+                return m_sqisign->Verify(message, signature, publicKey);
+            
+            default:
+                LogPrintf("PQCManager::Verify: Unsupported algorithm\n");
+                return false;
+        }
+    } catch (const std::exception& e) {
+        LogPrintf("PQCManager::Verify: %s\n", e.what());
+        return false;
+    }
 }
 
 bool PQCManager::GenerateHybridKeys(std::vector<unsigned char>& publicKey,
@@ -52,6 +167,8 @@ bool PQCManager::GenerateHybridKeys(std::vector<unsigned char>& publicKey,
                 privateKey.insert(privateKey.end(), ntru_sk, ntru_sk + NTRU_SECRET_KEY_BYTES);
                 break;
             }
+            default:
+                break;
         }
     }
     return true;
@@ -77,6 +194,8 @@ bool PQCManager::HybridEncapsulate(const std::vector<unsigned char>& publicKey,
                 break;
             }
             // Similar implementations for FRODOKEM and NTRU
+            default:
+                break;
         }
     }
 
@@ -106,6 +225,8 @@ bool PQCManager::HybridDecapsulate(const std::vector<unsigned char>& privateKey,
                 break;
             }
             // Similar implementations for FRODOKEM and NTRU
+            default:
+                break;
         }
     }
 

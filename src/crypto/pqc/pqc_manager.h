@@ -4,15 +4,25 @@
 #include "kyber.h"
 #include "frodokem.h"
 #include "ntru.h"
+#include "sphincs.h"
+#include "dilithium.h"
+#include "falcon.h"
+#include "sqisign.h"
 #include <vector>
 #include <memory>
 
 namespace pqc {
 
 enum class PQCAlgorithm {
+    // Key Encapsulation Mechanisms (KEM)
     KYBER,
     FRODOKEM,
-    NTRU
+    NTRU,
+    // Digital Signature Algorithms
+    SPHINCS,
+    DILITHIUM,
+    FALCON,
+    SQISIGN
 };
 
 class PQCManager {
@@ -36,6 +46,21 @@ public:
                           const std::vector<unsigned char>& ciphertext,
                           std::vector<unsigned char>& sharedSecret);
 
+    // Digital signature methods
+    bool GenerateSignatureKeyPair(PQCAlgorithm algo,
+                                 std::vector<unsigned char>& publicKey,
+                                 std::vector<unsigned char>& privateKey);
+
+    bool Sign(PQCAlgorithm algo,
+             const std::vector<unsigned char>& message,
+             const std::vector<unsigned char>& privateKey,
+             std::vector<unsigned char>& signature);
+
+    bool Verify(PQCAlgorithm algo,
+               const std::vector<unsigned char>& message,
+               const std::vector<unsigned char>& signature,
+               const std::vector<unsigned char>& publicKey);
+
 private:
     PQCManager() = default;
     ~PQCManager() = default;
@@ -43,6 +68,12 @@ private:
     PQCManager& operator=(const PQCManager&) = delete;
 
     std::vector<PQCAlgorithm> m_enabledAlgorithms;
+    
+    // Algorithm instances
+    std::unique_ptr<SPHINCS> m_sphincs;
+    std::unique_ptr<Dilithium> m_dilithium;
+    std::unique_ptr<Falcon> m_falcon;
+    std::unique_ptr<SQIsign> m_sqisign;
 };
 
 } // namespace pqc
