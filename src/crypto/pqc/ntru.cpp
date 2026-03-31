@@ -80,16 +80,17 @@ bool NTRU::KeyGen(unsigned char *pk, unsigned char *sk) {
     int16_t f[NTRU_N];
     int16_t g[NTRU_N];
     int16_t h[NTRU_N];
+    FastRandomContext rng;
     
     // Generate small polynomial f
     for(int i = 0; i < NTRU_N; i++) {
-        f[i] = (GetRand(3) - 1) % NTRU_Q;
+        f[i] = (static_cast<int16_t>(rng.randrange(3)) - 1) % NTRU_Q;
         if(f[i] < 0) f[i] += NTRU_Q;
     }
     
     // Generate small polynomial g
     for(int i = 0; i < NTRU_N; i++) {
-        g[i] = (GetRand(3) - 1) % NTRU_Q;
+        g[i] = (static_cast<int16_t>(rng.randrange(3)) - 1) % NTRU_Q;
         if(g[i] < 0) g[i] += NTRU_Q;
     }
     
@@ -112,16 +113,17 @@ bool NTRU::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char *pk)
     int16_t r[NTRU_N];
     int16_t h[NTRU_N];
     unsigned char m[32];
+    FastRandomContext rng;
     
     // Generate random message
-    GetStrongRandBytes(m, 32);
+    GetStrongRandBytes(m);
     
     // Unpack public key
     memcpy(h, pk, NTRU_N * sizeof(int16_t));
     
     // Generate small polynomial r
     for(int i = 0; i < NTRU_N; i++) {
-        r[i] = (GetRand(3) - 1) % NTRU_Q;
+        r[i] = (static_cast<int16_t>(rng.randrange(3)) - 1) % NTRU_Q;
         if(r[i] < 0) r[i] += NTRU_Q;
     }
     

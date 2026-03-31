@@ -1,5 +1,4 @@
 #include "pqc_config.h"
-#include <util/system.h>
 
 namespace pqc {
 

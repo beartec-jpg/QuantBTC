@@ -195,7 +195,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
             }
         }
 
-        LogPrint(BCLog::MINING, "QuantumBTC DAG block: selected_parent=%s parents=%u\n",
+        LogPrint(BCLog::VALIDATION, "QuantumBTC DAG block: selected_parent=%s parents=%u\n",
                  pindexPrev->GetBlockHash().ToString(),
                  1 + pblock->hashParents.size());
     }

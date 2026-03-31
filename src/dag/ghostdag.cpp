@@ -1,3 +1,4 @@
+// Copyright (c) 2026 beartec-jpg / QuantumBTC
 // Copyright (c) 2024 The QuantumBTC developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -67,7 +68,7 @@ std::vector<uint256> GhostdagManager::ComputeMergeset(
     const IGhostdagBlockProvider& provider) const
 {
     std::vector<uint256> mergeset;
-    std::unordered_set<uint256> visited;
+    std::unordered_set<uint256, BlockHasher> visited;
     visited.insert(selected_parent);
 
     // BFS queue: start from all parents except the selected parent
@@ -238,13 +239,13 @@ GhostdagData GhostdagManager::ComputeVirtual(
 // GhostdagManager::TopologicalOrder
 // ---------------------------------------------------------------------------
 std::vector<uint256> GhostdagManager::TopologicalOrder(
-    const std::unordered_set<uint256>& all_blocks,
+    const std::unordered_set<uint256, BlockHasher>& all_blocks,
     const GhostdagData& virtual_data,
     const IGhostdagBlockProvider& provider) const
 {
     // Kahn's algorithm: sort by (blue_score, hash) with dependency constraints
-    std::unordered_map<uint256, int> in_degree;
-    std::unordered_map<uint256, std::vector<uint256>> children;
+    std::unordered_map<uint256, int, BlockHasher> in_degree;
+    std::unordered_map<uint256, std::vector<uint256>, BlockHasher> children;
 
     for (const uint256& h : all_blocks) {
         if (in_degree.find(h) == in_degree.end()) {

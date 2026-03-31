@@ -1,6 +1,8 @@
 #ifndef BITCOIN_CRYPTO_PQC_CONFIG_H
 #define BITCOIN_CRYPTO_PQC_CONFIG_H
 
+#include "pqc_manager.h"
+
 #include <string>
 #include <vector>
 

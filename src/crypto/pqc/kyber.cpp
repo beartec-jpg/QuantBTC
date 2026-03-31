@@ -44,23 +44,23 @@ bool Kyber::KeyGen(unsigned char *pk, unsigned char *sk) {
     int16_t e[KYBER_N];
     int16_t s[KYBER_N];
     unsigned char seed[32];
-    unsigned char nonce = 0;
+    FastRandomContext rng;
     
     // Generate random seed
-    GetStrongRandBytes(seed, 32);
+    GetStrongRandBytes(seed);
     
     // Generate polynomial a from seed
     GeneratePolynomial(a, seed);
     
     // Sample secret polynomial s
     for(int i = 0; i < KYBER_N; i++) {
-        s[i] = (GetRand(5) - 2) % KYBER_Q;
+        s[i] = (static_cast<int16_t>(rng.randrange(5)) - 2) % KYBER_Q;
         if(s[i] < 0) s[i] += KYBER_Q;
     }
     
     // Sample error polynomial e
     for(int i = 0; i < KYBER_N; i++) {
-        e[i] = (GetRand(5) - 2) % KYBER_Q;
+        e[i] = (static_cast<int16_t>(rng.randrange(5)) - 2) % KYBER_Q;
         if(e[i] < 0) e[i] += KYBER_Q;
     }
     
@@ -103,20 +103,21 @@ bool Kyber::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char *pk
     int16_t e1[KYBER_N];
     int16_t e2[KYBER_N];
     unsigned char m[32];
+    FastRandomContext rng;
     
     // Generate random message
-    GetStrongRandBytes(m, 32);
+    GetStrongRandBytes(m);
     
     // Sample r from centered binomial distribution
     for(int i = 0; i < KYBER_N; i++) {
-        r[i] = (GetRand(5) - 2) % KYBER_Q;
+        r[i] = (static_cast<int16_t>(rng.randrange(5)) - 2) % KYBER_Q;
         if(r[i] < 0) r[i] += KYBER_Q;
     }
     
     // Sample error terms
     for(int i = 0; i < KYBER_N; i++) {
-        e1[i] = (GetRand(5) - 2) % KYBER_Q;
-        e2[i] = (GetRand(5) - 2) % KYBER_Q;
+        e1[i] = (static_cast<int16_t>(rng.randrange(5)) - 2) % KYBER_Q;
+        e2[i] = (static_cast<int16_t>(rng.randrange(5)) - 2) % KYBER_Q;
         if(e1[i] < 0) e1[i] += KYBER_Q;
         if(e2[i] < 0) e2[i] += KYBER_Q;
     }

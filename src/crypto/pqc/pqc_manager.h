@@ -4,12 +4,7 @@
 #include "kyber.h"
 #include "frodokem.h"
 #include "ntru.h"
-#include "sphincs.h"
-#include "dilithium.h"
-#include "falcon.h"
-#include "sqisign.h"
 #include <vector>
-#include <memory>
 
 namespace pqc {
 
@@ -68,12 +63,6 @@ private:
     PQCManager& operator=(const PQCManager&) = delete;
 
     std::vector<PQCAlgorithm> m_enabledAlgorithms;
-    
-    // Algorithm instances
-    std::unique_ptr<SPHINCS> m_sphincs;
-    std::unique_ptr<Dilithium> m_dilithium;
-    std::unique_ptr<Falcon> m_falcon;
-    std::unique_ptr<SQIsign> m_sqisign;
 };
 
 } // namespace pqc

@@ -27,11 +27,12 @@ static void unpack(uint16_t *out, const unsigned char *in, size_t len) {
 }
 
 static void sample_error(uint16_t *e, size_t n) {
+    FastRandomContext rng;
     for(size_t i = 0; i < n; i++) {
         // Sample from discrete Gaussian distribution
         int32_t sum = 0;
         for(int j = 0; j < 16; j++) {
-            sum += (int32_t)GetRand(2) - 1;
+            sum += static_cast<int32_t>(rng.randrange(2)) - 1;
         }
         e[i] = (uint16_t)((sum + FRODO_Q) % FRODO_Q);
     }
@@ -45,7 +46,7 @@ bool FrodoKEM::KeyGen(unsigned char *pk, unsigned char *sk) {
     unsigned char seed[32];
     
     // Generate random seed for matrix A
-    GetStrongRandBytes(seed, 32);
+    GetStrongRandBytes(seed);
     
     // Generate matrix A pseudorandomly
     CSHA256 sha256;
@@ -95,7 +96,7 @@ bool FrodoKEM::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char 
     unsigned char mu[32];
     
     // Generate random mu
-    GetStrongRandBytes(mu, 32);
+    GetStrongRandBytes(mu);
     
     // Sample error matrices
     sample_error(Sp, FRODO_MBAR * FRODO_N);

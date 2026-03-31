@@ -1,6 +1,7 @@
 #include <script/sign.h>
 #include <key.h>
 #include <policy/policy.h>
+#include <script/miniscript.h>
 #include <primitives/transaction.h>
 #include <script/signingprovider.h>
 #include <script/solver.h>
@@ -8,6 +9,7 @@
 #include <crypto/pqc/pqcconfig.h>
 #include <crypto/pqc/hybrid_key.h>
 #include <util/translation.h>
+#include <util/vector.h>
 
 typedef std::vector<unsigned char> valtype;
 
@@ -570,6 +572,7 @@ bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, C
 
     MutableTransactionSignatureCreator creator(txTo, nIn, amount, nHashType);
     bool complete = ProduceSignature(provider, creator, fromPubKey, sig_data);
+    UpdateInput(txTo.vin.at(nIn), sig_data);
 
     if (complete && pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
         std::vector<unsigned char> script_sig_data(txTo.vin[nIn].scriptSig.begin(), txTo.vin[nIn].scriptSig.end());
@@ -577,8 +580,8 @@ bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, C
         std::vector<std::vector<unsigned char>> solutions;
         TxoutType type;
 
-        if (Solver(fromPubKey, solutions)) {
-            type = Solver(fromPubKey, solutions);
+        type = Solver(fromPubKey, solutions);
+        if (type != TxoutType::NONSTANDARD) {
             if (type == TxoutType::PUBKEYHASH) {
                 keyid = CKeyID(uint160(solutions[0]));
             } else if (type == TxoutType::PUBKEY) {
@@ -589,7 +592,7 @@ bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, C
             if (provider.GetHybridKey(keyid, hybridKey) && hybridKey.IsValid()) {
                 PrecomputedTransactionData txdata;
                 std::vector<CTxOut> spent_outputs = {CTxOut(amount, fromPubKey)};
-                txdata.Init(txTo, spent_outputs, true);
+                txdata.Init(txTo, std::move(spent_outputs), true);
                 uint256 hash = SignatureHash(fromPubKey, txTo, nIn, nHashType, amount, SigVersion::BASE, &txdata);
                 std::vector<unsigned char> hybrid_sig;
                 if (hybridKey.Sign(hash, hybrid_sig)) {
@@ -732,27 +735,6 @@ void SignatureData::MergeSignatureData(SignatureData sigdata)
         witness_script = sigdata.witness_script;
     }
     signatures.insert(std::make_move_iterator(sigdata.signatures.begin()), std::make_move_iterator(sigdata.signatures.end()));
-}
-
-bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn, const CAmount& amount, int nHashType, SignatureData& sig_data)
-{
-    assert(nIn < txTo.vin.size());
-
-    MutableTransactionSignatureCreator creator(txTo, nIn, amount, nHashType);
-
-    bool ret = ProduceSignature(provider, creator, fromPubKey, sig_data);
-    UpdateInput(txTo.vin.at(nIn), sig_data);
-    return ret;
-}
-
-bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, CMutableTransaction& txTo, unsigned int nIn, int nHashType, SignatureData& sig_data)
-{
-    assert(nIn < txTo.vin.size());
-    const CTxIn& txin = txTo.vin[nIn];
-    assert(txin.prevout.n < txFrom.vout.size());
-    const CTxOut& txout = txFrom.vout[txin.prevout.n];
-
-    return SignSignature(provider, txout.scriptPubKey, txTo, nIn, txout.nValue, nHashType, sig_data);
 }
 
 namespace {

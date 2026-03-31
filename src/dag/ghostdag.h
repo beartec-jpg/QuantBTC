@@ -1,3 +1,4 @@
+// Copyright (c) 2026 beartec-jpg / QuantumBTC
 // Copyright (c) 2024 The QuantumBTC developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
@@ -31,6 +32,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <util/hasher.h>
 #include <vector>
 
 #include <uint256.h>
@@ -130,7 +132,7 @@ public:
      * @return              - ordered vector of block hashes (genesis first)
      */
     std::vector<uint256> TopologicalOrder(
-        const std::unordered_set<uint256>& all_blocks,
+        const std::unordered_set<uint256, BlockHasher>& all_blocks,
         const GhostdagData& virtual_data,
         const IGhostdagBlockProvider& provider) const;
 

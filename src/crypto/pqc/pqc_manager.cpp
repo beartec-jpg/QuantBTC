@@ -10,30 +10,6 @@ PQCManager& PQCManager::GetInstance() {
 
 bool PQCManager::Initialize(const std::vector<PQCAlgorithm>& algorithms) {
     m_enabledAlgorithms = algorithms;
-    
-    // Initialize signature algorithm instances if enabled
-    for (const auto& algo : algorithms) {
-        switch (algo) {
-            case PQCAlgorithm::SPHINCS:
-                m_sphincs = std::make_unique<SPHINCS>();
-                break;
-            case PQCAlgorithm::DILITHIUM:
-                m_dilithium = std::make_unique<Dilithium>();
-                break;
-            case PQCAlgorithm::FALCON:
-                m_falcon = std::make_unique<Falcon>();
-                break;
-            case PQCAlgorithm::SQISIGN:
-                m_sqisign = std::make_unique<SQIsign>();
-                break;
-            case PQCAlgorithm::KYBER:
-            case PQCAlgorithm::FRODOKEM:
-            case PQCAlgorithm::NTRU:
-                break;
-            default:
-                break;
-        }
-    }
     return true;
 }
 
@@ -43,20 +19,11 @@ bool PQCManager::GenerateSignatureKeyPair(PQCAlgorithm algo,
     try {
         switch (algo) {
             case PQCAlgorithm::SPHINCS:
-                if (!m_sphincs) return false;
-                return m_sphincs->GenerateKeyPair(publicKey, privateKey);
-            
             case PQCAlgorithm::DILITHIUM:
-                if (!m_dilithium) return false;
-                return m_dilithium->GenerateKeyPair(publicKey, privateKey);
-            
             case PQCAlgorithm::FALCON:
-                if (!m_falcon) return false;
-                return m_falcon->GenerateKeyPair(publicKey, privateKey);
-            
             case PQCAlgorithm::SQISIGN:
-                if (!m_sqisign) return false;
-                return m_sqisign->GenerateKeyPair(publicKey, privateKey);
+                LogPrintf("PQCManager::GenerateSignatureKeyPair: Signature algorithms not linked in this build\n");
+                return false;
             
             default:
                 LogPrintf("PQCManager::GenerateSignatureKeyPair: Unsupported algorithm\n");
@@ -75,20 +42,11 @@ bool PQCManager::Sign(PQCAlgorithm algo,
     try {
         switch (algo) {
             case PQCAlgorithm::SPHINCS:
-                if (!m_sphincs) return false;
-                return m_sphincs->Sign(message, privateKey, signature);
-            
             case PQCAlgorithm::DILITHIUM:
-                if (!m_dilithium) return false;
-                return m_dilithium->Sign(message, privateKey, signature);
-            
             case PQCAlgorithm::FALCON:
-                if (!m_falcon) return false;
-                return m_falcon->Sign(message, privateKey, signature);
-            
             case PQCAlgorithm::SQISIGN:
-                if (!m_sqisign) return false;
-                return m_sqisign->Sign(message, privateKey, signature);
+                LogPrintf("PQCManager::Sign: Signature algorithms not linked in this build\n");
+                return false;
             
             default:
                 LogPrintf("PQCManager::Sign: Unsupported algorithm\n");
@@ -107,20 +65,11 @@ bool PQCManager::Verify(PQCAlgorithm algo,
     try {
         switch (algo) {
             case PQCAlgorithm::SPHINCS:
-                if (!m_sphincs) return false;
-                return m_sphincs->Verify(message, signature, publicKey);
-            
             case PQCAlgorithm::DILITHIUM:
-                if (!m_dilithium) return false;
-                return m_dilithium->Verify(message, signature, publicKey);
-            
             case PQCAlgorithm::FALCON:
-                if (!m_falcon) return false;
-                return m_falcon->Verify(message, signature, publicKey);
-            
             case PQCAlgorithm::SQISIGN:
-                if (!m_sqisign) return false;
-                return m_sqisign->Verify(message, signature, publicKey);
+                LogPrintf("PQCManager::Verify: Signature algorithms not linked in this build\n");
+                return false;
             
             default:
                 LogPrintf("PQCManager::Verify: Unsupported algorithm\n");

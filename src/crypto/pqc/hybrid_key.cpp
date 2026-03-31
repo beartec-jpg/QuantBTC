@@ -2,7 +2,6 @@
 #include "pqc_config.h"
 #include <hash.h>
 #include <key.h>
-#include <util/system.h>
 
 namespace pqc {
 
@@ -84,7 +83,7 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
 
     if (!PQCConfig::GetInstance().enable_hybrid_signatures) {
         // Verify only classical signature
-        return m_classical_key.Verify(hash, signature);
+        return m_classical_key.GetPubKey().Verify(hash, signature);
     }
 
     // Split signature into classical and PQC parts
@@ -95,7 +94,7 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
                                      signature.end());
 
     // Verify classical signature
-    if (!m_classical_key.Verify(hash, classical_sig)) {
+    if (!m_classical_key.GetPubKey().Verify(hash, classical_sig)) {
         return false;
     }
 

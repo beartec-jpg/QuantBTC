@@ -1,5 +1,18 @@
 # **pqcBitcoin**
 
+## **About this fork**
+
+QuantumBTC is a fork-in-progress of pqcBitcoin focused on combining post-quantum transaction security with high-throughput BlockDAG consensus while preserving Bitcoin-style economics.
+
+This fork is being adapted with these goals:
+
+- **Quantum-safe signatures** via the existing PQC integration from pqcBitcoin.
+- **SHA-256 Proof of Work** retained for compatibility with established Bitcoin mining hardware assumptions.
+- **BlockDAG / GHOSTDAG-style consensus** to support fast parallel block production, sub-second confirmation targets, and materially higher throughput than linear-chain Bitcoin.
+- **Bitcoin-like monetary policy** including the 21 million supply cap and halving-based issuance model.
+
+Current work in this fork includes introducing DAG-specific data structures, multi-parent block support, DAG-oriented mining hooks, and consensus parameter extensions needed to bring up a usable regtest-first QuantumBTC node.
+
 This repository is the result of a collaborative effort between [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsCode), working together to build a future-proof version of Bitcoin Core that can withstand the potential threats posed by quantum computers. The integration of Post-Quantum Cryptography (PQC) algorithms into Bitcoin Core is a key initiative in ensuring that Bitcoin remains secure in the advent of quantum computing.
 
 Quantum computing represents a breakthrough in computational capabilities, but it also poses a significant risk to current cryptographic techniques, including the elliptic curve cryptography (ECC) widely used in Bitcoin today. These classical encryption methods could potentially be broken by powerful quantum computers, leading to vulnerabilities in blockchain technologies. To mitigate this, the integration of quantum-resistant algorithms into Bitcoin Core is imperative.
