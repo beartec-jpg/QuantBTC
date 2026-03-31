@@ -159,6 +159,15 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
 
     if (blockindex.pprev)
         result.pushKV("previousblockhash", blockindex.pprev->GetBlockHash().GetHex());
+    // QuantumBTC BlockDAG: expose additional DAG parent hashes
+    if (blockindex.nVersion & BLOCK_VERSION_DAGMODE) {
+        UniValue dag_parents(UniValue::VARR);
+        for (const CBlockIndex* p : blockindex.vDagParents) {
+            if (p) dag_parents.push_back(p->GetBlockHash().GetHex());
+        }
+        result.pushKV("dagparents", dag_parents);
+        result.pushKV("dagblock", true);
+    }
     if (pnext)
         result.pushKV("nextblockhash", pnext->GetBlockHash().GetHex());
     return result;
@@ -537,6 +546,11 @@ static RPCHelpMan getblockheader()
                             {RPCResult::Type::STR_HEX, "chainwork", "Expected number of hashes required to produce the current chain"},
                             {RPCResult::Type::NUM, "nTx", "The number of transactions in the block"},
                             {RPCResult::Type::STR_HEX, "previousblockhash", /*optional=*/true, "The hash of the previous block (if available)"},
+                            {RPCResult::Type::ARR, "dagparents", /*optional=*/true, "Additional DAG parent block hashes (QuantumBTC BlockDAG)",
+                            {
+                                {RPCResult::Type::STR_HEX, "", "Parent block hash"},
+                            }},
+                            {RPCResult::Type::BOOL, "dagblock", /*optional=*/true, "True if this is a DAG-mode block"},
                             {RPCResult::Type::STR_HEX, "nextblockhash", /*optional=*/true, "The hash of the next block (if available)"},
                         }},
                     RPCResult{"for verbose=false",
@@ -704,6 +718,11 @@ static RPCHelpMan getblock()
                     {RPCResult::Type::STR_HEX, "chainwork", "Expected number of hashes required to produce the chain up to this block (in hex)"},
                     {RPCResult::Type::NUM, "nTx", "The number of transactions in the block"},
                     {RPCResult::Type::STR_HEX, "previousblockhash", /*optional=*/true, "The hash of the previous block (if available)"},
+                    {RPCResult::Type::ARR, "dagparents", /*optional=*/true, "Additional DAG parent block hashes (QuantumBTC BlockDAG)",
+                    {
+                        {RPCResult::Type::STR_HEX, "", "Parent block hash"},
+                    }},
+                    {RPCResult::Type::BOOL, "dagblock", /*optional=*/true, "True if this is a DAG-mode block"},
                     {RPCResult::Type::STR_HEX, "nextblockhash", /*optional=*/true, "The hash of the next block (if available)"},
                 }},
                     RPCResult{"for verbosity = 2",

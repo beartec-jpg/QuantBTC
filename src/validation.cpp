@@ -3082,15 +3082,10 @@ bool Chainstate::DisconnectTip(BlockValidationState& state, DisconnectedBlockTra
 
     UpdateTip(pindexDelete->pprev);
 
-    // QuantumBTC BlockDAG: update the global DAG tipset when a block is disconnected.
-    if (m_chainman.GetConsensus().fDagMode) {
-        std::vector<uint256> parents;
-        if (pindexDelete->pprev) parents.push_back(pindexDelete->pprev->GetBlockHash());
-        for (const CBlockIndex* p : pindexDelete->vDagParents) {
-            if (p) parents.push_back(p->GetBlockHash());
-        }
-        m_chainman.m_dag_tips.BlockDisconnected(pindexDelete->GetBlockHash(), parents);
-    }
+    // QuantumBTC BlockDAG: do NOT update the DAG tipset on disconnect.
+    // In DAG mode, blocks remain in the tipset even when disconnected from
+    // the active chain — they are only removed when a child block references
+    // them.  Tipset tracking happens in AcceptBlock() instead.
     // Let wallets know transactions went from 1-confirmed to
     // 0-confirmed or conflicted:
     if (m_chainman.m_options.signals) {
@@ -3219,15 +3214,9 @@ bool Chainstate::ConnectTip(BlockValidationState& state, CBlockIndex* pindexNew,
     m_chain.SetTip(*pindexNew);
     UpdateTip(pindexNew);
 
-    // QuantumBTC BlockDAG: update the global DAG tipset when a block is connected.
-    if (m_chainman.GetConsensus().fDagMode) {
-        std::vector<uint256> parents;
-        if (pindexNew->pprev) parents.push_back(pindexNew->pprev->GetBlockHash());
-        for (const CBlockIndex* p : pindexNew->vDagParents) {
-            if (p) parents.push_back(p->GetBlockHash());
-        }
-        m_chainman.m_dag_tips.BlockConnected(pindexNew->GetBlockHash(), parents);
-    }
+    // QuantumBTC BlockDAG: tipset tracking is now done in AcceptBlock()
+    // so that ALL accepted blocks (including fork blocks not on the active
+    // chain) participate in the DAG.  See AcceptBlock() below.
 
     const auto time_6{SteadyClock::now()};
     m_chainman.time_post_connect += time_6 - time_5;
@@ -4583,6 +4572,20 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
     // chainstate (particularly if we haven't implemented pruning with
     // background validation yet).
     ActiveChainstate().FlushStateToDisk(state, FlushStateMode::NONE);
+
+    // QuantumBTC BlockDAG: track ALL accepted blocks in the DAG tipset.
+    // This runs for every stored block (active chain or fork), so the tipset
+    // naturally includes concurrent tips from different branches.
+    if (GetConsensus().fDagMode && pindex) {
+        std::vector<uint256> parents;
+        if (pindex->pprev) parents.push_back(pindex->pprev->GetBlockHash());
+        for (const CBlockIndex* p : pindex->vDagParents) {
+            if (p) parents.push_back(p->GetBlockHash());
+        }
+        m_dag_tips.BlockConnected(pindex->GetBlockHash(), parents);
+        LogPrint(BCLog::VALIDATION, "QuantumBTC DAG tipset: accepted block %s, tips now: %u\n",
+                 pindex->GetBlockHash().ToString(), m_dag_tips.GetMiningParents(999).size());
+    }
 
     CheckBlockIndex();
 

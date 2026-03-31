@@ -8,6 +8,12 @@ define(_COPYRIGHT_YEAR, 2024)
 define(_COPYRIGHT_HOLDERS,[The %s developers])
 define(_COPYRIGHT_HOLDERS_SUBSTITUTION,[[Bitcoin Core]])
 AC_INIT([Bitcoin Core],m4_join([.], _CLIENT_VERSION_MAJOR, _CLIENT_VERSION_MINOR, _CLIENT_VERSION_BUILD)m4_if(_CLIENT_VERSION_RC, [0], [], [rc]_CLIENT_VERSION_RC),[https://github.com/bitcoin/bitcoin/issues],[bitcoin],[https://bitcoincore.org/])
+AC_DEFINE_UNQUOTED([PACKAGE_NAME], ["QuantumBTC"], [Name of package])
+AC_DEFINE_UNQUOTED([PACKAGE_TARNAME], ["quantumbtc"], [Short package name])
+AC_DEFINE_UNQUOTED([PACKAGE_VERSION], ["28.0.0"], [Package version])
+AC_DEFINE_UNQUOTED([PACKAGE_STRING], ["QuantumBTC 28.0.0"], [Package name and version])
+AC_DEFINE_UNQUOTED([PACKAGE_URL], ["https://github.com/QBlockQ/pqc-bitcoin"], [Package home page])
+AC_DEFINE_UNQUOTED([PACKAGE_BUGREPORT], ["https://github.com/QBlockQ/pqc-bitcoin/issues"], [Bug report address])
 AC_CONFIG_SRCDIR([src/validation.cpp])
 AC_CONFIG_HEADERS([src/config/bitcoin-config.h])
 AC_CONFIG_AUX_DIR([build-aux])
@@ -448,7 +454,7 @@ dnl x86
 AX_CHECK_COMPILE_FLAG([-msse4.2], [SSE42_CXXFLAGS="-msse4.2"], [], [$CXXFLAG_WERROR])
 AX_CHECK_COMPILE_FLAG([-msse4.1], [SSE41_CXXFLAGS="-msse4.1"], [], [$CXXFLAG_WERROR])
 AX_CHECK_COMPILE_FLAG([-mavx -mavx2], [AVX2_CXXFLAGS="-mavx -mavx2"], [], [$CXXFLAG_WERROR])
-AX_CHECK_COMPILE_FLAG([-msse4 -msha], [X86_SHANI_CXXFLAGS="-msse4 -msha"], [], [$CXXFLAG_WERROR])
+AX_CHECK_COMPILE_FLAG([-msse4.1 -msha], [X86_SHANI_CXXFLAGS="-msse4.1 -msha"], [], [$CXXFLAG_WERROR])
 
 enable_clmul=
 AX_CHECK_COMPILE_FLAG([-mpclmul], [enable_clmul=yes], [], [$CXXFLAG_WERROR], [AC_LANG_PROGRAM([
