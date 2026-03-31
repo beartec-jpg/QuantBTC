@@ -56,15 +56,23 @@ PQCTxoutType SolvePQC(const CScript& scriptPubKey, std::vector<std::vector<unsig
 {
     vSolutionsRet.clear();
 
-    // PQC Pay-to-pubkey-hash
-    if (scriptPubKey.IsPayToPubkeyHash256()) {
+    // PQC Pay-to-pubkey-hash256: OP_DUP OP_HASH256 <32-byte-hash> OP_EQUALVERIFY OP_CHECKSIG (37 bytes)
+    if (scriptPubKey.size() == 37 &&
+        scriptPubKey[0] == OP_DUP &&
+        scriptPubKey[1] == OP_HASH256 &&
+        scriptPubKey[2] == 32 &&
+        scriptPubKey[35] == OP_EQUALVERIFY &&
+        scriptPubKey[36] == OP_CHECKSIG) {
         std::vector<unsigned char> hashBytes(scriptPubKey.begin()+3, scriptPubKey.begin()+35);
         vSolutionsRet.push_back(hashBytes);
         return PQCTxoutType::PQC_PUBKEYHASH;
     }
 
-    // PQC Pay-to-script-hash
-    if (scriptPubKey.IsPayToScriptHash256()) {
+    // PQC Pay-to-script-hash256: OP_HASH256 <32-byte-hash> OP_EQUAL (35 bytes)
+    if (scriptPubKey.size() == 35 &&
+        scriptPubKey[0] == OP_HASH256 &&
+        scriptPubKey[1] == 32 &&
+        scriptPubKey[34] == OP_EQUAL) {
         std::vector<unsigned char> hashBytes(scriptPubKey.begin()+2, scriptPubKey.begin()+34);
         vSolutionsRet.push_back(hashBytes);
         return PQCTxoutType::PQC_SCRIPTHASH;

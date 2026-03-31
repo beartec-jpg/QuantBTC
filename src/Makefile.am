@@ -612,7 +612,15 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/pqc/pqc_config.cpp \
   crypto/pqc/pqc_config.h \
   crypto/pqc/hybrid_key.cpp \
-  crypto/pqc/hybrid_key.h
+  crypto/pqc/hybrid_key.h \
+  crypto/pqc/dilithium.cpp \
+  crypto/pqc/dilithium.h \
+  crypto/pqc/falcon.cpp \
+  crypto/pqc/falcon.h \
+  crypto/pqc/sphincs.cpp \
+  crypto/pqc/sphincs.h \
+  crypto/pqc/sqisign.cpp \
+  crypto/pqc/sqisign.h
 
 # See explanation for -static in crypto_libbitcoin_crypto_base_la's LDFLAGS and
 # CXXFLAGS above
@@ -733,9 +741,13 @@ libbitcoin_common_a_SOURCES = \
   script/descriptor.cpp \
   script/miniscript.cpp \
   script/parsing.cpp \
+  script/pqcscript.cpp \
+  script/pqcscript.h \
   script/sign.cpp \
   script/signingprovider.cpp \
   script/solver.cpp \
+  consensus/pqc_witness.cpp \
+  consensus/pqc_witness.h \
   $(BITCOIN_CORE_H)
 #
 

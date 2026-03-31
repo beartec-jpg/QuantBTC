@@ -130,6 +130,18 @@ AC_PATH_TOOL([OBJCOPY], [objcopy])
 AC_PATH_PROG([DOXYGEN], [doxygen])
 AM_CONDITIONAL([HAVE_DOXYGEN], [test -n "$DOXYGEN"])
 
+AC_ARG_WITH([pqc],
+  [AS_HELP_STRING([--with-pqc],
+  [enable post-quantum cryptography support (default: yes)])],
+  [with_pqc=$withval],
+  [with_pqc=yes])
+
+AC_ARG_ENABLE([dag],
+  [AS_HELP_STRING([--enable-dag],
+  [enable BlockDAG (GHOSTDAG) consensus support (default: yes)])],
+  [enable_dag=$enableval],
+  [enable_dag=yes])
+
 AC_ARG_ENABLE([wallet],
   [AS_HELP_STRING([--disable-wallet],
   [disable wallet (enabled by default)])],

@@ -3,7 +3,8 @@
 
 #include <primitives/transaction.h>
 #include <script/script.h>
-#include <version.h>
+#include <consensus/consensus.h>
+#include <node/protocol_version.h>
 
 /** Witness version for PQC transactions */
 static const int WITNESS_V2_PQC = 2;
