@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2024 The QuantumBTC developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -11,6 +12,16 @@
 #include <uint256.h>
 #include <util/time.h>
 
+#include <vector>
+
+/**
+ * nVersion bit flag indicating this block uses QuantumBTC BlockDAG mode.
+ * When set, the block serialization includes a hashParents vector after
+ * the standard 80-byte header fields, encoding additional parent hashes
+ * beyond hashPrevBlock (which holds the "selected parent" / best parent).
+ */
+static constexpr int32_t BLOCK_VERSION_DAGMODE = (1 << 28);
+
 /** Nodes collect new transactions into a block, hash them into a hash tree,
  * and scan through nonce values to make the block's hash satisfy proof-of-work
  * requirements.  When they solve the proof-of-work, they broadcast the block
@@ -21,20 +32,46 @@
 class CBlockHeader
 {
 public:
-    // header
+    // header (standard 80-byte PoW-covered fields)
     int32_t nVersion;
-    uint256 hashPrevBlock;
+    uint256 hashPrevBlock;   //!< Selected parent (highest blue score parent)
     uint256 hashMerkleRoot;
     uint32_t nTime;
     uint32_t nBits;
     uint32_t nNonce;
+
+    /**
+     * BlockDAG: additional parent hashes beyond the selected parent.
+     * Only present when (nVersion & BLOCK_VERSION_DAGMODE) != 0.
+     * hashPrevBlock always holds the "selected parent" (best scoring tip).
+     * hashParents holds the remaining referenced tips (up to MAX_BLOCK_PARENTS-1).
+     * All parent hashes together define the block's position in the DAG.
+     *
+     * NOTE: hashParents is serialized AFTER the standard PoW header, so
+     * SHA-256 mining hardware covers the 80-byte base header as usual.
+     * The GetHash() function hashes the entire header including parents.
+     */
+    std::vector<uint256> hashParents;
 
     CBlockHeader()
     {
         SetNull();
     }
 
-    SERIALIZE_METHODS(CBlockHeader, obj) { READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot, obj.nTime, obj.nBits, obj.nNonce); }
+    /**
+     * Serialization: standard 80-byte fields first, then optional DAG parents.
+     * The PoW target hash is computed over the FULL serialized header
+     * (including hashParents when present), committing miners to the
+     * specific set of parents they reference.
+     */
+    SERIALIZE_METHODS(CBlockHeader, obj)
+    {
+        READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot,
+                  obj.nTime, obj.nBits, obj.nNonce);
+        if (obj.nVersion & BLOCK_VERSION_DAGMODE) {
+            READWRITE(obj.hashParents);
+        }
+    }
 
     void SetNull()
     {
@@ -44,11 +81,31 @@ public:
         nTime = 0;
         nBits = 0;
         nNonce = 0;
+        hashParents.clear();
     }
 
     bool IsNull() const
     {
         return (nBits == 0);
+    }
+
+    /** Returns true if this block is operating in BlockDAG mode. */
+    bool IsDagBlock() const { return (nVersion & BLOCK_VERSION_DAGMODE) != 0; }
+
+    /**
+     * Returns all parent hashes: selected parent (hashPrevBlock) first,
+     * then any additional parents from hashParents.
+     */
+    std::vector<uint256> GetAllParents() const
+    {
+        std::vector<uint256> all;
+        if (!hashPrevBlock.IsNull()) {
+            all.push_back(hashPrevBlock);
+        }
+        for (const uint256& p : hashParents) {
+            if (!p.IsNull()) all.push_back(p);
+        }
+        return all;
     }
 
     uint256 GetHash() const;
@@ -110,6 +167,7 @@ public:
         block.nTime          = nTime;
         block.nBits          = nBits;
         block.nNonce         = nNonce;
+        block.hashParents    = hashParents;
         return block;
     }
 

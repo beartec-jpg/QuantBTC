@@ -3081,6 +3081,16 @@ bool Chainstate::DisconnectTip(BlockValidationState& state, DisconnectedBlockTra
     m_chain.SetTip(*pindexDelete->pprev);
 
     UpdateTip(pindexDelete->pprev);
+
+    // QuantumBTC BlockDAG: update the global DAG tipset when a block is disconnected.
+    if (m_chainman.GetConsensus().fDagMode) {
+        std::vector<uint256> parents;
+        if (pindexDelete->pprev) parents.push_back(pindexDelete->pprev->GetBlockHash());
+        for (const CBlockIndex* p : pindexDelete->vDagParents) {
+            if (p) parents.push_back(p->GetBlockHash());
+        }
+        m_chainman.m_dag_tips.BlockDisconnected(pindexDelete->GetBlockHash(), parents);
+    }
     // Let wallets know transactions went from 1-confirmed to
     // 0-confirmed or conflicted:
     if (m_chainman.m_options.signals) {
@@ -3208,6 +3218,16 @@ bool Chainstate::ConnectTip(BlockValidationState& state, CBlockIndex* pindexNew,
     // Update m_chain & related variables.
     m_chain.SetTip(*pindexNew);
     UpdateTip(pindexNew);
+
+    // QuantumBTC BlockDAG: update the global DAG tipset when a block is connected.
+    if (m_chainman.GetConsensus().fDagMode) {
+        std::vector<uint256> parents;
+        if (pindexNew->pprev) parents.push_back(pindexNew->pprev->GetBlockHash());
+        for (const CBlockIndex* p : pindexNew->vDagParents) {
+            if (p) parents.push_back(p->GetBlockHash());
+        }
+        m_chainman.m_dag_tips.BlockConnected(pindexNew->GetBlockHash(), parents);
+    }
 
     const auto time_6{SteadyClock::now()};
     m_chainman.time_post_connect += time_6 - time_5;
@@ -4314,6 +4334,33 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
         if (!ContextualCheckBlockHeader(block, state, m_blockman, *this, pindexPrev)) {
             LogPrint(BCLog::VALIDATION, "%s: Consensus::ContextualCheckBlockHeader: %s, %s\n", __func__, hash.ToString(), state.ToString());
             return false;
+        }
+
+        // QuantumBTC BlockDAG: validate additional parent hashes (hashParents).
+        // Each extra parent must be known to the block index and must not be invalid.
+        if (block.IsDagBlock() && GetConsensus().fDagMode) {
+            if (block.hashParents.size() > GetConsensus().nMaxDagParents) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "too-many-dag-parents",
+                    strprintf("block has %u DAG parents, max is %u",
+                        block.hashParents.size(), GetConsensus().nMaxDagParents));
+            }
+            for (const uint256& parent_hash : block.hashParents) {
+                // Extra parents must not equal the selected parent (redundant)
+                if (parent_hash == block.hashPrevBlock) {
+                    return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "duplicate-dag-parent",
+                        "DAG extra parent duplicates selected parent");
+                }
+                BlockMap::iterator mi2 = m_blockman.m_block_index.find(parent_hash);
+                if (mi2 == m_blockman.m_block_index.end()) {
+                    // Unknown parent – treat as orphan (same as unknown prev block)
+                    return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV, "dag-parent-not-found",
+                        strprintf("DAG parent %s not found", parent_hash.ToString()));
+                }
+                if (mi2->second.nStatus & BLOCK_FAILED_MASK) {
+                    return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-dag-parent",
+                        strprintf("DAG parent %s is invalid", parent_hash.ToString()));
+                }
+            }
         }
 
         /* Determine if this block descends from any block which has been found

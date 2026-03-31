@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2024 The QuantumBTC developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,11 +15,14 @@
 #include <consensus/merkle.h>
 #include <consensus/tx_verify.h>
 #include <consensus/validation.h>
+#include <dag/dagtipset.h>
+#include <dag/ghostdag.h>
 #include <deploymentstatus.h>
 #include <logging.h>
 #include <policy/feerate.h>
 #include <policy/policy.h>
 #include <pow.h>
+#include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <util/moneystr.h>
 #include <util/time.h>
@@ -167,6 +171,35 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
 
     // Fill in header
     pblock->hashPrevBlock  = pindexPrev->GetBlockHash();
+
+    // QuantumBTC BlockDAG: when DAG mode is enabled, reference multiple tips
+    // as parent hashes. The selected parent (hashPrevBlock) is the chain tip;
+    // additional parents come from concurrent tips in the DAG tipset.
+    if (chainparams.GetConsensus().fDagMode) {
+        // Enable DAG version flag
+        pblock->nVersion |= BLOCK_VERSION_DAGMODE;
+
+        const uint32_t max_parents = gArgs.GetIntArg("-dagmaxparents",
+            chainparams.GetConsensus().nMaxDagParents);
+        // Fetch additional parent tips from the DAG tipset.
+        // m_chainstate.m_chainman.m_dag_tips holds all current leaf blocks.
+        {
+            std::vector<uint256> mining_parents =
+                m_chainstate.m_chainman.m_dag_tips.GetMiningParents(max_parents);
+            pblock->hashParents.clear();
+            for (const uint256& p : mining_parents) {
+                // Skip the selected parent (already in hashPrevBlock)
+                if (p != pblock->hashPrevBlock) {
+                    pblock->hashParents.push_back(p);
+                }
+            }
+        }
+
+        LogPrint(BCLog::MINING, "QuantumBTC DAG block: selected_parent=%s parents=%u\n",
+                 pindexPrev->GetBlockHash().ToString(),
+                 1 + pblock->hashParents.size());
+    }
+
     UpdateTime(pblock, chainparams.GetConsensus(), pindexPrev);
     pblock->nBits          = GetNextWorkRequired(pindexPrev, pblock, chainparams.GetConsensus());
     pblock->nNonce         = 0;

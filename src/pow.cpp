@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
+// Copyright (c) 2024 The QuantumBTC developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -10,10 +11,77 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
+/**
+ * GetNextWorkRequired for QuantumBTC BlockDAG mode.
+ *
+ * When DAG mode is enabled (params.fDagMode), we use a per-block DAA
+ * (Difficulty Adjustment Algorithm) similar to Kaspa's:
+ *   - Target: nDagTargetSpacingMs (default 1000 ms / 1 second)
+ *   - Window: last 2016 blocks (same as Bitcoin's window)
+ *   - Adjustment: clamp ratio to [1/4, 4] per window
+ *
+ * The PoW algorithm remains SHA-256 (ASIC/GPU compatible).
+ */
+unsigned int GetNextWorkRequiredDAG(const CBlockIndex* pindexLast, const CBlockHeader* pblock, const Consensus::Params& params)
+{
+    assert(pindexLast != nullptr);
+    const unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
+
+    if (params.fPowNoRetargeting) {
+        return pindexLast->nBits;
+    }
+
+    // Allow any difficulty in early blocks (first adjustment window)
+    if (pindexLast->nHeight < 2016) {
+        return nProofOfWorkLimit;
+    }
+
+    // DAG difficulty window: use last 2016 blocks
+    // Target spacing in seconds (convert ms to s for compatibility)
+    const int64_t nTargetSpacing = params.nDagTargetSpacingMs / 1000;
+    if (nTargetSpacing <= 0) return pindexLast->nBits;
+
+    const int64_t nTargetTimespan = 2016 * nTargetSpacing; // same window as Bitcoin
+
+    // Per-block adjustment: only retarget every 2016 blocks
+    if ((pindexLast->nHeight + 1) % 2016 != 0) {
+        // Allow min-difficulty blocks on testnet
+        if (params.fPowAllowMinDifficultyBlocks) {
+            if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + nTargetSpacing * 2) {
+                return nProofOfWorkLimit;
+            }
+        }
+        return pindexLast->nBits;
+    }
+
+    const CBlockIndex* pindexFirst = pindexLast->GetAncestor(pindexLast->nHeight - 2015);
+    assert(pindexFirst);
+
+    int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
+    // Clamp adjustment
+    if (nActualTimespan < nTargetTimespan / 4) nActualTimespan = nTargetTimespan / 4;
+    if (nActualTimespan > nTargetTimespan * 4) nActualTimespan = nTargetTimespan * 4;
+
+    const arith_uint256 bnPowLimit = UintToArith256(params.powLimit);
+    arith_uint256 bnNew;
+    bnNew.SetCompact(pindexLast->nBits);
+    bnNew *= nActualTimespan;
+    bnNew /= nTargetTimespan;
+
+    if (bnNew > bnPowLimit) bnNew = bnPowLimit;
+
+    return bnNew.GetCompact();
+}
+
 unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHeader *pblock, const Consensus::Params& params)
 {
     assert(pindexLast != nullptr);
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
+
+    // QuantumBTC: use DAG-specific difficulty adjustment when in DAG mode
+    if (params.fDagMode) {
+        return GetNextWorkRequiredDAG(pindexLast, pblock, params);
+    }
 
     // Only change once per difficulty adjustment interval
     if ((pindexLast->nHeight+1) % params.DifficultyAdjustmentInterval() != 0)

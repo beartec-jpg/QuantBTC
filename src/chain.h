@@ -8,6 +8,7 @@
 
 #include <arith_uint256.h>
 #include <consensus/params.h>
+#include <dag/ghostdag.h>
 #include <flatfile.h>
 #include <kernel/cs_main.h>
 #include <primitives/block.h>
@@ -190,6 +191,21 @@ public:
     uint32_t nBits{0};
     uint32_t nNonce{0};
 
+    // -------------------------------------------------------------------------
+    // BlockDAG (QuantumBTC GHOSTDAG) fields – memory only, rebuilt on load.
+    // -------------------------------------------------------------------------
+
+    //! Additional parent block indices (beyond pprev = selected parent).
+    //! Memory only – not serialized to disk (reconstructed from block data).
+    std::vector<CBlockIndex*> vDagParents{};
+
+    //! GHOSTDAG data for this block (blue score, selected parent, mergeset).
+    dag::GhostdagData dagData{};
+
+    //! DAG topological height (number of blue blocks in this block's past).
+    //! Equivalent to dagData.blue_score; cached here for quick access.
+    uint64_t nDagHeight{0};
+
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     int32_t nSequenceId{0};
 
@@ -237,6 +253,10 @@ public:
         block.nTime = nTime;
         block.nBits = nBits;
         block.nNonce = nNonce;
+        // Restore additional DAG parent hashes (beyond selected parent)
+        for (const CBlockIndex* p : vDagParents) {
+            if (p) block.hashParents.push_back(p->GetBlockHash());
+        }
         return block;
     }
 

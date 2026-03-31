@@ -10,6 +10,7 @@
 #include <attributes.h>
 #include <chain.h>
 #include <checkqueue.h>
+#include <dag/dagtipset.h>
 #include <consensus/amount.h>
 #include <cuckoocache.h>
 #include <deploymentstatus.h>
@@ -1007,6 +1008,12 @@ public:
 
     const util::SignalInterrupt& m_interrupt;
     const Options m_options;
+
+    /**
+     * QuantumBTC BlockDAG: tracks current DAG tips for mining.
+     * Protected by cs_main (same lock as the block index).
+     */
+    dag::DagTipSet m_dag_tips GUARDED_BY(::cs_main);
     std::thread m_thread_load;
     //! A single BlockManager instance is shared across each constructed
     //! chainstate to avoid duplicating block metadata.

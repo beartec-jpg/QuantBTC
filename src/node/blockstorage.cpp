@@ -226,6 +226,16 @@ CBlockIndex* BlockManager::AddToBlockIndex(const CBlockHeader& block, CBlockInde
     pindexNew->nTimeMax = (pindexNew->pprev ? std::max(pindexNew->pprev->nTimeMax, pindexNew->nTime) : pindexNew->nTime);
     pindexNew->nChainWork = (pindexNew->pprev ? pindexNew->pprev->nChainWork : 0) + GetBlockProof(*pindexNew);
     pindexNew->RaiseValidity(BLOCK_VALID_TREE);
+
+    // QuantumBTC BlockDAG: populate the extra DAG parent pointers
+    if (block.IsDagBlock()) {
+        for (const uint256& par_hash : block.hashParents) {
+            BlockMap::iterator miPar = m_block_index.find(par_hash);
+            if (miPar != m_block_index.end()) {
+                pindexNew->vDagParents.push_back(&miPar->second);
+            }
+        }
+    }
     if (best_header == nullptr || best_header->nChainWork < pindexNew->nChainWork) {
         best_header = pindexNew;
     }

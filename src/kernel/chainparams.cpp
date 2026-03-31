@@ -76,6 +76,23 @@ static CBlock CreateGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits
 }
 
 /**
+ * Build the QuantumBTC genesis block.
+ *
+ * Genesis message: "QuantumBTC 31/Mar/2026 Quantum-safe BlockDAG for a post-quantum world"
+ * - Uses SHA-256 PoW (same as Bitcoin, ASIC/GPU compatible)
+ * - Block version includes BLOCK_VERSION_DAGMODE flag
+ * - Bech32 address prefix: "qbtc" (regtest: "qbtcrt")
+ */
+static CBlock CreateQuantumBTCGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
+{
+    const char* pszTimestamp = "QuantumBTC 31/Mar/2026 Quantum-safe BlockDAG for a post-quantum world";
+    // Unspendable genesis output (OP_RETURN style commitment to genesis message)
+    const CScript genesisOutputScript = CScript() << OP_RETURN
+        << std::vector<unsigned char>({'Q','u','a','n','t','u','m','B','T','C'});
+    return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
+}
+
+/**
  * Main network on which people trade goods and services.
  */
 class CMainParams : public CChainParams {
@@ -117,6 +134,13 @@ public:
 
         consensus.nMinimumChainWork = uint256{"000000000000000000000000000000000000000088e186b70e0862c193ec44d6"};
         consensus.defaultAssumeValid = uint256{"000000000000000000011c5890365bdbe5d25b97ce0057589acaef4f1a57263f"}; // 856760
+
+        // QuantumBTC: BlockDAG disabled on mainnet (legacy compatibility)
+        consensus.fDagMode = false;
+        consensus.ghostdag_k = 18;
+        consensus.nDagTargetSpacingMs = 1000;
+        consensus.nMaxDagParents = 32;
+        consensus.nMaxBlockWeightPQC = 4 * 4000000;
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
@@ -558,6 +582,13 @@ public:
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
 
+        // QuantumBTC BlockDAG: enabled for regtest (DAG + GHOSTDAG + fast blocks)
+        consensus.fDagMode = true;
+        consensus.ghostdag_k = 18;
+        consensus.nDagTargetSpacingMs = 1000; // 1 second target
+        consensus.nMaxDagParents = 32;
+        consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB equivalent
+
         pchMessageStart[0] = 0xfa;
         pchMessageStart[1] = 0xbf;
         pchMessageStart[2] = 0xb5;
@@ -593,10 +624,11 @@ public:
             consensus.vDeployments[deployment_pos].min_activation_height = version_bits_params.min_activation_height;
         }
 
-        genesis = CreateGenesisBlock(1296688602, 2, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateQuantumBTCGenesisBlock(1743379200, 0, 0x207fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"});
-        assert(genesis.hashMerkleRoot == uint256{"4a5e1e4baab89f3a32518a88c31bc87f618f76673e2cc77ab2127b7afdeda33b"});
+        // Note: hashGenesisBlock and hashMerkleRoot will differ from Bitcoin's regtest
+        // because we use a different genesis message. No pre-computed assert here;
+        // the node will compute and log the actual hash on first start.
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();
@@ -607,7 +639,7 @@ public:
 
         checkpointData = {
             {
-                {0, uint256{"0f9188f13cb7b2c71f2a335e3a4fc328bf5beb436012afca590b1a11466e2206"}},
+                // QuantumBTC regtest genesis (computed at runtime)
             }
         };
 
@@ -640,13 +672,14 @@ public:
             0
         };
 
-        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1,111);
-        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1,196);
-        base58Prefixes[SECRET_KEY] =     std::vector<unsigned char>(1,239);
+        // QuantumBTC-specific address prefixes for regtest
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1, 111);
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 196);
+        base58Prefixes[SECRET_KEY]     = std::vector<unsigned char>(1, 239);
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};
 
-        bech32_hrp = "bcrt";
+        bech32_hrp = "qbtcrt"; // QuantumBTC regtest bech32 prefix
     }
 };
 

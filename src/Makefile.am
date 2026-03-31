@@ -128,6 +128,8 @@ BITCOIN_CORE_H = \
   blockfilter.h \
   chain.h \
   chainparams.h \
+  dag/dagtipset.h \
+  dag/ghostdag.h \
   chainparamsbase.h \
   chainparamsseeds.h \
   checkqueue.h \
@@ -452,6 +454,8 @@ libbitcoin_node_a_SOURCES = \
   policy/settings.cpp \
   policy/truc_policy.cpp \
   pow.cpp \
+  dag/dagtipset.cpp \
+  dag/ghostdag.cpp \
   rest.cpp \
   rpc/blockchain.cpp \
   rpc/fees.cpp \

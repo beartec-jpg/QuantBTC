@@ -126,6 +126,44 @@ struct Params {
     /** By default assume that the signatures in ancestors of this block are valid */
     uint256 defaultAssumeValid;
 
+    // -------------------------------------------------------------------------
+    // QuantumBTC BlockDAG (GHOSTDAG) consensus parameters
+    // -------------------------------------------------------------------------
+
+    /**
+     * Enable BlockDAG mode. When true, blocks may reference multiple parents
+     * and GHOSTDAG consensus is used to determine the canonical ordering.
+     */
+    bool fDagMode{false};
+
+    /**
+     * GHOSTDAG K parameter: maximum anti-cone size for a block to be
+     * classified as "blue". Higher K tolerates more concurrent blocks
+     * (higher TPS) at the cost of weaker security assumptions.
+     * Kaspa uses K=18; we default to 18 for QuantumBTC.
+     */
+    uint32_t ghostdag_k{18};
+
+    /**
+     * Target block interval in milliseconds for the BlockDAG.
+     * QuantumBTC targets ~1 second intervals (1000 ms).
+     * Used when fDagMode=true instead of nPowTargetSpacing.
+     */
+    int64_t nDagTargetSpacingMs{1000};
+
+    /**
+     * Maximum number of parent references a DAG block may include.
+     * (Matches dag::MAX_BLOCK_PARENTS)
+     */
+    uint32_t nMaxDagParents{32};
+
+    /**
+     * Increase maximum block weight to accommodate larger PQC signatures
+     * (Dilithium/SPHINCS+/Falcon are 1–50× larger than ECDSA).
+     * Default: 4× Bitcoin's MAX_BLOCK_WEIGHT.
+     */
+    uint32_t nMaxBlockWeightPQC{4 * 4000000};
+
     /**
      * If true, witness commitments contain a payload equal to a Bitcoin Script solution
      * to the signet challenge. See BIP325.
