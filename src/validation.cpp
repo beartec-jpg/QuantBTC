@@ -11,6 +11,8 @@
 #include <chain.h>
 #include <checkqueue.h>
 #include <clientversion.h>
+#include <dag/ghostdag.h>
+#include <dag/ghostdag_blockindex.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
@@ -4573,16 +4575,40 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
     // background validation yet).
     ActiveChainstate().FlushStateToDisk(state, FlushStateMode::NONE);
 
-    // QuantumBTC BlockDAG: track ALL accepted blocks in the DAG tipset.
-    // This runs for every stored block (active chain or fork), so the tipset
-    // naturally includes concurrent tips from different branches.
+    // QuantumBTC BlockDAG: track ALL accepted blocks in the DAG tipset
+    // and compute GHOSTDAG scoring for this block.
     if (GetConsensus().fDagMode && pindex) {
-        std::vector<uint256> parents;
-        if (pindex->pprev) parents.push_back(pindex->pprev->GetBlockHash());
+        // --- Compute GHOSTDAG data for the newly accepted block ---
+        dag::BlockIndexGhostdagProvider provider(m_blockman);
+        dag::GhostdagManager ghostdag_mgr(GetConsensus().ghostdag_k);
+
+        std::vector<uint256> all_parents;
+        if (pindex->pprev) all_parents.push_back(pindex->pprev->GetBlockHash());
         for (const CBlockIndex* p : pindex->vDagParents) {
-            if (p) parents.push_back(p->GetBlockHash());
+            if (p) all_parents.push_back(p->GetBlockHash());
         }
-        m_dag_tips.BlockConnected(pindex->GetBlockHash(), parents);
+
+        if (!all_parents.empty()) {
+            pindex->dagData = ghostdag_mgr.ComputeGhostdag(all_parents, provider);
+        } else {
+            // Genesis block
+            pindex->dagData.blue_score = 0;
+            pindex->dagData.blue_work = 0;
+        }
+        pindex->nDagHeight = pindex->dagData.blue_score;
+
+        LogPrint(BCLog::VALIDATION,
+                 "QuantumBTC GHOSTDAG: block %s blue_score=%u selected_parent=%s "
+                 "blues=%u reds=%u blue_work=%u\n",
+                 pindex->GetBlockHash().ToString(),
+                 pindex->dagData.blue_score,
+                 pindex->dagData.selected_parent.ToString(),
+                 pindex->dagData.mergeset_blues.size(),
+                 pindex->dagData.mergeset_reds.size(),
+                 pindex->dagData.blue_work);
+
+        // --- Update DAG tipset ---
+        m_dag_tips.BlockConnected(pindex->GetBlockHash(), all_parents);
         LogPrint(BCLog::VALIDATION, "QuantumBTC DAG tipset: accepted block %s, tips now: %u\n",
                  pindex->GetBlockHash().ToString(), m_dag_tips.GetMiningParents(999).size());
     }

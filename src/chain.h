@@ -206,6 +206,16 @@ public:
     //! Equivalent to dagData.blue_score; cached here for quick access.
     uint64_t nDagHeight{0};
 
+    // -------------------------------------------------------------------------
+    // Early Protection weight (QuantumBTC anti-monopolization)
+    // -------------------------------------------------------------------------
+
+    //! Effective weight multiplier applied by the early protection system.
+    //! 1.0 = full weight. Values < 1.0 reduce this block's nChainWork
+    //! contribution during the bootstrap period (first 10,000 blocks).
+    //! Memory only – not serialized.
+    double nEarlyProtectionWeight{1.0};
+
     //! (memory only) Sequential id assigned to distinguish order in which blocks are received.
     int32_t nSequenceId{0};
 

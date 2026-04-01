@@ -159,7 +159,7 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
 
     if (blockindex.pprev)
         result.pushKV("previousblockhash", blockindex.pprev->GetBlockHash().GetHex());
-    // QuantumBTC BlockDAG: expose additional DAG parent hashes
+    // QuantumBTC BlockDAG: expose additional DAG parent hashes and GHOSTDAG scoring
     if (blockindex.nVersion & BLOCK_VERSION_DAGMODE) {
         UniValue dag_parents(UniValue::VARR);
         for (const CBlockIndex* p : blockindex.vDagParents) {
@@ -167,6 +167,21 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
         }
         result.pushKV("dagparents", dag_parents);
         result.pushKV("dagblock", true);
+        result.pushKV("blue_score", blockindex.dagData.blue_score);
+        result.pushKV("blue_work", blockindex.dagData.blue_work);
+        if (!blockindex.dagData.selected_parent.IsNull()) {
+            result.pushKV("selected_parent", blockindex.dagData.selected_parent.GetHex());
+        }
+        UniValue blues(UniValue::VARR);
+        for (const auto& b : blockindex.dagData.mergeset_blues) {
+            blues.push_back(b.GetHex());
+        }
+        result.pushKV("mergeset_blues", blues);
+        UniValue reds(UniValue::VARR);
+        for (const auto& r : blockindex.dagData.mergeset_reds) {
+            reds.push_back(r.GetHex());
+        }
+        result.pushKV("mergeset_reds", reds);
     }
     if (pnext)
         result.pushKV("nextblockhash", pnext->GetBlockHash().GetHex());
@@ -551,6 +566,17 @@ static RPCHelpMan getblockheader()
                                 {RPCResult::Type::STR_HEX, "", "Parent block hash"},
                             }},
                             {RPCResult::Type::BOOL, "dagblock", /*optional=*/true, "True if this is a DAG-mode block"},
+                            {RPCResult::Type::NUM, "blue_score", /*optional=*/true, "GHOSTDAG blue score (number of blue blocks in past)"},
+                            {RPCResult::Type::NUM, "blue_work", /*optional=*/true, "GHOSTDAG blue work (accumulated PoW of blue blocks)"},
+                            {RPCResult::Type::STR_HEX, "selected_parent", /*optional=*/true, "GHOSTDAG selected parent hash"},
+                            {RPCResult::Type::ARR, "mergeset_blues", /*optional=*/true, "Blue blocks in this block's GHOSTDAG mergeset",
+                            {
+                                {RPCResult::Type::STR_HEX, "", "Block hash"},
+                            }},
+                            {RPCResult::Type::ARR, "mergeset_reds", /*optional=*/true, "Red blocks in this block's GHOSTDAG mergeset",
+                            {
+                                {RPCResult::Type::STR_HEX, "", "Block hash"},
+                            }},
                             {RPCResult::Type::STR_HEX, "nextblockhash", /*optional=*/true, "The hash of the next block (if available)"},
                         }},
                     RPCResult{"for verbose=false",
@@ -723,6 +749,17 @@ static RPCHelpMan getblock()
                         {RPCResult::Type::STR_HEX, "", "Parent block hash"},
                     }},
                     {RPCResult::Type::BOOL, "dagblock", /*optional=*/true, "True if this is a DAG-mode block"},
+                    {RPCResult::Type::NUM, "blue_score", /*optional=*/true, "GHOSTDAG blue score (number of blue blocks in past)"},
+                    {RPCResult::Type::NUM, "blue_work", /*optional=*/true, "GHOSTDAG blue work (accumulated PoW of blue blocks)"},
+                    {RPCResult::Type::STR_HEX, "selected_parent", /*optional=*/true, "GHOSTDAG selected parent hash"},
+                    {RPCResult::Type::ARR, "mergeset_blues", /*optional=*/true, "Blue blocks in this block's GHOSTDAG mergeset",
+                    {
+                        {RPCResult::Type::STR_HEX, "", "Block hash"},
+                    }},
+                    {RPCResult::Type::ARR, "mergeset_reds", /*optional=*/true, "Red blocks in this block's GHOSTDAG mergeset",
+                    {
+                        {RPCResult::Type::STR_HEX, "", "Block hash"},
+                    }},
                     {RPCResult::Type::STR_HEX, "nextblockhash", /*optional=*/true, "The hash of the next block (if available)"},
                 }},
                     RPCResult{"for verbosity = 2",

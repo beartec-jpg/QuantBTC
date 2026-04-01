@@ -130,6 +130,8 @@ BITCOIN_CORE_H = \
   chainparams.h \
   dag/dagtipset.h \
   dag/ghostdag.h \
+  dag/ghostdag_blockindex.h \
+  earlyprotection.h \
   chainparamsbase.h \
   chainparamsseeds.h \
   checkqueue.h \

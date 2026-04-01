@@ -158,6 +158,11 @@ bool CBlockIndexWorkComparator::operator()(const CBlockIndex* pa, const CBlockIn
     if (pa->nChainWork > pb->nChainWork) return false;
     if (pa->nChainWork < pb->nChainWork) return true;
 
+    // QuantumBTC BlockDAG: tie-break equal-work blocks by GHOSTDAG blue_work,
+    // preferring the heavier blue subtree (higher blue_work wins).
+    if (pa->dagData.blue_work > pb->dagData.blue_work) return false;
+    if (pa->dagData.blue_work < pb->dagData.blue_work) return true;
+
     // ... then by earliest time received, ...
     if (pa->nSequenceId < pb->nSequenceId) return false;
     if (pa->nSequenceId > pb->nSequenceId) return true;

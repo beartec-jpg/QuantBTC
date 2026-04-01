@@ -142,6 +142,9 @@ public:
         consensus.nMaxDagParents = 32;
         consensus.nMaxBlockWeightPQC = 4 * 4000000;
 
+        // QuantumBTC: Early protection OFF by default on mainnet
+        consensus.fEarlyProtection = false;
+
         /**
          * The message start string is designed to be unlikely to occur in normal data.
          * The characters are rarely used upper ASCII, not valid as UTF-8, and produce
@@ -588,6 +591,9 @@ public:
         consensus.nDagTargetSpacingMs = 1000; // 1 second target
         consensus.nMaxDagParents = 32;
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB equivalent
+
+        // QuantumBTC: Early protection ON by default for regtest
+        consensus.fEarlyProtection = true;
 
         pchMessageStart[0] = 0xfa;
         pchMessageStart[1] = 0xbf;

@@ -520,6 +520,7 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-pqc", "Enable post-quantum cryptography extensions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dag", "Enable BlockDAG (GHOSTDAG) consensus mode (default: per-chain)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dagmaxparents=<n>", "Maximum number of DAG parent references per block (default: per-chain)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-earlyprotection", "Enable early-chain protections: activation delay, hashrate ramp-up, per-IP throttling (default: on for regtest/testnet, off for mainnet)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blockfilterindex=<type>",
                  strprintf("Maintain an index of compact filters by block (default: %s, values: %s).", DEFAULT_BLOCKFILTERINDEX, ListBlockFilterTypes()) +
                  " If <type> is not supplied or if <type> = 1, indexes for all known types are enabled.",

@@ -164,6 +164,19 @@ struct Params {
      */
     uint32_t nMaxBlockWeightPQC{4 * 4000000};
 
+    // -------------------------------------------------------------------------
+    // QuantumBTC Early Protection (anti-monopolization for bootstrap period)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Enable early-chain protections: randomized activation delay, gradual
+     * hash-rate ramp-up, and per-IP/subnet throttling.  Active during the
+     * first 10,000 blocks OR whenever forced on by the -earlyprotection flag.
+     *
+     * Default: true for regtest/testnet, false for mainnet.
+     */
+    bool fEarlyProtection{false};
+
     /**
      * If true, witness commitments contain a payload equal to a Bitcoin Script solution
      * to the signet challenge. See BIP325.
