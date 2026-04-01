@@ -1,7 +1,9 @@
 #include "hybrid_key.h"
 #include "pqc_config.h"
+#include "dilithium.h"
 #include <hash.h>
 #include <key.h>
+#include <logging.h>
 
 namespace pqc {
 
@@ -17,11 +19,17 @@ bool HybridKey::Generate() {
     m_classical_key.MakeNewKey(true);
     
     if (PQCConfig::GetInstance().enable_pqc) {
-        // Generate PQC key pair
+        // Generate Dilithium signature keypair (not KEM)
         PQCManager& manager = PQCManager::GetInstance();
-        if (!manager.GenerateHybridKeys(m_pqc_public_key, m_pqc_private_key)) {
-            return false;
+        if (!manager.GenerateSignatureKeyPair(PQCAlgorithm::DILITHIUM,
+                                              m_pqc_public_key, m_pqc_private_key)) {
+            LogPrintf("HybridKey::Generate: Dilithium keygen failed, falling back to classical-only\n");
+            // Still valid as a classical key
+            m_is_valid = true;
+            return true;
         }
+        LogPrintf("HybridKey::Generate: generated hybrid key (ECDSA + Dilithium, pqc_pk=%u bytes)\n",
+                  m_pqc_public_key.size());
     }
     
     m_is_valid = true;
@@ -53,26 +61,38 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
         return false;
     }
 
-    // Classical signature
+    // Classical ECDSA signature
     std::vector<unsigned char> classical_sig;
     if (!m_classical_key.Sign(hash, classical_sig)) {
         return false;
     }
 
-    if (!PQCConfig::GetInstance().enable_hybrid_signatures) {
+    if (!PQCConfig::GetInstance().enable_hybrid_signatures || m_pqc_private_key.empty()) {
         signature = std::move(classical_sig);
         return true;
     }
 
-    // PQC signature (placeholder - implement actual PQC signature)
+    // Real Dilithium PQC signature
     std::vector<unsigned char> pqc_sig;
-    // TODO: Implement PQC signature generation
-    
-    // Combine signatures
+    std::vector<unsigned char> msg_bytes(hash.begin(), hash.end());
+    PQCManager& manager = PQCManager::GetInstance();
+    if (!manager.Sign(PQCAlgorithm::DILITHIUM, msg_bytes, m_pqc_private_key, pqc_sig)) {
+        LogPrintf("HybridKey::Sign: Dilithium signing failed, using classical-only\n");
+        signature = std::move(classical_sig);
+        return true;
+    }
+
+    // Hybrid signature format:
+    //   [1 byte: classical_sig_len] [classical_sig] [pqc_sig]
+    // This allows the verifier to split without hardcoded offsets.
     signature.clear();
+    uint8_t csig_len = static_cast<uint8_t>(classical_sig.size());
+    signature.push_back(csig_len);
     signature.insert(signature.end(), classical_sig.begin(), classical_sig.end());
     signature.insert(signature.end(), pqc_sig.begin(), pqc_sig.end());
     
+    LogPrintf("HybridKey::Sign: hybrid signature produced (%u bytes: ECDSA=%u + Dilithium=%u)\n",
+              signature.size(), classical_sig.size(), pqc_sig.size());
     return true;
 }
 
@@ -81,26 +101,36 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
         return false;
     }
 
-    if (!PQCConfig::GetInstance().enable_hybrid_signatures) {
+    if (!PQCConfig::GetInstance().enable_hybrid_signatures || m_pqc_public_key.empty()) {
         // Verify only classical signature
         return m_classical_key.GetPubKey().Verify(hash, signature);
     }
 
-    // Split signature into classical and PQC parts
-    size_t classical_sig_size = 64; // Typical ECDSA signature size
-    std::vector<unsigned char> classical_sig(signature.begin(), 
-                                           signature.begin() + classical_sig_size);
-    std::vector<unsigned char> pqc_sig(signature.begin() + classical_sig_size,
-                                     signature.end());
+    // Parse hybrid signature: [1 byte len] [classical_sig] [pqc_sig]
+    if (signature.size() < 2) return false;
+    
+    uint8_t csig_len = signature[0];
+    if (signature.size() < 1 + csig_len + 1) return false;
+    
+    std::vector<unsigned char> classical_sig(signature.begin() + 1, 
+                                            signature.begin() + 1 + csig_len);
+    std::vector<unsigned char> pqc_sig(signature.begin() + 1 + csig_len,
+                                      signature.end());
 
-    // Verify classical signature
+    // Verify classical ECDSA signature
     if (!m_classical_key.GetPubKey().Verify(hash, classical_sig)) {
+        LogPrintf("HybridKey::Verify: ECDSA verification failed\n");
         return false;
     }
 
-    // Verify PQC signature (placeholder - implement actual PQC verification)
-    // TODO: Implement PQC signature verification
-    
+    // Verify Dilithium PQC signature
+    std::vector<unsigned char> msg_bytes(hash.begin(), hash.end());
+    PQCManager& manager = PQCManager::GetInstance();
+    if (!manager.Verify(PQCAlgorithm::DILITHIUM, msg_bytes, pqc_sig, m_pqc_public_key)) {
+        LogPrintf("HybridKey::Verify: Dilithium verification failed\n");
+        return false;
+    }
+
     return true;
 }
 

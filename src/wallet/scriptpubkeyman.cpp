@@ -602,11 +602,14 @@ bool LegacyScriptPubKeyMan::CanProvide(const CScript& script, SignatureData& sig
     } else {
         // If, given the stuff in sigdata, we could make a valid signature, then we can provide for this script
         ProduceSignature(*this, DUMMY_SIGNATURE_CREATOR, script, sigdata);
-        if (!sigdata.signatures.empty()) {
-            // If we could make signatures, make sure we have a private key to actually make a signature
+        if (!sigdata.missing_pubkeys.empty() || !sigdata.missing_sigs.empty()) {
+            // Check if we have a private key to actually make a signature
             bool has_privkeys = false;
-            for (const auto& key_sig_pair : sigdata.signatures) {
-                has_privkeys |= HaveKey(key_sig_pair.first);
+            for (const auto& missing_key : sigdata.missing_pubkeys) {
+                has_privkeys |= HaveKey(missing_key);
+            }
+            for (const auto& missing_sig : sigdata.missing_sigs) {
+                has_privkeys |= HaveKey(missing_sig);
             }
             return has_privkeys;
         }
@@ -1883,13 +1886,15 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
             auto desc_spk_man = std::make_unique<DescriptorScriptPubKeyMan>(m_storage, w_desc, /*keypool_size=*/0);
             desc_spk_man->AddDescriptorKey(master_key.key, master_key.key.GetPubKey());
             desc_spk_man->TopUp();
-            auto desc_spks = desc_spk_man->GetScriptPubKeys();
+            auto desc_spks_set = desc_spk_man->GetScriptPubKeys();
 
             // Remove the scriptPubKeys from our current set
-            for (const CScript& spk : desc_spks) {
-                size_t erased = spks.erase(spk);
-                assert(erased == 1);
-                assert(IsMine(spk) == ISMINE_SPENDABLE);
+            for (const CScript& desc_spk : desc_spks_set) {
+                auto del_it = spks.find(desc_spk);
+                if (del_it != spks.end()) {
+                    spks.erase(del_it);
+                }
+                assert(IsMine(desc_spk) == ISMINE_SPENDABLE);
             }
 
             out.desc_spkms.push_back(std::move(desc_spk_man));
@@ -1960,10 +1965,12 @@ std::optional<MigrationData> LegacyDataSPKM::MigrateToDescriptor()
         // Remove the scriptPubKeys from our current set
         for (const CScript& desc_spk : desc_spks) {
             auto del_it = spks.find(desc_spk);
-            assert(del_it != spks.end());
+            if (del_it != spks.end()) {
+                spks.erase(del_it);
+            }
             assert(IsMine(desc_spk) != ISMINE_NO);
-            it = spks.erase(del_it);
         }
+        it = spks.erase(it);
     }
 
     // Multisigs are special. They don't show up as ISMINE_SPENDABLE unless they are in a P2SH

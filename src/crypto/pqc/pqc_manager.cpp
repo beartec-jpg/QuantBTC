@@ -1,4 +1,5 @@
 #include "pqc_manager.h"
+#include "dilithium.h"
 #include <logging.h>
 
 namespace pqc {
@@ -18,11 +19,14 @@ bool PQCManager::GenerateSignatureKeyPair(PQCAlgorithm algo,
                                         std::vector<unsigned char>& privateKey) {
     try {
         switch (algo) {
+            case PQCAlgorithm::DILITHIUM: {
+                Dilithium dil;
+                return dil.GenerateKeyPair(publicKey, privateKey);
+            }
             case PQCAlgorithm::SPHINCS:
-            case PQCAlgorithm::DILITHIUM:
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::GenerateSignatureKeyPair: Signature algorithms not linked in this build\n");
+                LogPrintf("PQCManager::GenerateSignatureKeyPair: Algorithm not yet implemented\n");
                 return false;
             
             default:
@@ -41,11 +45,14 @@ bool PQCManager::Sign(PQCAlgorithm algo,
                      std::vector<unsigned char>& signature) {
     try {
         switch (algo) {
+            case PQCAlgorithm::DILITHIUM: {
+                Dilithium dil;
+                return dil.Sign(message, privateKey, signature);
+            }
             case PQCAlgorithm::SPHINCS:
-            case PQCAlgorithm::DILITHIUM:
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::Sign: Signature algorithms not linked in this build\n");
+                LogPrintf("PQCManager::Sign: Algorithm not yet implemented\n");
                 return false;
             
             default:
@@ -64,11 +71,14 @@ bool PQCManager::Verify(PQCAlgorithm algo,
                        const std::vector<unsigned char>& publicKey) {
     try {
         switch (algo) {
+            case PQCAlgorithm::DILITHIUM: {
+                Dilithium dil;
+                return dil.Verify(message, signature, publicKey);
+            }
             case PQCAlgorithm::SPHINCS:
-            case PQCAlgorithm::DILITHIUM:
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::Verify: Signature algorithms not linked in this build\n");
+                LogPrintf("PQCManager::Verify: Algorithm not yet implemented\n");
                 return false;
             
             default:
