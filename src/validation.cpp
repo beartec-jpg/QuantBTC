@@ -11,8 +11,10 @@
 #include <chain.h>
 #include <checkqueue.h>
 #include <clientversion.h>
+#include <common/args.h>
 #include <dag/ghostdag.h>
 #include <dag/ghostdag_blockindex.h>
+#include <earlyprotection.h>
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/merkle.h>
@@ -87,6 +89,11 @@ using node::BlockMap;
 using node::CBlockIndexHeightOnlyComparator;
 using node::CBlockIndexWorkComparator;
 using node::SnapshotMetadata;
+
+// =========================================================================
+// QuantumBTC Early Protection: global manager instance
+// =========================================================================
+earlyprotection::EarlyProtectionManager g_early_protection;
 
 /** Time to wait between writing blocks/block index to disk. */
 static constexpr std::chrono::hours DATABASE_WRITE_INTERVAL{1};
@@ -4611,6 +4618,63 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         m_dag_tips.BlockConnected(pindex->GetBlockHash(), all_parents);
         LogPrint(BCLog::VALIDATION, "QuantumBTC DAG tipset: accepted block %s, tips now: %u\n",
                  pindex->GetBlockHash().ToString(), m_dag_tips.GetMiningParents(999).size());
+    }
+
+    // =========================================================================
+    // QuantumBTC Early Protection: apply weight reduction during bootstrap.
+    //
+    // Active when: (a) fEarlyProtection consensus param is true, OR
+    //              (b) -earlyprotection=1 runtime flag is set, AND
+    //              the block height is within the first 10,000 blocks
+    //              (or -earlyprotection=1 forces it on regardless of height).
+    //
+    // Weight components:
+    //   1. Per-IP/Subnet throttle: >25% of recent 100 blocks → 50% weight
+    //   2. Gradual ramp-up: starts at 10%, reaches 100% over 500 blocks
+    //      (tracked by peer ID, or "local" for self-mined blocks)
+    //   3. Activation delay: new peers have 30-300s grace period at 10% weight
+    //
+    // The combined weight (product of all three) scales this block's
+    // nChainWork contribution, affecting tip selection without rejecting blocks.
+    // =========================================================================
+    if (pindex && pindex->nHeight > 0) {
+        const Consensus::Params& cparams = GetConsensus();
+        bool force_flag = gArgs.GetBoolArg("-earlyprotection", cparams.fEarlyProtection);
+        bool height_ok  = pindex->nHeight <= earlyprotection::EARLY_PROTECTION_HEIGHT_LIMIT;
+        bool protection_active = force_flag && (height_ok || gArgs.IsArgSet("-earlyprotection"));
+
+        if (protection_active) {
+            // Retrieve pre-computed weight from net_processing (peer blocks)
+            // or fall back to local-block defaults.
+            auto bwi = g_early_protection.PopBlockWeight(pindex->GetBlockHash());
+            double weight = bwi.weight;
+
+            // For locally-mined blocks (peer_id == -1), apply IP throttle
+            // and ramp-up for the "local" identity.
+            if (bwi.peer_id == -1) {
+                double w_throttle = g_early_protection.RecordBlockIPAndGetThrottleWeight("127.0.0.1");
+                double w_ramp = g_early_protection.RecordBlockAndGetRampWeight(-1);
+                weight = w_throttle * w_ramp;
+            }
+
+            pindex->nEarlyProtectionWeight = weight;
+
+            if (weight < 1.0) {
+                // Scale the block's proof-of-work contribution by the weight.
+                // nChainWork = parent_work + GetBlockProof * weight
+                arith_uint256 full_proof = GetBlockProof(*pindex);
+                arith_uint256 scaled_proof = full_proof * static_cast<uint64_t>(weight * 1000) / 1000;
+                arith_uint256 parent_work = pindex->pprev ? pindex->pprev->nChainWork : arith_uint256(0);
+                pindex->nChainWork = parent_work + scaled_proof;
+            }
+
+            LogPrint(BCLog::VALIDATION,
+                     "QuantumBTC EarlyProtection: block %s height=%d "
+                     "weight=%.3f ip=%s peer=%lld nChainWork=%s\n",
+                     pindex->GetBlockHash().ToString(),
+                     pindex->nHeight, weight, bwi.ip, bwi.peer_id,
+                     pindex->nChainWork.ToString());
+        }
     }
 
     CheckBlockIndex();

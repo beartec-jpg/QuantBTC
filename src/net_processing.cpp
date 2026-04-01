@@ -1734,6 +1734,15 @@ void PeerManagerImpl::InitializeNode(const CNode& node, ServiceFlags our_service
         LOCK(m_peer_mutex);
         m_peer_map.emplace_hint(m_peer_map.end(), nodeid, peer);
     }
+
+    // QuantumBTC Early Protection: register peer with random activation delay.
+    // New peers start with reduced block weight during the bootstrap period.
+    int delay = g_early_protection.RegisterPeer(nodeid);
+    if (delay > 0) {
+        LogPrint(BCLog::NET,
+                 "EarlyProtection: registered peer=%d with %ds activation delay\n",
+                 nodeid, delay);
+    }
 }
 
 void PeerManagerImpl::ReattemptInitialBroadcast(CScheduler& scheduler)
@@ -1759,6 +1768,10 @@ void PeerManagerImpl::ReattemptInitialBroadcast(CScheduler& scheduler)
 void PeerManagerImpl::FinalizeNode(const CNode& node)
 {
     NodeId nodeid = node.GetId();
+
+    // QuantumBTC Early Protection: clean up peer tracking on disconnect.
+    g_early_protection.UnregisterPeer(nodeid);
+
     {
     LOCK(cs_main);
     {
@@ -5072,6 +5085,27 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
                 min_pow_checked = true;
             }
         }
+
+        // QuantumBTC Early Protection: compute per-peer block weight before
+        // the block enters validation. This accounts for:
+        //   - Activation delay (new peers wait 30-300s for full weight)
+        //   - Gradual ramp-up (10% → 100% over 500 blocks per peer)
+        //   - Per-IP/subnet throttle (>25% of recent 100 → 50% weight)
+        {
+            std::string peer_ip = pfrom.addr.ToStringAddr();
+            double weight = g_early_protection.ComputeBlockWeight(
+                pfrom.GetId(), peer_ip);
+            g_early_protection.SetBlockWeight(hash, weight, peer_ip,
+                                              pfrom.GetId());
+            if (weight < 1.0) {
+                LogPrint(BCLog::NET,
+                         "EarlyProtection: block %s from peer=%d ip=%s "
+                         "weight=%.3f\n",
+                         hash.ToString(), pfrom.GetId(),
+                         peer_ip, weight);
+            }
+        }
+
         ProcessBlock(pfrom, pblock, forceProcessing, min_pow_checked);
         return;
     }

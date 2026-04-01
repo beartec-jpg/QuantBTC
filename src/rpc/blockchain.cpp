@@ -183,6 +183,12 @@ UniValue blockheaderToJSON(const CBlockIndex& tip, const CBlockIndex& blockindex
         }
         result.pushKV("mergeset_reds", reds);
     }
+
+    // QuantumBTC Early Protection weight (< 1.0 means block was throttled)
+    if (blockindex.nEarlyProtectionWeight < 1.0) {
+        result.pushKV("early_protection_weight", blockindex.nEarlyProtectionWeight);
+    }
+
     if (pnext)
         result.pushKV("nextblockhash", pnext->GetBlockHash().GetHex());
     return result;

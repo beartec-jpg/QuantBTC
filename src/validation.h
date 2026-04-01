@@ -34,6 +34,7 @@
 #include <util/result.h>
 #include <util/translation.h>
 #include <versionbits.h>
+#include <earlyprotection.h>
 
 #include <atomic>
 #include <map>
@@ -55,6 +56,10 @@ class DisconnectedBlockTransactions;
 struct PrecomputedTransactionData;
 struct LockPoints;
 struct AssumeutxoData;
+
+/** Global early-protection manager (QuantumBTC anti-monopolization). */
+extern earlyprotection::EarlyProtectionManager g_early_protection;
+
 namespace node {
 class SnapshotMetadata;
 } // namespace node

@@ -13,6 +13,8 @@
 #include <random>
 #include <chrono>
 
+#include <uint256.h>
+
 /**
  * QuantumBTC Early Protection System
  * ===================================
@@ -268,6 +270,43 @@ public:
         return (it != m_peer_block_count.end()) ? it->second : 0;
     }
 
+    // ---------- Per-block weight pre-computation ----------
+
+    /**
+     * Called by net_processing before ProcessBlock to pre-compute the early
+     * protection weight for a block received from a peer.
+     * AcceptBlock (in validation.cpp) later retrieves this via PopBlockWeight.
+     */
+    void SetBlockWeight(const uint256& block_hash, double weight,
+                        const std::string& ip, int64_t peer_id)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_pending_block_weights[block_hash] = {weight, ip, peer_id};
+    }
+
+    struct BlockWeightInfo {
+        double weight{1.0};
+        std::string ip;
+        int64_t peer_id{-1};
+    };
+
+    /**
+     * Pop the pre-computed weight for a block (called by AcceptBlock).
+     * Returns the weight info if found, or {1.0, "127.0.0.1", -1} if not
+     * (e.g. locally-mined block).
+     */
+    BlockWeightInfo PopBlockWeight(const uint256& block_hash)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto it = m_pending_block_weights.find(block_hash);
+        if (it != m_pending_block_weights.end()) {
+            BlockWeightInfo info = it->second;
+            m_pending_block_weights.erase(it);
+            return info;
+        }
+        return {1.0, "127.0.0.1", -1};
+    }
+
     /**
      * Reset all tracking state (for testing).
      */
@@ -295,6 +334,9 @@ private:
 
     /** Sliding window of recent block source /24 subnets. */
     std::deque<std::string> m_recent_subnets;
+
+    /** Pre-computed block weights set by net_processing, consumed by AcceptBlock. */
+    std::map<uint256, BlockWeightInfo> m_pending_block_weights;
 };
 
 } // namespace earlyprotection
