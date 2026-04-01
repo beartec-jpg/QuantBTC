@@ -88,6 +88,7 @@
 #include <validation.h>
 #include <validationinterface.h>
 #include <walletinitinterface.h>
+#include <crypto/pqc/pqc_config.h>
 
 #include <algorithm>
 #include <condition_variable>
@@ -518,6 +519,7 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-txindex", strprintf("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     // QuantumBTC: PQC and DAG runtime flags
     argsman.AddArg("-pqc", "Enable post-quantum cryptography extensions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcmode=<mode>", "PQC signing mode: hybrid (ECDSA+Dilithium, default), classical (ECDSA only), pure (Dilithium only, future)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dag", "Enable BlockDAG (GHOSTDAG) consensus mode (default: per-chain)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dagmaxparents=<n>", "Maximum number of DAG parent references per block (default: per-chain)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-earlyprotection", "Enable early-chain protections: activation delay, hashrate ramp-up, per-IP throttling (default: on for regtest/testnet, off for mainnet)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -740,6 +742,25 @@ static bool AppInitServers(NodeContext& node)
 // Parameter interaction based on rules
 void InitParameterInteraction(ArgsManager& args)
 {
+    // QuantumBTC: Wire -pqc and -pqcmode to PQCConfig
+    {
+        auto& pqcconf = pqc::PQCConfig::GetInstance();
+        pqcconf.enable_pqc = args.GetBoolArg("-pqc", false);
+        pqcconf.enable_hybrid_signatures = pqcconf.enable_pqc; // default: same as -pqc
+        std::string pqcmode = args.GetArg("-pqcmode", "hybrid");
+        if (pqcmode == "classical") {
+            pqcconf.enable_hybrid_signatures = false;
+        } else if (pqcmode == "pure") {
+            pqcconf.enable_hybrid_signatures = true;
+            pqcconf.pqc_mode = pqc::PQCMode::PURE;
+        } else {
+            pqcconf.pqc_mode = pqc::PQCMode::HYBRID;
+        }
+        if (pqcconf.enable_pqc) {
+            LogPrintf("QuantumBTC: PQC enabled, mode=%s\n", pqcmode);
+        }
+    }
+
     // when specifying an explicit binding address, you want to listen on it
     // even when -connect or -proxy is specified
     if (args.IsArgSet("-bind")) {

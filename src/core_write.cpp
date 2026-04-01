@@ -8,6 +8,7 @@
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
+#include <crypto/pqc/dilithium.h>
 #include <key_io.h>
 #include <script/descriptor.h>
 #include <script/script.h>
@@ -202,11 +203,29 @@ void TxToUniv(const CTransaction& tx, const uint256& block_hash, UniValue& entry
             in.pushKV("scriptSig", std::move(o));
         }
         if (!tx.vin[i].scriptWitness.IsNull()) {
+            const auto& stack = tx.vin[i].scriptWitness.stack;
             UniValue txinwitness(UniValue::VARR);
-            for (const auto& item : tx.vin[i].scriptWitness.stack) {
+            for (const auto& item : stack) {
                 txinwitness.push_back(HexStr(item));
             }
             in.pushKV("txinwitness", std::move(txinwitness));
+
+            // QuantumBTC: detect and label PQC hybrid witness
+            // Format: [0] ECDSA sig, [1] pubkey, [2] Dilithium sig (2420), [3] Dilithium pubkey (1312)
+            if (stack.size() == 4 &&
+                stack[2].size() == pqc::Dilithium::SIGNATURE_SIZE &&
+                stack[3].size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                UniValue pqc_info(UniValue::VOBJ);
+                pqc_info.pushKV("algorithm", "CRYSTALS-Dilithium2");
+                pqc_info.pushKV("mode", "hybrid");
+                pqc_info.pushKV("ecdsa_sig_size", (int64_t)stack[0].size());
+                pqc_info.pushKV("ecdsa_pubkey_size", (int64_t)stack[1].size());
+                pqc_info.pushKV("dilithium_sig_size", (int64_t)stack[2].size());
+                pqc_info.pushKV("dilithium_pubkey_size", (int64_t)stack[3].size());
+                pqc_info.pushKV("dilithium_sig", HexStr(stack[2]));
+                pqc_info.pushKV("dilithium_pubkey", HexStr(stack[3]));
+                in.pushKV("pqc", std::move(pqc_info));
+            }
         }
         if (have_undo) {
             const Coin& prev_coin = txundo->vprevout[i];

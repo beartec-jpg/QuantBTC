@@ -852,17 +852,18 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
 
         UpdateInput(txin, sigdata);
 
-        // PQC hybrid signing: append Dilithium signature to segwit witness
+        // QuantumBTC PQC hybrid signing: append Dilithium signature to segwit witness
+        // Witness structure: [0] ECDSA DER sig  [1] compressed pubkey
+        //                    [2] Dilithium sig (2420 bytes)  [3] Dilithium pubkey (1312 bytes)
         if (sigdata.complete && pqc::PQCConfig::GetInstance().enable_hybrid_signatures
             && !txin.scriptWitness.IsNull() && txin.scriptWitness.stack.size() == 2) {
-            // P2WPKH witness: [ecdsa_sig, compressed_pubkey]
-            // Extract pubkey and look up ECDSA private key
             CPubKey witness_pubkey(txin.scriptWitness.stack[1]);
             if (witness_pubkey.IsValid()) {
                 CKey ecdsa_key;
                 if (keystore->GetKey(witness_pubkey.GetID(), ecdsa_key)) {
-                    // Derive deterministic Dilithium keypair from ECDSA privkey
-                    // seed = HMAC-SHA512(ecdsa_privkey, "QuantBTC-Dilithium")[0..31]
+                    // Deterministic Dilithium seed derived from ECDSA private key:
+                    //   seed = HMAC-SHA512(ecdsa_privkey, "QuantBTC-Dilithium")[0..31]
+                    // This ensures the same ECDSA key always produces the same Dilithium keypair.
                     uint8_t hmac_out[64];
                     CHMAC_SHA512 hmac(UCharCast(ecdsa_key.begin()), ecdsa_key.size());
                     const unsigned char domain[] = "QuantBTC-Dilithium";
@@ -873,17 +874,19 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
                     pqc::Dilithium dil;
                     std::vector<uint8_t> pqc_pub, pqc_priv;
                     if (dil.DeriveKeyPair(dil_seed, pqc_pub, pqc_priv)) {
-                        // Sign the sighash with Dilithium
                         uint256 sighash = SignatureHash(prevPubKey, mtx, i, nHashType, amount, SigVersion::WITNESS_V0, &txdata);
                         std::vector<uint8_t> hash_bytes(sighash.begin(), sighash.end());
                         std::vector<uint8_t> pqc_sig;
                         if (dil.Sign(hash_bytes, pqc_priv, pqc_sig)) {
-                            // Append PQC signature and public key as witness elements [2] and [3]
                             txin.scriptWitness.stack.push_back(pqc_sig);
                             txin.scriptWitness.stack.push_back(pqc_pub);
-                            LogPrintf("PQC: input %u: appended Dilithium sig (%u bytes) + pubkey (%u bytes) to witness\n",
-                                      i, pqc_sig.size(), pqc_pub.size());
+                            LogDebug(BCLog::ALL, "PQC hybrid: input %u witness extended [ECDSA(%u) + Dilithium sig(%u) + pk(%u)]\n",
+                                     i, txin.scriptWitness.stack[0].size(), pqc_sig.size(), pqc_pub.size());
+                        } else {
+                            LogPrintf("PQC WARNING: Dilithium signing failed for input %u, sending ECDSA-only\n", i);
                         }
+                    } else {
+                        LogPrintf("PQC WARNING: Dilithium key derivation failed for input %u\n", i);
                     }
                     memory_cleanse(hmac_out, 64);
                     memory_cleanse(dil_seed.data(), dil_seed.size());

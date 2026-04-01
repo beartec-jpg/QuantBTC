@@ -14,10 +14,17 @@ enum class PQCSignatureScheme {
     SPHINCS_PLUS
 };
 
+enum class PQCMode {
+    HYBRID,     // ECDSA + Dilithium (default)
+    CLASSICAL,  // ECDSA only (PQC disabled)
+    PURE        // Dilithium only (future, not yet supported at consensus)
+};
+
 struct PQCConfig {
-    bool enable_pqc{true};
+    bool enable_pqc{false};
     bool enable_hybrid_keys{true};
-    bool enable_hybrid_signatures{true};
+    bool enable_hybrid_signatures{false};
+    PQCMode pqc_mode{PQCMode::HYBRID};
     std::vector<PQCAlgorithm> enabled_kems{
         PQCAlgorithm::KYBER,
         PQCAlgorithm::FRODOKEM,
