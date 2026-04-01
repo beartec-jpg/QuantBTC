@@ -6,6 +6,7 @@
 #include <dag/dagtipset.h>
 
 #include <algorithm>
+#include <logging.h>
 
 namespace dag {
 
@@ -27,26 +28,37 @@ void DagTipSet::RemoveTip(const uint256& hash)
 void DagTipSet::BlockConnected(const uint256& block_hash, uint64_t blue_score,
                                const std::vector<uint256>& parents)
 {
+    size_t before = m_score_to_hash.size();
     // Remove each parent from tips (they now have a child)
     for (const uint256& p : parents) {
         RemoveTip(p);
     }
     // Add the new block as a tip
     InsertTip(block_hash, blue_score);
+    LogPrint(BCLog::VALIDATION,
+             "DagTipSet::BlockConnected %s score=%u parents=%u tips: %u -> %u\n",
+             block_hash.ToString().substr(0, 16), blue_score,
+             parents.size(), before, m_score_to_hash.size());
 }
 
 void DagTipSet::BlockDisconnected(const uint256& block_hash,
-                                  const std::vector<uint256>& parent_hashes_with_scores)
+                                  const std::vector<uint256>& parent_hashes)
 {
+    size_t before = m_score_to_hash.size();
     // Remove the disconnected block from tips
     RemoveTip(block_hash);
-    // Re-add parents — caller should re-insert if they become childless.
-    // For now we insert with score 0; the next BlockConnected will correct it.
-    for (const uint256& p : parent_hashes_with_scores) {
+    // Re-add parents as tips (they are now childless again).
+    // We insert with score 0 as a fallback; the correct score will be
+    // set if/when the parent is later re-selected via BlockConnected.
+    for (const uint256& p : parent_hashes) {
         if (!p.IsNull() && m_hash_to_score.find(p) == m_hash_to_score.end()) {
             InsertTip(p, 0);
         }
     }
+    LogPrint(BCLog::VALIDATION,
+             "DagTipSet::BlockDisconnected %s parents=%u tips: %u -> %u\n",
+             block_hash.ToString().substr(0, 16), parent_hashes.size(),
+             before, m_score_to_hash.size());
 }
 
 std::vector<uint256> DagTipSet::GetMiningParents(uint32_t max_parents) const

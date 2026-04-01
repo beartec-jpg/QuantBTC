@@ -49,7 +49,7 @@ public:
 
     /** Remove a block from tips when it is disconnected (reorg). */
     void BlockDisconnected(const uint256& block_hash,
-                           const std::vector<uint256>& parent_hashes_with_scores);
+                           const std::vector<uint256>& parent_hashes);
 
     /**
      * Return up to `max_parents` tip hashes for a new block template.

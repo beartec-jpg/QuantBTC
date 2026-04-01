@@ -4554,6 +4554,89 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         m_options.signals->NewPoWValidBlock(pindex, pblock);
     }
 
+    // =========================================================================
+    // QuantumBTC: compute GHOSTDAG scoring and Early Protection weight
+    // BEFORE the block enters setBlockIndexCandidates (via
+    // ReceivedBlockTransactions).  Both computations may modify sort keys
+    // used by CBlockIndexWorkComparator (dagData.blue_work, nChainWork).
+    // Mutating those fields after insertion would corrupt the std::set's
+    // red-black tree and cause a segfault during the subsequent reorg.
+    // =========================================================================
+
+    // --- GHOSTDAG ---
+    if (gArgs.GetBoolArg("-dag", GetConsensus().fDagMode) && pindex) {
+        dag::BlockIndexGhostdagProvider provider(m_blockman);
+        dag::GhostdagManager ghostdag_mgr(GetConsensus().ghostdag_k);
+
+        std::vector<uint256> all_parents;
+        if (pindex->pprev) all_parents.push_back(pindex->pprev->GetBlockHash());
+        for (const CBlockIndex* p : pindex->vDagParents) {
+            if (p) all_parents.push_back(p->GetBlockHash());
+        }
+
+        if (!all_parents.empty()) {
+            pindex->dagData = ghostdag_mgr.ComputeGhostdag(all_parents, provider);
+        } else {
+            pindex->dagData.blue_score = 0;
+            pindex->dagData.blue_work = 0;
+        }
+        pindex->nDagHeight = pindex->dagData.blue_score;
+
+        LogPrint(BCLog::VALIDATION,
+                 "QuantumBTC GHOSTDAG: block %s dagparents=%u blue_score=%u "
+                 "selected_parent=%s blues=%u reds=%u blue_work=%u\n",
+                 pindex->GetBlockHash().ToString(),
+                 all_parents.size(),
+                 pindex->dagData.blue_score,
+                 pindex->dagData.selected_parent.ToString(),
+                 pindex->dagData.mergeset_blues.size(),
+                 pindex->dagData.mergeset_reds.size(),
+                 pindex->dagData.blue_work);
+    }
+
+    // --- Early Protection ---
+    if (pindex && pindex->nHeight > 0) {
+        const Consensus::Params& cparams = GetConsensus();
+        bool force_flag = gArgs.GetBoolArg("-earlyprotection", cparams.fEarlyProtection);
+        bool height_ok  = pindex->nHeight <= earlyprotection::EARLY_PROTECTION_HEIGHT_LIMIT;
+        bool protection_active = force_flag && (height_ok || gArgs.IsArgSet("-earlyprotection"));
+
+        if (protection_active) {
+            auto bwi = g_early_protection.PopBlockWeight(pindex->GetBlockHash());
+            double weight = bwi.weight;
+
+            if (bwi.peer_id == -1) {
+                double w_throttle = g_early_protection.RecordBlockIPAndGetThrottleWeight("127.0.0.1");
+                double w_ramp = g_early_protection.RecordBlockAndGetRampWeight(-1);
+                weight = w_throttle * w_ramp;
+            }
+
+            pindex->nEarlyProtectionWeight = weight;
+
+            if (weight < 1.0) {
+                arith_uint256 full_proof = GetBlockProof(*pindex);
+                uint64_t bp = static_cast<uint64_t>(weight * 10000);
+                if (bp < 1) bp = 1;
+                arith_uint256 scaled_proof = full_proof * bp / 10000;
+                if (scaled_proof == 0) scaled_proof = 1;
+                arith_uint256 parent_work = pindex->pprev ? pindex->pprev->nChainWork : arith_uint256(0);
+                pindex->nChainWork = parent_work + scaled_proof;
+            }
+
+            LogPrint(BCLog::VALIDATION,
+                     "QuantumBTC EarlyProtection: block %s height=%d "
+                     "weight=%.3f ip=%s peer=%lld nChainWork=%s\n",
+                     pindex->GetBlockHash().ToString(),
+                     pindex->nHeight, weight, bwi.ip, bwi.peer_id,
+                     pindex->nChainWork.ToString());
+        }
+    }
+
+    // =========================================================================
+    // Now safe to store the block and add it to setBlockIndexCandidates.
+    // All sort-key fields (dagData.blue_work, nChainWork) are finalized.
+    // =========================================================================
+
     // Write block to history file
     if (fNewBlock) *fNewBlock = true;
     try {
@@ -4573,116 +4656,19 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         return FatalError(GetNotifications(), state, strprintf(_("System error while saving block to disk: %s"), e.what()));
     }
 
-    // TODO: FlushStateToDisk() handles flushing of both block and chainstate
-    // data, so we should move this to ChainstateManager so that we can be more
-    // intelligent about how we flush.
-    // For now, since FlushStateMode::NONE is used, all that can happen is that
-    // the block files may be pruned, so we can just call this on one
-    // chainstate (particularly if we haven't implemented pruning with
-    // background validation yet).
     ActiveChainstate().FlushStateToDisk(state, FlushStateMode::NONE);
 
-    // QuantumBTC BlockDAG: track ALL accepted blocks in the DAG tipset
-    // and compute GHOSTDAG scoring for this block.
+    // --- Update DAG tipset (safe to do after insertion; does not affect sort key) ---
     if (gArgs.GetBoolArg("-dag", GetConsensus().fDagMode) && pindex) {
-        // --- Compute GHOSTDAG data for the newly accepted block ---
-        dag::BlockIndexGhostdagProvider provider(m_blockman);
-        dag::GhostdagManager ghostdag_mgr(GetConsensus().ghostdag_k);
-
         std::vector<uint256> all_parents;
         if (pindex->pprev) all_parents.push_back(pindex->pprev->GetBlockHash());
         for (const CBlockIndex* p : pindex->vDagParents) {
             if (p) all_parents.push_back(p->GetBlockHash());
         }
-
-        if (!all_parents.empty()) {
-            pindex->dagData = ghostdag_mgr.ComputeGhostdag(all_parents, provider);
-        } else {
-            // Genesis block
-            pindex->dagData.blue_score = 0;
-            pindex->dagData.blue_work = 0;
-        }
-        pindex->nDagHeight = pindex->dagData.blue_score;
-
-        LogPrint(BCLog::VALIDATION,
-                 "QuantumBTC GHOSTDAG: block %s dagparents=%u blue_score=%u "
-                 "selected_parent=%s blues=%u reds=%u blue_work=%u\n",
-                 pindex->GetBlockHash().ToString(),
-                 all_parents.size(),
-                 pindex->dagData.blue_score,
-                 pindex->dagData.selected_parent.ToString(),
-                 pindex->dagData.mergeset_blues.size(),
-                 pindex->dagData.mergeset_reds.size(),
-                 pindex->dagData.blue_work);
-
-        // --- Update DAG tipset ---
         m_dag_tips.BlockConnected(pindex->GetBlockHash(),
                                   pindex->dagData.blue_score, all_parents);
         LogPrint(BCLog::VALIDATION, "QuantumBTC DAG tipset: accepted block %s, tips now: %u\n",
                  pindex->GetBlockHash().ToString(), m_dag_tips.Size());
-    }
-
-    // =========================================================================
-    // QuantumBTC Early Protection: apply weight reduction during bootstrap.
-    //
-    // Active when: (a) fEarlyProtection consensus param is true, OR
-    //              (b) -earlyprotection=1 runtime flag is set, AND
-    //              the block height is within the first 10,000 blocks
-    //              (or -earlyprotection=1 forces it on regardless of height).
-    //
-    // Weight components:
-    //   1. Per-IP/Subnet throttle: >25% of recent 100 blocks → 50% weight
-    //   2. Gradual ramp-up: starts at 10%, reaches 100% over 500 blocks
-    //      (tracked by peer ID, or "local" for self-mined blocks)
-    //   3. Activation delay: new peers have 30-300s grace period at 10% weight
-    //
-    // The combined weight (product of all three) scales this block's
-    // nChainWork contribution, affecting tip selection without rejecting blocks.
-    // =========================================================================
-    if (pindex && pindex->nHeight > 0) {
-        const Consensus::Params& cparams = GetConsensus();
-        bool force_flag = gArgs.GetBoolArg("-earlyprotection", cparams.fEarlyProtection);
-        bool height_ok  = pindex->nHeight <= earlyprotection::EARLY_PROTECTION_HEIGHT_LIMIT;
-        bool protection_active = force_flag && (height_ok || gArgs.IsArgSet("-earlyprotection"));
-
-        if (protection_active) {
-            // Retrieve pre-computed weight from net_processing (peer blocks)
-            // or fall back to local-block defaults.
-            auto bwi = g_early_protection.PopBlockWeight(pindex->GetBlockHash());
-            double weight = bwi.weight;
-
-            // For locally-mined blocks (peer_id == -1), apply IP throttle
-            // and ramp-up for the "local" identity.
-            if (bwi.peer_id == -1) {
-                double w_throttle = g_early_protection.RecordBlockIPAndGetThrottleWeight("127.0.0.1");
-                double w_ramp = g_early_protection.RecordBlockAndGetRampWeight(-1);
-                weight = w_throttle * w_ramp;
-            }
-
-            pindex->nEarlyProtectionWeight = weight;
-
-            if (weight < 1.0) {
-                // Scale the block's proof-of-work contribution by the weight.
-                // nChainWork = parent_work + max(1, GetBlockProof * weight)
-                // Use basis points (10000ths) for precision with small proof
-                // values (e.g. regtest proof = 2). Guarantee at least 1 unit
-                // so the chain always makes progress.
-                arith_uint256 full_proof = GetBlockProof(*pindex);
-                uint64_t bp = static_cast<uint64_t>(weight * 10000);
-                if (bp < 1) bp = 1;
-                arith_uint256 scaled_proof = full_proof * bp / 10000;
-                if (scaled_proof == 0) scaled_proof = 1;
-                arith_uint256 parent_work = pindex->pprev ? pindex->pprev->nChainWork : arith_uint256(0);
-                pindex->nChainWork = parent_work + scaled_proof;
-            }
-
-            LogPrint(BCLog::VALIDATION,
-                     "QuantumBTC EarlyProtection: block %s height=%d "
-                     "weight=%.3f ip=%s peer=%lld nChainWork=%s\n",
-                     pindex->GetBlockHash().ToString(),
-                     pindex->nHeight, weight, bwi.ip, bwi.peer_id,
-                     pindex->nChainWork.ToString());
-        }
     }
 
     CheckBlockIndex();
