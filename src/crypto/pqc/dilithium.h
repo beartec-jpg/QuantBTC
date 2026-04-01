@@ -16,6 +16,7 @@ public:
     ~Dilithium();
 
     bool GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key);
+    bool DeriveKeyPair(const std::vector<uint8_t>& seed, std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key);
     bool Sign(const std::vector<uint8_t>& message, const std::vector<uint8_t>& private_key, std::vector<uint8_t>& signature);
     bool Verify(const std::vector<uint8_t>& message, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& public_key);
 };

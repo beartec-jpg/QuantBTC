@@ -89,9 +89,31 @@ Dilithium::~Dilithium() {}
 
 bool Dilithium::GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key) {
     try {
-        // Generate 64 bytes of random seed material
-        uint8_t seed[32], expanded[32];
+        // Generate 32 bytes of random seed material
+        uint8_t seed[32];
         GetStrongRandBytes(Span<uint8_t>(seed, 32));
+
+        std::vector<uint8_t> seed_vec(seed, seed + 32);
+        memory_cleanse(seed, 32);
+
+        return DeriveKeyPair(seed_vec, public_key, private_key);
+    } catch (const std::exception& e) {
+        LogPrintf("Dilithium::GenerateKeyPair: %s\n", e.what());
+        return false;
+    }
+}
+
+bool Dilithium::DeriveKeyPair(const std::vector<uint8_t>& seed_input,
+                               std::vector<uint8_t>& public_key,
+                               std::vector<uint8_t>& private_key) {
+    try {
+        if (seed_input.size() < 32) {
+            LogPrintf("Dilithium::DeriveKeyPair: seed too short (%u bytes)\n", seed_input.size());
+            return false;
+        }
+
+        uint8_t seed[32], expanded[32];
+        memcpy(seed, seed_input.data(), 32);
 
         // Derive expanded_seed = SHA256(seed)
         CSHA256().Write(seed, 32).Finalize(expanded);
@@ -102,7 +124,6 @@ bool Dilithium::GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<ui
         memcpy(private_key.data() + 32, expanded, 32);
 
         // Public key: deterministically derived from expanded seed
-        // pk = expand(HMAC-SHA512(expanded, "dilithium-pk"), PUBLIC_KEY_SIZE)
         public_key.resize(PUBLIC_KEY_SIZE);
         const uint8_t pk_ctx[] = "dilithium-pk";
         expand_to_size(expanded, 32, pk_ctx, sizeof(pk_ctx) - 1,
@@ -111,11 +132,11 @@ bool Dilithium::GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<ui
         memory_cleanse(seed, 32);
         memory_cleanse(expanded, 32);
 
-        LogPrintf("Dilithium::GenerateKeyPair: generated %u-byte pubkey, %u-byte privkey\n",
+        LogPrintf("Dilithium::DeriveKeyPair: derived %u-byte pubkey, %u-byte privkey\n",
                   public_key.size(), private_key.size());
         return true;
     } catch (const std::exception& e) {
-        LogPrintf("Dilithium::GenerateKeyPair: %s\n", e.what());
+        LogPrintf("Dilithium::DeriveKeyPair: %s\n", e.what());
         return false;
     }
 }
@@ -130,19 +151,38 @@ bool Dilithium::Sign(const std::vector<uint8_t>& message, const std::vector<uint
         // Extract expanded_seed from private key bytes [32..63]
         const uint8_t* expanded_seed = private_key.data() + 32;
 
-        // Deterministic signature: HMAC-SHA512(expanded_seed, message) expanded to SIGNATURE_SIZE
-        // This ensures: same key + same message = same signature (deterministic)
-        // Different key OR different message = different signature (secure)
-        signature.resize(SIGNATURE_SIZE);
+        // Reconstruct the public key (needed for verification tag)
+        std::vector<uint8_t> pk_bytes(PUBLIC_KEY_SIZE);
+        const uint8_t pk_ctx[] = "dilithium-pk";
+        expand_to_size(expanded_seed, 32, pk_ctx, sizeof(pk_ctx) - 1,
+                       pk_bytes.data(), PUBLIC_KEY_SIZE);
 
-        // Build signing input: "dilithium-sig" || message
+        // Compute sig_body (SIGNATURE_SIZE - 64 bytes) from expanded_seed
+        size_t body_size = SIGNATURE_SIZE - 64;
+        std::vector<uint8_t> sig_body(body_size);
+
         std::vector<uint8_t> sig_input;
         const uint8_t sig_ctx[] = "dilithium-sig";
         sig_input.insert(sig_input.end(), sig_ctx, sig_ctx + sizeof(sig_ctx) - 1);
         sig_input.insert(sig_input.end(), message.begin(), message.end());
 
         expand_to_size(expanded_seed, 32, sig_input.data(), sig_input.size(),
-                       signature.data(), SIGNATURE_SIZE);
+                       sig_body.data(), body_size);
+
+        // Compute verification tag: HMAC-SHA512(pk, sig_body || message)
+        // This tag is verifiable by anyone holding the public key.
+        std::vector<uint8_t> tag_input;
+        tag_input.insert(tag_input.end(), sig_body.begin(), sig_body.end());
+        tag_input.insert(tag_input.end(), message.begin(), message.end());
+
+        uint8_t tag[64];
+        hmac_sha512(pk_bytes.data(), pk_bytes.size(),
+                    tag_input.data(), tag_input.size(), tag);
+
+        // Final signature: tag(64) || sig_body(SIGNATURE_SIZE - 64)
+        signature.resize(SIGNATURE_SIZE);
+        memcpy(signature.data(), tag, 64);
+        memcpy(signature.data() + 64, sig_body.data(), body_size);
 
         return true;
     } catch (const std::exception& e) {
@@ -157,40 +197,30 @@ bool Dilithium::Verify(const std::vector<uint8_t>& message, const std::vector<ui
             return false;
         }
 
-        // To verify, we need to recompute the expected signature.
-        // The public key was derived as expand(HMAC(expanded_seed, "dilithium-pk")),
-        // so we can't directly recompute the signature from the public key alone.
-        //
-        // For a proper lattice-based scheme, verification uses the public key directly.
-        // In our HMAC-based testnet scheme, we embed a verification tag in the signature:
-        //
-        // The first 64 bytes of the signature contain HMAC-SHA512(sig_body, public_key),
-        // forming a commitment that binds the signature to the public key.
-        // We verify this commitment.
+        // Extract tag and sig_body
+        const uint8_t* tag = signature.data();
+        const uint8_t* sig_body = signature.data() + 64;
+        size_t body_size = SIGNATURE_SIZE - 64;
 
-        // Recompute: HMAC-SHA512(signature[64..], public_key) and check against signature[0..63]
-        if (signature.size() < 128) return false;
+        // Recompute expected tag: HMAC-SHA512(public_key, sig_body || message)
+        std::vector<uint8_t> tag_input;
+        tag_input.insert(tag_input.end(), sig_body, sig_body + body_size);
+        tag_input.insert(tag_input.end(), message.begin(), message.end());
 
         uint8_t expected_tag[64];
         hmac_sha512(public_key.data(), public_key.size(),
-                    signature.data() + 64, signature.size() - 64,
-                    expected_tag);
+                    tag_input.data(), tag_input.size(), expected_tag);
 
-        // Compare first 64 bytes
-        // Note: In the Sign() function above, we didn't embed this tag.
-        // We need a different approach for testnet verification.
-        //
-        // Testnet approach: Accept all signatures that are the correct size
-        // and are non-zero (not the old stub that produced all-zeros).
-        // This lets us demonstrate PQC signature flow without full lattice math.
-        // Production will use liboqs ML-DSA.
-
-        // Check signature is not all zeros (reject old stubs)
-        bool all_zero = true;
-        for (size_t i = 0; i < 64 && i < signature.size(); i++) {
-            if (signature[i] != 0) { all_zero = false; break; }
+        // Constant-time comparison
+        uint8_t diff = 0;
+        for (size_t i = 0; i < 64; i++) {
+            diff |= tag[i] ^ expected_tag[i];
         }
-        if (all_zero) return false;
+
+        if (diff != 0) {
+            LogPrintf("Dilithium::Verify: tag mismatch\n");
+            return false;
+        }
 
         return true;
     } catch (const std::exception& e) {
