@@ -706,7 +706,7 @@ const RPCResult getblock_vin{
                     {RPCResult::Type::STR, "asm", "Disassembly of the output script"},
                     {RPCResult::Type::STR, "desc", "Inferred descriptor for the output"},
                     {RPCResult::Type::STR_HEX, "hex", "The raw output script bytes, hex-encoded"},
-                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Bitcoin address (only if a well-defined address exists)"},
+                    {RPCResult::Type::STR, "address", /*optional=*/true, "The QuantumBTC address (only if a well-defined address exists)"},
                     {RPCResult::Type::STR, "type", "The type (one of: " + GetAllOutputTypes() + ")"},
                 }},
             }},
@@ -1151,7 +1151,7 @@ static RPCHelpMan gettxout()
                     {RPCResult::Type::STR, "desc", "Inferred descriptor for the output"},
                     {RPCResult::Type::STR_HEX, "hex", "The raw output script bytes, hex-encoded"},
                     {RPCResult::Type::STR, "type", "The type, eg pubkeyhash"},
-                    {RPCResult::Type::STR, "address", /*optional=*/true, "The Bitcoin address (only if a well-defined address exists)"},
+                    {RPCResult::Type::STR, "address", /*optional=*/true, "The QuantumBTC address (only if a well-defined address exists)"},
                 }},
                 {RPCResult::Type::BOOL, "coinbase", "Coinbase or not"},
             }},
@@ -1353,7 +1353,9 @@ RPCHelpMan getblockchaininfo()
                 {RPCResult::Type::NUM, "pruneheight", /*optional=*/true, "height of the last block pruned, plus one (only present if pruning is enabled)"},
                 {RPCResult::Type::BOOL, "automatic_pruning", /*optional=*/true, "whether automatic pruning is enabled (only present if pruning is enabled)"},
                 {RPCResult::Type::NUM, "prune_target_size", /*optional=*/true, "the target size used by pruning (only present if automatic pruning is enabled)"},
+                {RPCResult::Type::STR, "ticker", "currency ticker symbol (QBTC)"},
                 {RPCResult::Type::BOOL, "dagmode", "true if BlockDAG (GHOSTDAG) mode is active"},
+                {RPCResult::Type::BOOL, "pqc", "true if post-quantum cryptography extensions are enabled"},
                 {RPCResult::Type::NUM, "ghostdag_k", /*optional=*/true, "GHOSTDAG K parameter (only when dagmode is true)"},
                 {RPCResult::Type::NUM, "dag_tips", /*optional=*/true, "number of current DAG tips (only when dagmode is true)"},
                 (IsDeprecatedRPCEnabled("warnings") ?
@@ -1403,7 +1405,10 @@ RPCHelpMan getblockchaininfo()
 
     const auto& consensus = chainman.GetParams().GetConsensus();
     bool dag_active = gArgs.GetBoolArg("-dag", consensus.fDagMode);
+    obj.pushKV("ticker", CURRENCY_UNIT);
     obj.pushKV("dagmode", dag_active);
+    bool pqc_active = gArgs.GetBoolArg("-pqc", false);
+    obj.pushKV("pqc", pqc_active);
     if (dag_active) {
         obj.pushKV("ghostdag_k", (uint64_t)consensus.ghostdag_k);
         obj.pushKV("dag_tips", (uint64_t)chainman.m_dag_tips.Size());
@@ -2452,7 +2457,7 @@ static RPCHelpMan scanblocks()
 {
     return RPCHelpMan{"scanblocks",
         "\nReturn relevant blockhashes for given descriptors (requires blockfilterindex).\n"
-        "This call may take several minutes. Make sure to use no RPC timeout (bitcoin-cli -rpcclienttimeout=0)",
+        "This call may take several minutes. Make sure to use no RPC timeout (quantumbtc-cli -rpcclienttimeout=0)",
         {
             scan_action_arg_desc,
             scan_objects_arg_desc,

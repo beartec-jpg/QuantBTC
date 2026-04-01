@@ -109,8 +109,8 @@ std::vector<unsigned char> ParseHexO(const UniValue& o, std::string_view strKey)
  */
 CAmount AmountFromValue(const UniValue& value, int decimals = 8);
 /**
- * Parse a json number or string, denoting BTC/kvB, into a CFeeRate (sat/kvB).
- * Reject negative values or rates larger than 1BTC/kvB.
+ * Parse a json number or string, denoting QBTC/kvB, into a CFeeRate (sat/kvB).
+ * Reject negative values or rates larger than 1QBTC/kvB.
  */
 CFeeRate ParseFeeRate(const UniValue& json);
 
