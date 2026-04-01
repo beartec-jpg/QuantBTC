@@ -175,7 +175,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     // QuantumBTC BlockDAG: when DAG mode is enabled, reference multiple tips
     // as parent hashes. The selected parent (hashPrevBlock) is the chain tip;
     // additional parents come from concurrent tips in the DAG tipset.
-    if (chainparams.GetConsensus().fDagMode) {
+    if (gArgs.GetBoolArg("-dag", chainparams.GetConsensus().fDagMode)) {
         // Enable DAG version flag
         pblock->nVersion |= BLOCK_VERSION_DAGMODE;
 

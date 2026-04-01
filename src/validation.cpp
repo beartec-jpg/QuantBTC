@@ -4336,7 +4336,7 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
 
         // QuantumBTC BlockDAG: validate additional parent hashes (hashParents).
         // Each extra parent must be known to the block index and must not be invalid.
-        if (block.IsDagBlock() && GetConsensus().fDagMode) {
+        if (block.IsDagBlock() && gArgs.GetBoolArg("-dag", GetConsensus().fDagMode)) {
             if (block.hashParents.size() > GetConsensus().nMaxDagParents) {
                 return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "too-many-dag-parents",
                     strprintf("block has %u DAG parents, max is %u",
@@ -4584,7 +4584,7 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
 
     // QuantumBTC BlockDAG: track ALL accepted blocks in the DAG tipset
     // and compute GHOSTDAG scoring for this block.
-    if (GetConsensus().fDagMode && pindex) {
+    if (gArgs.GetBoolArg("-dag", GetConsensus().fDagMode) && pindex) {
         // --- Compute GHOSTDAG data for the newly accepted block ---
         dag::BlockIndexGhostdagProvider provider(m_blockman);
         dag::GhostdagManager ghostdag_mgr(GetConsensus().ghostdag_k);
@@ -4605,9 +4605,10 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         pindex->nDagHeight = pindex->dagData.blue_score;
 
         LogPrint(BCLog::VALIDATION,
-                 "QuantumBTC GHOSTDAG: block %s blue_score=%u selected_parent=%s "
-                 "blues=%u reds=%u blue_work=%u\n",
+                 "QuantumBTC GHOSTDAG: block %s dagparents=%u blue_score=%u "
+                 "selected_parent=%s blues=%u reds=%u blue_work=%u\n",
                  pindex->GetBlockHash().ToString(),
+                 all_parents.size(),
                  pindex->dagData.blue_score,
                  pindex->dagData.selected_parent.ToString(),
                  pindex->dagData.mergeset_blues.size(),
@@ -4615,9 +4616,10 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                  pindex->dagData.blue_work);
 
         // --- Update DAG tipset ---
-        m_dag_tips.BlockConnected(pindex->GetBlockHash(), all_parents);
+        m_dag_tips.BlockConnected(pindex->GetBlockHash(),
+                                  pindex->dagData.blue_score, all_parents);
         LogPrint(BCLog::VALIDATION, "QuantumBTC DAG tipset: accepted block %s, tips now: %u\n",
-                 pindex->GetBlockHash().ToString(), m_dag_tips.GetMiningParents(999).size());
+                 pindex->GetBlockHash().ToString(), m_dag_tips.Size());
     }
 
     // =========================================================================
@@ -4661,9 +4663,15 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
 
             if (weight < 1.0) {
                 // Scale the block's proof-of-work contribution by the weight.
-                // nChainWork = parent_work + GetBlockProof * weight
+                // nChainWork = parent_work + max(1, GetBlockProof * weight)
+                // Use basis points (10000ths) for precision with small proof
+                // values (e.g. regtest proof = 2). Guarantee at least 1 unit
+                // so the chain always makes progress.
                 arith_uint256 full_proof = GetBlockProof(*pindex);
-                arith_uint256 scaled_proof = full_proof * static_cast<uint64_t>(weight * 1000) / 1000;
+                uint64_t bp = static_cast<uint64_t>(weight * 10000);
+                if (bp < 1) bp = 1;
+                arith_uint256 scaled_proof = full_proof * bp / 10000;
+                if (scaled_proof == 0) scaled_proof = 1;
                 arith_uint256 parent_work = pindex->pprev ? pindex->pprev->nChainWork : arith_uint256(0);
                 pindex->nChainWork = parent_work + scaled_proof;
             }

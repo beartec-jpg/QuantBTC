@@ -18,6 +18,7 @@
 
 #include <uint256.h>
 
+#include <map>
 #include <set>
 #include <vector>
 
@@ -27,24 +28,32 @@ namespace dag {
 static constexpr uint32_t MAX_BLOCK_PARENTS = 32;
 
 /**
- * Maintains the set of current DAG tips.
+ * Maintains the set of current DAG tips, ordered by blue_score descending.
  *
- * Tips are ordered by (blue_score DESC, hash ASC) so the "best" tip is
- * always tips.begin().
+ * Internally tips are stored in a set keyed by (blue_score DESC, hash ASC)
+ * so that GetMiningParents() always returns the highest-scored tips first.
+ * A separate hash→blue_score map enables O(log n) removal by hash.
  */
 class DagTipSet {
 public:
     DagTipSet() = default;
 
-    /** Add a newly verified block as a tip (also removes its parents from tips). */
-    void BlockConnected(const uint256& block_hash, const std::vector<uint256>& parents);
+    /**
+     * Add a newly verified block as a tip (also removes its parents from tips).
+     * @param block_hash  hash of the accepted block
+     * @param blue_score  GHOSTDAG blue_score of the accepted block
+     * @param parents     all parent hashes (pprev + dagparents)
+     */
+    void BlockConnected(const uint256& block_hash, uint64_t blue_score,
+                        const std::vector<uint256>& parents);
 
     /** Remove a block from tips when it is disconnected (reorg). */
-    void BlockDisconnected(const uint256& block_hash, const std::vector<uint256>& parents);
+    void BlockDisconnected(const uint256& block_hash,
+                           const std::vector<uint256>& parent_hashes_with_scores);
 
     /**
      * Return up to `max_parents` tip hashes for a new block template.
-     * Selects the most-work tips first.
+     * Returns tips in blue_score descending order (best tips first).
      */
     std::vector<uint256> GetMiningParents(uint32_t max_parents = MAX_BLOCK_PARENTS) const;
 
@@ -52,16 +61,33 @@ public:
     bool IsTip(const uint256& hash) const;
 
     /** Number of current tips. */
-    size_t Size() const { return m_tips.size(); }
-
-    /** Access all tips (unordered). */
-    const std::set<uint256>& GetTips() const { return m_tips; }
+    size_t Size() const { return m_score_to_hash.size(); }
 
     /** Clear all state (used for unit tests / reindex). */
     void Clear();
 
 private:
-    std::set<uint256> m_tips;
+    /**
+     * Comparator: higher blue_score first; ties broken by lower hash.
+     * This gives a deterministic priority ordering for tip selection.
+     */
+    struct TipOrder {
+        bool operator()(const std::pair<uint64_t, uint256>& a,
+                        const std::pair<uint64_t, uint256>& b) const
+        {
+            if (a.first != b.first) return a.first > b.first; // higher score first
+            return a.second < b.second;                        // lower hash first
+        }
+    };
+
+    /** Ordered set of (blue_score, hash), best tip at begin(). */
+    std::set<std::pair<uint64_t, uint256>, TipOrder> m_score_to_hash;
+
+    /** Reverse lookup: hash → blue_score, for O(log n) removal. */
+    std::map<uint256, uint64_t> m_hash_to_score;
+
+    void RemoveTip(const uint256& hash);
+    void InsertTip(const uint256& hash, uint64_t blue_score);
 };
 
 } // namespace dag

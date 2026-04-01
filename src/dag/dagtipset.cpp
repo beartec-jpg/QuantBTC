@@ -9,24 +9,42 @@
 
 namespace dag {
 
-void DagTipSet::BlockConnected(const uint256& block_hash, const std::vector<uint256>& parents)
+void DagTipSet::InsertTip(const uint256& hash, uint64_t blue_score)
+{
+    m_score_to_hash.emplace(blue_score, hash);
+    m_hash_to_score[hash] = blue_score;
+}
+
+void DagTipSet::RemoveTip(const uint256& hash)
+{
+    auto it = m_hash_to_score.find(hash);
+    if (it == m_hash_to_score.end()) return;
+    uint64_t score = it->second;
+    m_score_to_hash.erase({score, hash});
+    m_hash_to_score.erase(it);
+}
+
+void DagTipSet::BlockConnected(const uint256& block_hash, uint64_t blue_score,
+                               const std::vector<uint256>& parents)
 {
     // Remove each parent from tips (they now have a child)
     for (const uint256& p : parents) {
-        m_tips.erase(p);
+        RemoveTip(p);
     }
     // Add the new block as a tip
-    m_tips.insert(block_hash);
+    InsertTip(block_hash, blue_score);
 }
 
-void DagTipSet::BlockDisconnected(const uint256& block_hash, const std::vector<uint256>& parents)
+void DagTipSet::BlockDisconnected(const uint256& block_hash,
+                                  const std::vector<uint256>& parent_hashes_with_scores)
 {
     // Remove the disconnected block from tips
-    m_tips.erase(block_hash);
-    // Re-add its parents as tips (they may now be childless again)
-    for (const uint256& p : parents) {
-        if (!p.IsNull()) {
-            m_tips.insert(p);
+    RemoveTip(block_hash);
+    // Re-add parents — caller should re-insert if they become childless.
+    // For now we insert with score 0; the next BlockConnected will correct it.
+    for (const uint256& p : parent_hashes_with_scores) {
+        if (!p.IsNull() && m_hash_to_score.find(p) == m_hash_to_score.end()) {
+            InsertTip(p, 0);
         }
     }
 }
@@ -34,22 +52,23 @@ void DagTipSet::BlockDisconnected(const uint256& block_hash, const std::vector<u
 std::vector<uint256> DagTipSet::GetMiningParents(uint32_t max_parents) const
 {
     std::vector<uint256> result;
-    result.reserve(std::min<size_t>(m_tips.size(), max_parents));
-    for (const uint256& tip : m_tips) {
+    result.reserve(std::min<size_t>(m_score_to_hash.size(), max_parents));
+    for (const auto& [score, hash] : m_score_to_hash) {
         if (result.size() >= max_parents) break;
-        result.push_back(tip);
+        result.push_back(hash);
     }
     return result;
 }
 
 bool DagTipSet::IsTip(const uint256& hash) const
 {
-    return m_tips.count(hash) > 0;
+    return m_hash_to_score.count(hash) > 0;
 }
 
 void DagTipSet::Clear()
 {
-    m_tips.clear();
+    m_score_to_hash.clear();
+    m_hash_to_score.clear();
 }
 
 } // namespace dag

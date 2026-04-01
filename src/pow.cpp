@@ -8,6 +8,7 @@
 
 #include <arith_uint256.h>
 #include <chain.h>
+#include <common/args.h>
 #include <primitives/block.h>
 #include <uint256.h>
 
@@ -79,7 +80,7 @@ unsigned int GetNextWorkRequired(const CBlockIndex* pindexLast, const CBlockHead
     unsigned int nProofOfWorkLimit = UintToArith256(params.powLimit).GetCompact();
 
     // QuantumBTC: use DAG-specific difficulty adjustment when in DAG mode
-    if (params.fDagMode) {
+    if (gArgs.GetBoolArg("-dag", params.fDagMode)) {
         return GetNextWorkRequiredDAG(pindexLast, pblock, params);
     }
 
