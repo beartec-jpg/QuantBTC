@@ -547,6 +547,91 @@ public:
  * Regression test: intended for private networks only. Has minimal difficulty to ensure that
  * blocks can be found instantly.
  */
+/**
+ * QuantumBTC Testnet — a public DAG-enabled test network
+ */
+class CQbtcTestNetParams : public CChainParams
+{
+public:
+    CQbtcTestNetParams()
+    {
+        m_chain_type = ChainType::QBTCTESTNET;
+        consensus.signet_blocks = false;
+        consensus.signet_challenge.clear();
+        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.BIP34Height = 1;
+        consensus.BIP34Hash = uint256();
+        consensus.BIP65Height = 1;
+        consensus.BIP66Height = 1;
+        consensus.CSVHeight = 1;
+        consensus.SegwitHeight = 0;
+        consensus.MinBIP9WarningHeight = 0;
+        consensus.powLimit = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetSpacing = 10 * 60;
+        consensus.fPowAllowMinDifficultyBlocks = true;
+        consensus.enforce_BIP94 = false;
+        consensus.fPowNoRetargeting = true;
+        consensus.nRuleChangeActivationThreshold = 1512; // 75%
+        consensus.nMinerConfirmationWindow = 2016;
+
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0;
+
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
+
+        consensus.nMinimumChainWork = uint256{};
+        consensus.defaultAssumeValid = uint256{};
+
+        // QuantumBTC BlockDAG: enabled
+        consensus.fDagMode = true;
+        consensus.ghostdag_k = 18;
+        consensus.nDagTargetSpacingMs = 2000; // 2 second target for testnet
+        consensus.nMaxDagParents = 32;
+        consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB
+
+        // QuantumBTC: Early protection ON
+        consensus.fEarlyProtection = true;
+
+        // Unique magic bytes for QBTC testnet
+        pchMessageStart[0] = 0xd1;
+        pchMessageStart[1] = 0xa5;
+        pchMessageStart[2] = 0xc3;
+        pchMessageStart[3] = 0xb7;
+        nDefaultPort = 28333;
+        nPruneAfterHeight = 1000;
+        m_assumed_blockchain_size = 0;
+        m_assumed_chain_state_size = 0;
+
+        genesis = CreateQuantumBTCGenesisBlock(1743379200, 0, 0x207fffff, 1, 50 * COIN);
+        consensus.hashGenesisBlock = genesis.GetHash();
+
+        vFixedSeeds.clear();
+        vSeeds.clear();
+
+        fDefaultConsistencyChecks = false;
+        m_is_mockable_chain = false;
+
+        checkpointData = {{}};
+        m_assumeutxo_data = {};
+        chainTxData = ChainTxData{0, 0, 0};
+
+        // QuantumBTC testnet address prefixes — unique to avoid confusion
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1, 120); // 'q' prefix
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 122); // 'r' prefix
+        base58Prefixes[SECRET_KEY]     = std::vector<unsigned char>(1, 248);
+        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xD1};
+        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0xA1};
+
+        bech32_hrp = "qbtct"; // QuantumBTC testnet bech32 prefix
+    }
+};
+
 class CRegTestParams : public CChainParams
 {
 public:
@@ -712,6 +797,11 @@ std::unique_ptr<const CChainParams> CChainParams::TestNet()
 std::unique_ptr<const CChainParams> CChainParams::TestNet4()
 {
     return std::make_unique<const CTestNet4Params>();
+}
+
+std::unique_ptr<const CChainParams> CChainParams::QbtcTestNet()
+{
+    return std::make_unique<const CQbtcTestNetParams>();
 }
 
 std::vector<int> CChainParams::GetAvailableSnapshotHeights() const
