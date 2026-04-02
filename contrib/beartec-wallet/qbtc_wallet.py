@@ -227,7 +227,12 @@ class QBTCKeyPair:
 
     def __init__(self, ecdsa_key: ECDSAKey):
         self.ecdsa = ecdsa_key
-        self.dilithium = DilithiumKey.from_ecdsa_privkey(ecdsa_key.privkey)
+        # Dilithium key derivation requires liboqs-python.
+        # Set to None when the binding is not available.
+        try:
+            self.dilithium = DilithiumKey.from_ecdsa_privkey(ecdsa_key.privkey)
+        except NotImplementedError:
+            self.dilithium = None
 
     @classmethod
     def generate(cls) -> "QBTCKeyPair":
@@ -260,14 +265,18 @@ class QBTCKeyPair:
 
     def export_keys(self) -> dict:
         """Export all key material (handle securely!)."""
-        return {
+        result = {
             "ecdsa_privkey": self.ecdsa.privkey.hex(),
             "ecdsa_pubkey": self.ecdsa.pubkey_compressed.hex(),
-            "dilithium_pubkey": self.dilithium.public_key.hex(),
-            "dilithium_privkey_seed": self.dilithium.seed.hex(),
             "address_testnet": self.address(QBTC_TESTNET_HRP),
             "address_mainnet": self.address(QBTC_MAINNET_HRP),
         }
+        if self.dilithium is not None:
+            result["dilithium_pubkey"] = self.dilithium.public_key.hex()
+            result["dilithium_privkey_seed"] = self.dilithium.seed.hex()
+        else:
+            result["dilithium_pubkey"] = "(unavailable: install liboqs-python)"
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -439,26 +448,31 @@ def self_test():
     print("=== QBTC Wallet Library Self-Test ===\n")
 
     # 1. Test Dilithium key derivation and signing
-    seed = bytes.fromhex("deadbeef" * 8)  # 32-byte test seed
-    dk = DilithiumKey.from_seed(seed)
-    assert len(dk.public_key) == DILITHIUM_PK_SIZE
-    assert len(dk.private_key) == DILITHIUM_SK_SIZE
-    print(f"Dilithium PK: {dk.public_key[:16].hex()}... ({len(dk.public_key)} bytes)")
+    # NOTE: The HMAC-SHA512 Dilithium stub has been removed.  The DilithiumKey
+    # class now raises NotImplementedError.  Install liboqs-python for real
+    # ML-DSA-44 signing (see module docstring for details).
+    try:
+        seed = bytes.fromhex("deadbeef" * 8)  # 32-byte test seed
+        dk = DilithiumKey.from_seed(seed)
+        assert len(dk.public_key) == DILITHIUM_PK_SIZE
+        assert len(dk.private_key) == DILITHIUM_SK_SIZE
+        print(f"Dilithium PK: {dk.public_key[:16].hex()}... ({len(dk.public_key)} bytes)")
 
-    msg = hashlib.sha256(b"test message").digest()
-    sig = dk.sign(msg)
-    assert len(sig) == DILITHIUM_SIG_SIZE
-    assert dk.verify(msg, sig), "Signature verification failed!"
-    print(f"Dilithium signature: {sig[:16].hex()}... ({len(sig)} bytes) VERIFIED")
+        msg = hashlib.sha256(b"test message").digest()
+        sig = dk.sign(msg)
+        assert len(sig) == DILITHIUM_SIG_SIZE
+        assert dk.verify(msg, sig), "Signature verification failed!"
+        print(f"Dilithium signature: {sig[:16].hex()}... ({len(sig)} bytes) VERIFIED")
 
-    # Determinism check
-    sig2 = dk.sign(msg)
-    assert sig == sig2, "Signatures not deterministic!"
-    print("Determinism: PASS (same key + message = same signature)")
+        sig2 = dk.sign(msg)
+        assert sig == sig2, "Signatures not deterministic!"
+        print("Determinism: PASS (same key + message = same signature)")
 
-    # Wrong message should fail
-    assert not dk.verify(b"wrong", sig), "Should have failed!"
-    print("Wrong-message rejection: PASS")
+        assert not dk.verify(b"wrong", sig), "Should have failed!"
+        print("Wrong-message rejection: PASS")
+    except NotImplementedError as e:
+        print(f"Dilithium test SKIPPED: {e}")
+        print("Install liboqs-python (pip install liboqs-python) for real ML-DSA-44 support.")
 
     # 2. Test Bech32 address generation
     if ECDSA_AVAILABLE:
@@ -468,7 +482,10 @@ def self_test():
         print(f"\nAddress (testnet): {addr}")
         print(f"Address (mainnet): {kp.address(QBTC_MAINNET_HRP)}")
         print(f"ECDSA pubkey: {kp.ecdsa.pubkey_compressed.hex()}")
-        print(f"Dilithium pubkey: {kp.dilithium.public_key[:32].hex()}... ({DILITHIUM_PK_SIZE} bytes)")
+        if kp.dilithium is not None:
+            print(f"Dilithium pubkey: {kp.dilithium.public_key[:32].hex()}... ({DILITHIUM_PK_SIZE} bytes)")
+        else:
+            print("Dilithium pubkey: (unavailable — install liboqs-python)")
     else:
         print("\nSkipping ECDSA tests (install 'ecdsa' package)")
 
@@ -487,7 +504,8 @@ def self_test():
         recovered = ShamirSplit.recover_key(sh1, 1, sh3, 3)
         recovered_kp = QBTCKeyPair.from_privkey_hex(recovered.hex())
         assert recovered_kp.address() == kp.address()
-        assert recovered_kp.dilithium.public_key == kp.dilithium.public_key
+        if recovered_kp.dilithium is not None and kp.dilithium is not None:
+            assert recovered_kp.dilithium.public_key == kp.dilithium.public_key
         print(f"Recovered hybrid key matches original: PASS")
         print(f"  Address:        {recovered_kp.address()}")
         print(f"  Dilithium PK:   {recovered_kp.dilithium.public_key[:32].hex()}...")

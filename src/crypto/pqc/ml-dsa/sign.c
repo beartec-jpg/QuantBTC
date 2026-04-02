@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stddef.h>
+#include <string.h>
 #include "params.h"
 #include "sign.h"
 #include "packing.h"
@@ -89,8 +90,7 @@ int crypto_sign_seed_keypair(uint8_t *pk, uint8_t *sk,
   polyveck s2, t1, t0;
 
   /* Expand 32-byte seed to rho (32) + rhoprime (64) + key (32) */
-  seedbuf[0] = seed[0]; /* copy seed */
-  for(size_t i = 1; i < SEEDBYTES; i++) seedbuf[i] = seed[i];
+  memcpy(seedbuf, seed, SEEDBYTES);
   seedbuf[SEEDBYTES+0] = K;
   seedbuf[SEEDBYTES+1] = L;
   shake256(seedbuf, 2*SEEDBYTES + CRHBYTES, seedbuf, SEEDBYTES+2);
