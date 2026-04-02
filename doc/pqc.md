@@ -16,9 +16,13 @@ protection against potential quantum computer attacks.
 - **NTRU-HPS-4096-821**: A lattice-based cryptosystem with long-standing security analysis
 
 ### Digital Signatures
-- **Dilithium (ML-DSA-44)**: CRYSTALS-Dilithium2 lattice-based signature scheme (NIST FIPS 204). Real reference implementation using the pq-crystals/dilithium portable C code.
-- **Falcon**: A fast lattice-based signature scheme
-- **SPHINCS+**: A stateless hash-based signature scheme
+- **Dilithium** (ML-DSA-44): A lattice-based signature scheme (NIST FIPS 204)
+- **SPHINCS+** (SLH-DSA-SHA2-128f): A stateless hash-based signature scheme (NIST FIPS 205)
+  - Parameter set: SHA2-128f (fast variant)
+  - Public key: 32 bytes, private key: 64 bytes, signature: 17 088 bytes
+  - Pure hash-based construction (SHA-256 only), no external dependencies
+  - Implemented using the sphincs/sphincsplus reference C implementation
+- **Falcon** (FN-DSA-512): A fast lattice-based signature scheme (Coming Soon)
 
 ## Configuration Options
 
