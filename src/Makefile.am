@@ -617,6 +617,28 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/pqc/hybrid_key.h \
   crypto/pqc/dilithium.cpp \
   crypto/pqc/dilithium.h \
+  crypto/pqc/ml-dsa/config.h \
+  crypto/pqc/ml-dsa/params.h \
+  crypto/pqc/ml-dsa/fips202.h \
+  crypto/pqc/ml-dsa/fips202.c \
+  crypto/pqc/ml-dsa/reduce.h \
+  crypto/pqc/ml-dsa/reduce.c \
+  crypto/pqc/ml-dsa/rounding.h \
+  crypto/pqc/ml-dsa/rounding.c \
+  crypto/pqc/ml-dsa/ntt.h \
+  crypto/pqc/ml-dsa/ntt.c \
+  crypto/pqc/ml-dsa/poly.h \
+  crypto/pqc/ml-dsa/poly.c \
+  crypto/pqc/ml-dsa/polyvec.h \
+  crypto/pqc/ml-dsa/polyvec.c \
+  crypto/pqc/ml-dsa/packing.h \
+  crypto/pqc/ml-dsa/packing.c \
+  crypto/pqc/ml-dsa/symmetric.h \
+  crypto/pqc/ml-dsa/symmetric-shake.c \
+  crypto/pqc/ml-dsa/sign.h \
+  crypto/pqc/ml-dsa/sign.c \
+  crypto/pqc/ml-dsa/randombytes.h \
+  crypto/pqc/ml-dsa/randombytes.cpp \
   crypto/pqc/falcon.cpp \
   crypto/pqc/falcon.h \
   crypto/pqc/sphincs.cpp \
