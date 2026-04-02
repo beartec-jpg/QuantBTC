@@ -590,9 +590,9 @@ public:
 
         // QuantumBTC BlockDAG: enabled
         consensus.fDagMode = true;
-        consensus.ghostdag_k = 18;
-        consensus.nDagTargetSpacingMs = 2000; // 2 second target for testnet
-        consensus.nMaxDagParents = 32;
+        consensus.ghostdag_k = 32;             // allow more concurrent blue blocks — more small miners rewarded
+        consensus.nDagTargetSpacingMs = 1000;  // 1-second blocks — faster block finding for small miners
+        consensus.nMaxDagParents = 64;         // match increased K, better DAG connectivity
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB
 
         // QuantumBTC: Early protection ON
@@ -672,9 +672,9 @@ public:
 
         // QuantumBTC BlockDAG: enabled for regtest (DAG + GHOSTDAG + fast blocks)
         consensus.fDagMode = true;
-        consensus.ghostdag_k = 18;
-        consensus.nDagTargetSpacingMs = 1000; // 1 second target
-        consensus.nMaxDagParents = 32;
+        consensus.ghostdag_k = 32;             // allow more concurrent blue blocks — more small miners rewarded
+        consensus.nDagTargetSpacingMs = 500;   // 500ms blocks — fastest for testing
+        consensus.nMaxDagParents = 64;         // match increased K, better DAG connectivity
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB equivalent
 
         // QuantumBTC: Early protection ON by default for regtest

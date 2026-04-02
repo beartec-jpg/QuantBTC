@@ -140,9 +140,19 @@ struct Params {
      * GHOSTDAG K parameter: maximum anti-cone size for a block to be
      * classified as "blue". Higher K tolerates more concurrent blocks
      * (higher TPS) at the cost of weaker security assumptions.
-     * Kaspa uses K=18; we default to 18 for QuantumBTC.
+     * Kaspa uses K=18; QuantumBTC defaults to 32 for broader inclusivity.
+     *
+     * ── People's Chain Design Rationale ──────────────────────────────────────
+     * Higher K = more concurrent blocks treated as "blue" = more miners
+     * earning block rewards per epoch.  Combined with fast (~1 s) DAG blocks,
+     * small miners find blocks frequently and are NOT orphaned: both a home
+     * miner's block and a pool's block can both be blue in the same DAG
+     * window.  SHA-256 is retained for merge-mining compatibility with
+     * Bitcoin (miners point existing hardware at QBTC at zero extra cost).
+     * The DAG is the equalizer — not the hash algorithm.
+     * ─────────────────────────────────────────────────────────────────────────
      */
-    uint32_t ghostdag_k{18};
+    uint32_t ghostdag_k{32};
 
     /**
      * Target block interval in milliseconds for the BlockDAG.
@@ -153,9 +163,11 @@ struct Params {
 
     /**
      * Maximum number of parent references a DAG block may include.
+     * Increased to 64 to match the higher ghostdag_k and provide better
+     * DAG connectivity for a widely distributed miner set.
      * (Matches dag::MAX_BLOCK_PARENTS)
      */
-    uint32_t nMaxDagParents{32};
+    uint32_t nMaxDagParents{64};
 
     /**
      * Increase maximum block weight to accommodate larger PQC signatures
