@@ -78,6 +78,10 @@ typedef enum ScriptError_t
     SCRIPT_ERR_TAPSCRIPT_CHECKMULTISIG,
     SCRIPT_ERR_TAPSCRIPT_MINIMALIF,
 
+    /* PQC signature errors */
+    SCRIPT_ERR_PQC_SIG_SIZE,
+    SCRIPT_ERR_PQC_SIG,
+
     /* Constant scriptCode */
     SCRIPT_ERR_OP_CODESEPARATOR,
     SCRIPT_ERR_SIG_FINDANDDELETE,

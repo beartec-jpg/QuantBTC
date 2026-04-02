@@ -275,6 +275,11 @@ public:
          return false;
     }
 
+    virtual bool CheckPQCSignature(const std::vector<unsigned char>& pqcSig, const std::vector<unsigned char>& pqcPubKey, const CScript& scriptCode, SigVersion sigversion, int nHashType) const
+    {
+        return false;
+    }
+
     virtual ~BaseSignatureChecker() = default;
 };
 
@@ -309,8 +314,7 @@ public:
     GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn, MissingDataBehavior mdb) : txTo(txToIn), m_mdb(mdb), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
     bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
-    bool CheckDilithiumSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig, const CScript& scriptCode, SigVersion sigversion) const override;
-    bool CheckSPHINCSSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig, const CScript& scriptCode, SigVersion sigversion) const override;
+    bool CheckPQCSignature(const std::vector<unsigned char>& pqcSig, const std::vector<unsigned char>& pqcPubKey, const CScript& scriptCode, SigVersion sigversion, int nHashType) const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
 };
@@ -336,14 +340,9 @@ public:
         return m_checker.CheckSchnorrSignature(sig, pubkey, sigversion, execdata, serror);
     }
 
-    bool CheckDilithiumSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig, const CScript& scriptCode, SigVersion sigversion) const override
+    bool CheckPQCSignature(const std::vector<unsigned char>& pqcSig, const std::vector<unsigned char>& pqcPubKey, const CScript& scriptCode, SigVersion sigversion, int nHashType) const override
     {
-        return m_checker.CheckDilithiumSignature(pqc_sig, pqc_pubkey, ecdsa_sig, scriptCode, sigversion);
-    }
-
-    bool CheckSPHINCSSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig, const CScript& scriptCode, SigVersion sigversion) const override
-    {
-        return m_checker.CheckSPHINCSSignature(pqc_sig, pqc_pubkey, ecdsa_sig, scriptCode, sigversion);
+        return m_checker.CheckPQCSignature(pqcSig, pqcPubKey, scriptCode, sigversion, nHashType);
     }
 
     bool CheckLockTime(const CScriptNum& nLockTime) const override

@@ -4289,7 +4289,7 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
     if (block_weight > MAX_BLOCK_WEIGHT) {
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-weight", strprintf("%s : weight limit failed", __func__));
     }
-    if (GetConsensus().nMaxBlockWeightPQC > 0 && block_weight > static_cast<int64_t>(GetConsensus().nMaxBlockWeightPQC)) {
+    if (chainman.GetConsensus().nMaxBlockWeightPQC > 0 && block_weight > static_cast<int64_t>(chainman.GetConsensus().nMaxBlockWeightPQC)) {
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-pqc-blk-weight",
                              strprintf("%s : PQC weight limit failed", __func__));
     }
@@ -4612,15 +4612,21 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
     }
 
     // --- Early Protection ---
+    LogPrintf("AcceptBlock: entering EarlyProtection section, pindex=%p height=%d\n",
+              (void*)pindex, pindex ? pindex->nHeight : -1);
     if (pindex && pindex->nHeight > 0) {
         const Consensus::Params& cparams = GetConsensus();
         bool force_flag = gArgs.GetBoolArg("-earlyprotection", cparams.fEarlyProtection);
         bool height_ok  = pindex->nHeight <= earlyprotection::EARLY_PROTECTION_HEIGHT_LIMIT;
         bool protection_active = force_flag && (height_ok || gArgs.IsArgSet("-earlyprotection"));
+        LogPrintf("AcceptBlock: EarlyProtection force_flag=%d height_ok=%d protection_active=%d\n",
+                  force_flag, height_ok, protection_active);
 
         if (protection_active) {
             auto bwi = g_early_protection.PopBlockWeight(pindex->GetBlockHash());
             double weight = bwi.weight;
+            LogPrintf("AcceptBlock: EarlyProtection PopBlockWeight returned weight=%.3f peer_id=%lld\n",
+                      weight, bwi.peer_id);
 
             if (bwi.peer_id == -1) {
                   g_early_protection.RegisterPeer(-1);
@@ -4628,6 +4634,8 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                 double w_throttle = g_early_protection.RecordBlockIPAndGetThrottleWeight("127.0.0.1");
                 double w_ramp = g_early_protection.RecordBlockAndGetRampWeight(-1);
                   weight = w_activation * w_throttle * w_ramp;
+                  LogPrintf("AcceptBlock: EarlyProtection local block weights: activation=%.3f throttle=%.3f ramp=%.3f final=%.3f\n",
+                            w_activation, w_throttle, w_ramp, weight);
             }
 
             pindex->nEarlyProtectionWeight = weight;
@@ -4640,6 +4648,8 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                 if (scaled_proof == 0) scaled_proof = 1;
                 arith_uint256 parent_work = pindex->pprev ? pindex->pprev->nChainWork : arith_uint256(0);
                 pindex->nChainWork = parent_work + scaled_proof;
+                LogPrintf("AcceptBlock: EarlyProtection scaled nChainWork=%s\n",
+                          pindex->nChainWork.ToString());
             }
 
             LogPrint(BCLog::VALIDATION,
@@ -4650,6 +4660,7 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                      pindex->nChainWork.ToString());
         }
     }
+    LogPrintf("AcceptBlock: EarlyProtection done, writing block to disk\n");
 
     // =========================================================================
     // Now safe to store the block and add it to setBlockIndexCandidates.
@@ -4671,6 +4682,7 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
             }
         }
         ReceivedBlockTransactions(block, pindex, blockPos);
+        LogPrintf("AcceptBlock: ReceivedBlockTransactions done\n");
     } catch (const std::runtime_error& e) {
         return FatalError(GetNotifications(), state, strprintf(_("System error while saving block to disk: %s"), e.what()));
     }
@@ -4691,6 +4703,7 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
     }
 
     CheckBlockIndex();
+    LogPrintf("AcceptBlock: DONE successfully\n");
 
     return true;
 }
@@ -4698,6 +4711,7 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
 bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& block, bool force_processing, bool min_pow_checked, bool* new_block)
 {
     AssertLockNotHeld(cs_main);
+    LogPrintf("ProcessNewBlock: ENTRY hash=%s\n", block->GetHash().GetHex());
 
     {
         CBlockIndex *pindex = nullptr;
@@ -4707,6 +4721,7 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
         // CheckBlock() does not support multi-threaded block validation because CBlock::fChecked can cause data race.
         // Therefore, the following critical section must include the CheckBlock() call as well.
         LOCK(cs_main);
+        LogPrintf("ProcessNewBlock: cs_main acquired, calling CheckBlock\n");
 
         // Skipping AcceptBlock() for CheckBlock() failures means that we will never mark a block as invalid if
         // CheckBlock() fails.  This is protective against consensus failure if there are any unknown forms of block
@@ -4714,9 +4729,11 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
         // https://lists.linuxfoundation.org/pipermail/bitcoin-dev/2019-February/016697.html.  Because CheckBlock() is
         // not very expensive, the anti-DoS benefits of caching failure (of a definitely-invalid block) are not substantial.
         bool ret = CheckBlock(*block, state, GetConsensus());
+        LogPrintf("ProcessNewBlock: CheckBlock returned %d\n", ret);
         if (ret) {
             // Store to disk
             ret = AcceptBlock(block, state, &pindex, force_processing, nullptr, new_block, min_pow_checked);
+            LogPrintf("ProcessNewBlock: AcceptBlock returned %d\n", ret);
         }
         if (!ret) {
             if (m_options.signals) {
@@ -4726,8 +4743,9 @@ bool ChainstateManager::ProcessNewBlock(const std::shared_ptr<const CBlock>& blo
             return false;
         }
     }
-
+    LogPrintf("ProcessNewBlock: calling NotifyHeaderTip\n");
     NotifyHeaderTip();
+    LogPrintf("ProcessNewBlock: calling ActivateBestChain\n");
 
     BlockValidationState state; // Only used to report errors, not invalidity - ignore it
     if (!ActiveChainstate().ActivateBestChain(state, block)) {

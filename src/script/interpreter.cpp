@@ -1828,6 +1828,23 @@ bool GenericTransactionSignatureChecker<T>::CheckSequence(const CScriptNum& nSeq
     return true;
 }
 
+template <class T>
+bool GenericTransactionSignatureChecker<T>::CheckPQCSignature(const std::vector<unsigned char>& pqcSig, const std::vector<unsigned char>& pqcPubKey, const CScript& scriptCode, SigVersion sigversion, int nHashType) const
+{
+    if (pqcSig.size() != pqc::Dilithium::SIGNATURE_SIZE ||
+        pqcPubKey.size() != pqc::Dilithium::PUBLIC_KEY_SIZE) {
+        return false;
+    }
+
+    if (sigversion == SigVersion::WITNESS_V0 && amount < 0) return HandleMissingData(m_mdb);
+
+    uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
+
+    pqc::Dilithium dilithium;
+    std::vector<uint8_t> msg(sighash.begin(), sighash.end());
+    return dilithium.Verify(msg, pqcSig, pqcPubKey);
+}
+
 // explicit instantiation
 template class GenericTransactionSignatureChecker<CTransaction>;
 template class GenericTransactionSignatureChecker<CMutableTransaction>;
@@ -1941,40 +1958,34 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             // BIP141 P2WPKH: 20-byte witness v0 program (which encodes Hash160(pubkey))
             if (stack.size() == 4) {
                 // QuantBTC PQC-extended P2WPKH: [ecdsa_sig, pubkey, pqc_sig, pqc_pubkey]
+                // Strip PQC elements after verifying the Dilithium signature
+                // over the same BIP143 sighash that ECDSA will verify below.
                 const valtype& pqc_pubkey = SpanPopBack(stack);
                 const valtype& pqc_sig = SpanPopBack(stack);
 
-                // Reject empty PQC witness elements.
-                if (pqc_sig.empty() || pqc_pubkey.empty()) {
-                    return set_error(serror, SCRIPT_ERR_PQC_WITNESS_MALFORMED);
+                if (pqc_sig.size() != pqc::Dilithium::SIGNATURE_SIZE ||
+                    pqc_pubkey.size() != pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                    return set_error(serror, SCRIPT_ERR_PQC_SIG_SIZE);
                 }
 
-                // Build the implied P2PKH scriptCode used for the sighash.
+                // Build the implied P2PKH script (same scriptCode ECDSA will use)
                 CScript pqc_scriptCode;
                 pqc_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
 
-                // Differentiate PQC algorithm by public key and signature sizes.
-                if (pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE &&
-                    pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE) {
-                    // Dilithium (ML-DSA-44) verification path.
-                    if (!checker.CheckDilithiumSignature(pqc_sig, pqc_pubkey, stack[0], pqc_scriptCode, SigVersion::WITNESS_V0)) {
-                        return set_error(serror, SCRIPT_ERR_PQC_VERIFY_FAILED);
-                    }
-                } else if (pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE &&
-                           pqc_sig.size() <= pqc::SPHINCS::SIGNATURE_SIZE) {
-                    // SPHINCS+ (SLH-DSA-SHA2-128f) verification path.
-                    if (!checker.CheckSPHINCSSignature(pqc_sig, pqc_pubkey, stack[0], pqc_scriptCode, SigVersion::WITNESS_V0)) {
-                        return set_error(serror, SCRIPT_ERR_PQC_VERIFY_FAILED);
-                    }
-                } else if (pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE ||
-                           pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
-                    // Known PQC public key type but signature size doesn't match.
-                    return set_error(serror, SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH);
-                } else {
-                    // PQC element sizes do not match any supported algorithm.
-                    return set_error(serror, SCRIPT_ERR_PQC_ALGO_UNSUPPORTED);
+                // Extract hash type from the ECDSA signature (now at stack[0])
+                if (stack.size() < 2 || stack[0].empty()) {
+                    return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
                 }
-                // stack now has 2 elements — proceed with standard ECDSA verification.
+                int nHashType = stack[0].back();
+
+                if (!checker.CheckPQCSignature(pqc_sig, pqc_pubkey, pqc_scriptCode,
+                                               SigVersion::WITNESS_V0, nHashType)) {
+                    return set_error(serror, SCRIPT_ERR_PQC_SIG);
+                }
+
+                LogPrintf("PQC: verified Dilithium signature (%u-byte sig, %u-byte pk) for hybrid P2WPKH input\n",
+                          pqc_sig.size(), pqc_pubkey.size());
+                // stack now has 2 elements - proceed with standard ECDSA verification
             }
             if (stack.size() != 2) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH); // 2 items in witness

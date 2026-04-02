@@ -19,9 +19,9 @@ namespace pqc {
 class Dilithium {
 public:
     // ML-DSA-44 sizes from FIPS 204 / liboqs
-    static const size_t PUBLIC_KEY_SIZE = OQS_SIG_ml_dsa_44_length_public_key;   // 1312
-    static const size_t PRIVATE_KEY_SIZE = OQS_SIG_ml_dsa_44_length_secret_key;  // 2560
-    static const size_t SIGNATURE_SIZE = OQS_SIG_ml_dsa_44_length_signature;     // 2420
+    static constexpr size_t PUBLIC_KEY_SIZE = OQS_SIG_ml_dsa_44_length_public_key;   // 1312
+    static constexpr size_t PRIVATE_KEY_SIZE = OQS_SIG_ml_dsa_44_length_secret_key;  // 2560
+    static constexpr size_t SIGNATURE_SIZE = OQS_SIG_ml_dsa_44_length_signature;     // 2420
 
     Dilithium();
     ~Dilithium();

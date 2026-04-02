@@ -4,23 +4,23 @@
 
 namespace pqc {
 
-// NOT PRODUCTION: placeholder SQIsign implementation.
+// SQIsign is NOT a NIST-standardized algorithm. All operations are disabled.
 
 SQIsign::SQIsign() {}
 SQIsign::~SQIsign() {}
 
-bool SQIsign::GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key) {
-    LogPrintf("SQIsign::GenerateKeyPair: NOT IMPLEMENTED — algorithm disabled\n");
+bool SQIsign::GenerateKeyPair(std::vector<uint8_t>& /*public_key*/, std::vector<uint8_t>& /*private_key*/) {
+    LogPrintf("SQIsign: algorithm not supported — not NIST standardized\n");
     return false;
 }
 
-bool SQIsign::Sign(const std::vector<uint8_t>& message, const std::vector<uint8_t>& private_key, std::vector<uint8_t>& signature) {
-    LogPrintf("SQIsign::Sign: NOT IMPLEMENTED — algorithm disabled\n");
+bool SQIsign::Sign(const std::vector<uint8_t>& /*message*/, const std::vector<uint8_t>& /*private_key*/, std::vector<uint8_t>& /*signature*/) {
+    LogPrintf("SQIsign: algorithm not supported — not NIST standardized\n");
     return false;
 }
 
-bool SQIsign::Verify(const std::vector<uint8_t>& message, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& public_key) {
-    LogPrintf("SQIsign::Verify: NOT IMPLEMENTED — algorithm disabled\n");
+bool SQIsign::Verify(const std::vector<uint8_t>& /*message*/, const std::vector<uint8_t>& /*signature*/, const std::vector<uint8_t>& /*public_key*/) {
+    LogPrintf("SQIsign: algorithm not supported — not NIST standardized\n");
     return false;
 }
 

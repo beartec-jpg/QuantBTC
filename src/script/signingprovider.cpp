@@ -84,6 +84,7 @@ FlatSigningProvider& FlatSigningProvider::Merge(FlatSigningProvider&& b)
     keys.merge(b.keys);
     origins.merge(b.origins);
     tr_trees.merge(b.tr_trees);
+    pqc_keys.merge(b.pqc_keys);
     return *this;
 }
 

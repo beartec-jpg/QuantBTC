@@ -12,13 +12,24 @@
 #include <stdint.h>
 #include <vector>
 
+#include <oqs/oqs.h>
+
 namespace pqc {
 
+/**
+ * Falcon-padded-512 / FN-DSA digital signature scheme.
+ *
+ * Wraps liboqs implementation. Uses the padded variant for fixed-size
+ * signatures (666 bytes), which simplifies consensus-layer size checks.
+ *
+ * Security level: NIST Level 1 (roughly equivalent to AES-128).
+ * Based on NTRU lattices with fast Fourier sampling.
+ */
 class Falcon {
 public:
-    static const size_t PUBLIC_KEY_SIZE = 897;   // For Falcon-512
-    static const size_t PRIVATE_KEY_SIZE = 1281;
-    static const size_t SIGNATURE_SIZE = 666;
+    static constexpr size_t PUBLIC_KEY_SIZE = OQS_SIG_falcon_padded_512_length_public_key;    // 897
+    static constexpr size_t PRIVATE_KEY_SIZE = OQS_SIG_falcon_padded_512_length_secret_key;   // 1281
+    static constexpr size_t SIGNATURE_SIZE = OQS_SIG_falcon_padded_512_length_signature;      // 666
 
     Falcon();
     ~Falcon();

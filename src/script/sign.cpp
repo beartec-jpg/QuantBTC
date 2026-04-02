@@ -86,6 +86,38 @@ bool MutableTransactionSignatureCreator::CreateSchnorrSig(const SigningProvider&
     return true;
 }
 
+bool MutableTransactionSignatureCreator::CreatePQCSig(const SigningProvider& provider,
+                                                       std::vector<unsigned char>& pqcSig,
+                                                       std::vector<unsigned char>& pqcPubKey,
+                                                       const CKeyID& keyid,
+                                                       const CScript& scriptCode,
+                                                       SigVersion sigversion) const
+{
+    if (!pqc::PQCConfig::GetInstance().enable_hybrid_signatures) return false;
+
+    pqc::HybridKey hybridKey;
+    if (!provider.GetHybridKey(keyid, hybridKey)) return false;
+    if (!hybridKey.IsValid()) return false;
+
+    // Compute the same BIP143 sighash that ECDSA used
+    const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
+    uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
+
+    // Sign with Dilithium
+    pqc::Dilithium dilithium;
+    std::vector<unsigned char> privkey = hybridKey.GetPQCPrivateKey();
+    pqcSig.resize(pqc::Dilithium::SIGNATURE_SIZE);
+    if (!dilithium.Sign(std::vector<unsigned char>(hash.begin(), hash.end()), privkey, pqcSig)) {
+        LogPrintf("PQC: Dilithium signing failed for key %s\n", keyid.ToString());
+        return false;
+    }
+
+    pqcPubKey = hybridKey.GetPQCPublicKey();
+    LogPrintf("PQC: created Dilithium signature (%u-byte sig, %u-byte pk) for input %u\n",
+              pqcSig.size(), pqcPubKey.size(), nIn);
+    return true;
+}
+
 static bool GetCScript(const SigningProvider& provider, const SignatureData& sigdata, const CScriptID& scriptid, CScript& script)
 {
     if (provider.GetCScript(scriptid, script)) {
@@ -524,6 +556,21 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
         solved = solved && SignStep(provider, creator, witnessscript, result, subType, SigVersion::WITNESS_V0, sigdata);
         sigdata.scriptWitness.stack = result;
         sigdata.witness = true;
+
+        // QuantumBTC: append Dilithium PQC signature + pubkey for hybrid P2WPKH witness
+        // Witness becomes [ecdsa_sig, pubkey, pqc_sig, pqc_pubkey] (4 elements)
+        if (solved && sigdata.scriptWitness.stack.size() == 2) {
+            CPubKey ecpub(sigdata.scriptWitness.stack[1]);
+            if (ecpub.IsValid()) {
+                CKeyID keyid = ecpub.GetID();
+                std::vector<unsigned char> pqcSig, pqcPubKey;
+                if (creator.CreatePQCSig(provider, pqcSig, pqcPubKey, keyid, witnessscript, SigVersion::WITNESS_V0)) {
+                    sigdata.scriptWitness.stack.push_back(std::move(pqcSig));
+                    sigdata.scriptWitness.stack.push_back(std::move(pqcPubKey));
+                }
+            }
+        }
+
         result.clear();
     }
     else if (solved && whichType == TxoutType::WITNESS_V0_SCRIPTHASH)

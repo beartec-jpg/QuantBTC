@@ -1,7 +1,7 @@
 #include "pqc_manager.h"
 #include "dilithium.h"
+#include "falcon.h"
 #include "sphincs.h"
-#include <crypto/hkdf_sha256_32.h>
 #include <logging.h>
 #include <support/cleanse.h>
 
@@ -20,28 +20,25 @@ bool PQCManager::Initialize(const std::vector<PQCAlgorithm>& algorithms) {
 bool PQCManager::GenerateSignatureKeyPair(PQCAlgorithm algo,
                                         std::vector<unsigned char>& publicKey,
                                         std::vector<unsigned char>& privateKey) {
-    try {
-        switch (algo) {
-            case PQCAlgorithm::DILITHIUM: {
-                Dilithium dil;
-                return dil.GenerateKeyPair(publicKey, privateKey);
-            }
-            case PQCAlgorithm::SPHINCS: {
-                SPHINCS sph;
-                return sph.GenerateKeyPair(publicKey, privateKey);
-            }
-            case PQCAlgorithm::FALCON:
-            case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::GenerateSignatureKeyPair: DISABLED — algorithm not implemented, all operations rejected\n");
-                return false;
-            
-            default:
-                LogPrintf("PQCManager::GenerateSignatureKeyPair: Unsupported algorithm\n");
-                return false;
+    switch (algo) {
+        case PQCAlgorithm::DILITHIUM: {
+            Dilithium dil;
+            return dil.GenerateKeyPair(publicKey, privateKey);
         }
-    } catch (const std::exception& e) {
-        LogPrintf("PQCManager::GenerateSignatureKeyPair: %s\n", e.what());
-        return false;
+        case PQCAlgorithm::FALCON: {
+            Falcon fal;
+            return fal.GenerateKeyPair(publicKey, privateKey);
+        }
+        case PQCAlgorithm::SPHINCS: {
+            SPHINCS sph;
+            return sph.GenerateKeyPair(publicKey, privateKey);
+        }
+        case PQCAlgorithm::SQISIGN:
+            LogPrintf("PQCManager::GenerateSignatureKeyPair: SQIsign not supported (no NIST standard)\n");
+            return false;
+        default:
+            LogPrintf("PQCManager::GenerateSignatureKeyPair: Unsupported algorithm\n");
+            return false;
     }
 }
 
@@ -49,28 +46,25 @@ bool PQCManager::Sign(PQCAlgorithm algo,
                      const std::vector<unsigned char>& message,
                      const std::vector<unsigned char>& privateKey,
                      std::vector<unsigned char>& signature) {
-    try {
-        switch (algo) {
-            case PQCAlgorithm::DILITHIUM: {
-                Dilithium dil;
-                return dil.Sign(message, privateKey, signature);
-            }
-            case PQCAlgorithm::SPHINCS: {
-                SPHINCS sph;
-                return sph.Sign(message, privateKey, signature);
-            }
-            case PQCAlgorithm::FALCON:
-            case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::Sign: DISABLED — algorithm not implemented, all operations rejected\n");
-                return false;
-            
-            default:
-                LogPrintf("PQCManager::Sign: Unsupported algorithm\n");
-                return false;
+    switch (algo) {
+        case PQCAlgorithm::DILITHIUM: {
+            Dilithium dil;
+            return dil.Sign(message, privateKey, signature);
         }
-    } catch (const std::exception& e) {
-        LogPrintf("PQCManager::Sign: %s\n", e.what());
-        return false;
+        case PQCAlgorithm::FALCON: {
+            Falcon fal;
+            return fal.Sign(message, privateKey, signature);
+        }
+        case PQCAlgorithm::SPHINCS: {
+            SPHINCS sph;
+            return sph.Sign(message, privateKey, signature);
+        }
+        case PQCAlgorithm::SQISIGN:
+            LogPrintf("PQCManager::Sign: SQIsign not supported\n");
+            return false;
+        default:
+            LogPrintf("PQCManager::Sign: Unsupported algorithm\n");
+            return false;
     }
 }
 
@@ -78,28 +72,25 @@ bool PQCManager::Verify(PQCAlgorithm algo,
                        const std::vector<unsigned char>& message,
                        const std::vector<unsigned char>& signature,
                        const std::vector<unsigned char>& publicKey) {
-    try {
-        switch (algo) {
-            case PQCAlgorithm::DILITHIUM: {
-                Dilithium dil;
-                return dil.Verify(message, signature, publicKey);
-            }
-            case PQCAlgorithm::SPHINCS: {
-                SPHINCS sph;
-                return sph.Verify(message, signature, publicKey);
-            }
-            case PQCAlgorithm::FALCON:
-            case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::Verify: DISABLED — algorithm not implemented, all operations rejected\n");
-                return false;
-            
-            default:
-                LogPrintf("PQCManager::Verify: Unsupported algorithm\n");
-                return false;
+    switch (algo) {
+        case PQCAlgorithm::DILITHIUM: {
+            Dilithium dil;
+            return dil.Verify(message, signature, publicKey);
         }
-    } catch (const std::exception& e) {
-        LogPrintf("PQCManager::Verify: %s\n", e.what());
-        return false;
+        case PQCAlgorithm::FALCON: {
+            Falcon fal;
+            return fal.Verify(message, signature, publicKey);
+        }
+        case PQCAlgorithm::SPHINCS: {
+            SPHINCS sph;
+            return sph.Verify(message, signature, publicKey);
+        }
+        case PQCAlgorithm::SQISIGN:
+            LogPrintf("PQCManager::Verify: SQIsign not supported\n");
+            return false;
+        default:
+            LogPrintf("PQCManager::Verify: Unsupported algorithm\n");
+            return false;
     }
 }
 

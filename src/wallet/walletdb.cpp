@@ -62,6 +62,7 @@ const std::string WALLETDESCRIPTORCACHE{"walletdescriptorcache"};
 const std::string WALLETDESCRIPTORLHCACHE{"walletdescriptorlhcache"};
 const std::string WALLETDESCRIPTORCKEY{"walletdescriptorckey"};
 const std::string WALLETDESCRIPTORKEY{"walletdescriptorkey"};
+const std::string WALLETDESCRIPTORPQCKEY{"walletdescriptorpqckey"};
 const std::string WATCHMETA{"watchmeta"};
 const std::string WATCHS{"watchs"};
 const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS};
@@ -253,6 +254,14 @@ bool WalletBatch::WriteCryptedDescriptorKey(const uint256& desc_id, const CPubKe
     }
     EraseIC(std::make_pair(DBKeys::WALLETDESCRIPTORKEY, std::make_pair(desc_id, pubkey)));
     return true;
+}
+
+bool WalletBatch::WriteDescriptorPQCKey(const uint256& desc_id, const CPubKey& pubkey,
+                                         const std::vector<unsigned char>& pqc_pubkey,
+                                         const std::vector<unsigned char>& pqc_privkey)
+{
+    return WriteIC(std::make_pair(DBKeys::WALLETDESCRIPTORPQCKEY, std::make_pair(desc_id, pubkey)),
+                   std::make_pair(pqc_pubkey, pqc_privkey), false);
 }
 
 bool WalletBatch::WriteDescriptor(const uint256& desc_id, const WalletDescriptor& descriptor)
@@ -951,6 +960,29 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
         });
         result = std::max(result, ckey_res.m_result);
         num_ckeys = ckey_res.m_records;
+
+        // Get PQC (Dilithium) keys
+        prefix = PrefixStream(DBKeys::WALLETDESCRIPTORPQCKEY, id);
+        LoadResult pqc_res = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORPQCKEY, prefix,
+            [&id, &spk_man] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
+            uint256 desc_id;
+            CPubKey pubkey;
+            key >> desc_id;
+            assert(desc_id == id);
+            key >> pubkey;
+            if (!pubkey.IsValid())
+            {
+                err = "Error reading wallet database: descriptor PQC key CPubKey corrupt";
+                return DBErrors::CORRUPT;
+            }
+            std::vector<unsigned char> pqc_pub, pqc_priv;
+            value >> pqc_pub;
+            value >> pqc_priv;
+
+            spk_man->AddPQCKey(pubkey.GetID(), pqc_pub, pqc_priv);
+            return DBErrors::LOAD_OK;
+        });
+        result = std::max(result, pqc_res.m_result);
 
         return result;
     });

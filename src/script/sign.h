@@ -34,6 +34,10 @@ public:
     /** Create a singular (non-script) signature. */
     virtual bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const =0;
     virtual bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* merkle_root, SigVersion sigversion) const =0;
+    /** QuantumBTC: Create a PQC (Dilithium) signature over the same sighash as ECDSA. */
+    virtual bool CreatePQCSig(const SigningProvider& provider, std::vector<unsigned char>& pqcSig,
+                              std::vector<unsigned char>& pqcPubKey, const CKeyID& keyid,
+                              const CScript& scriptCode, SigVersion sigversion) const { return false; }
 };
 
 /** A signature creator for transactions. */
@@ -52,6 +56,9 @@ public:
     const BaseSignatureChecker& Checker() const override { return checker; }
     bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CreateSchnorrSig(const SigningProvider& provider, std::vector<unsigned char>& sig, const XOnlyPubKey& pubkey, const uint256* leaf_hash, const uint256* merkle_root, SigVersion sigversion) const override;
+    bool CreatePQCSig(const SigningProvider& provider, std::vector<unsigned char>& pqcSig,
+                      std::vector<unsigned char>& pqcPubKey, const CKeyID& keyid,
+                      const CScript& scriptCode, SigVersion sigversion) const override;
 };
 
 /** A signature checker that accepts all signatures */

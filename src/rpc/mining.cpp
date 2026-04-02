@@ -19,6 +19,7 @@
 #include <deploymentstatus.h>
 #include <interfaces/mining.h>
 #include <key_io.h>
+#include <logging.h>
 #include <net.h>
 #include <node/context.h>
 #include <node/miner.h>
@@ -135,10 +136,15 @@ static bool GenerateBlock(ChainstateManager& chainman, Mining& miner, CBlock& bl
     block_out.reset();
     block.hashMerkleRoot = BlockMerkleRoot(block);
 
+    LogPrintf("GenerateBlock: nBits=0x%08x version=0x%08x hashParents.size=%zu nonce=%u hash=%s\n",
+              block.nBits, block.nVersion, block.hashParents.size(), block.nNonce, block.GetHash().GetHex());
+
     while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetHash(), block.nBits, chainman.GetConsensus()) && !chainman.m_interrupt) {
         ++block.nNonce;
         --max_tries;
     }
+    LogPrintf("GenerateBlock: done mining loop. max_tries=%llu nonce=%u\n",
+              (unsigned long long)max_tries, block.nNonce);
     if (max_tries == 0 || chainman.m_interrupt) {
         return false;
     }
@@ -159,9 +165,12 @@ static bool GenerateBlock(ChainstateManager& chainman, Mining& miner, CBlock& bl
 
 static UniValue generateBlocks(ChainstateManager& chainman, Mining& miner, const CScript& coinbase_script, int nGenerate, uint64_t nMaxTries)
 {
+    LogPrintf("generateBlocks: ENTRY nGenerate=%d nMaxTries=%llu\n", nGenerate, (unsigned long long)nMaxTries);
     UniValue blockHashes(UniValue::VARR);
     while (nGenerate > 0 && !chainman.m_interrupt) {
+        LogPrintf("generateBlocks: calling createNewBlock\n");
         std::unique_ptr<CBlockTemplate> pblocktemplate(miner.createNewBlock(coinbase_script));
+        LogPrintf("generateBlocks: createNewBlock returned %p\n", (void*)pblocktemplate.get());
         if (!pblocktemplate.get())
             throw JSONRPCError(RPC_INTERNAL_ERROR, "Couldn't create new block");
 
@@ -279,6 +288,7 @@ static RPCHelpMan generatetoaddress()
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
+    LogPrintf("generatetoaddress: ENTRY\n");
     const int num_blocks{request.params[0].getInt<int>()};
     const uint64_t max_tries{request.params[2].isNull() ? DEFAULT_MAX_TRIES : request.params[2].getInt<int>()};
 
@@ -287,11 +297,13 @@ static RPCHelpMan generatetoaddress()
         throw JSONRPCError(RPC_INVALID_ADDRESS_OR_KEY, "Error: Invalid address");
     }
 
+    LogPrintf("generatetoaddress: num_blocks=%d max_tries=%llu\n", num_blocks, (unsigned long long)max_tries);
     NodeContext& node = EnsureAnyNodeContext(request.context);
     Mining& miner = EnsureMining(node);
     ChainstateManager& chainman = EnsureChainman(node);
 
     CScript coinbase_script = GetScriptForDestination(destination);
+    LogPrintf("generatetoaddress: calling generateBlocks\n");
 
     return generateBlocks(chainman, miner, coinbase_script, num_blocks, max_tries);
 },

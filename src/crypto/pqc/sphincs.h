@@ -4,14 +4,24 @@
 #include <stdint.h>
 #include <vector>
 
+#include <oqs/oqs.h>
+
 namespace pqc {
 
+/**
+ * SPHINCS+ / SLH-DSA-SHA2-128f digital signature scheme.
+ *
+ * Wraps liboqs implementation of NIST FIPS 205 (SLH-DSA).
+ * Uses the SHA2-128f-simple parameter set for fast signing.
+ *
+ * Security level: NIST Level 1 (roughly equivalent to AES-128).
+ * Hash-based (stateless) — security does not depend on lattice assumptions.
+ */
 class SPHINCS {
 public:
-    // SLH-DSA-SHA2-128f (SPHINCS+-SHA2-128f) parameter set
-    static const size_t PUBLIC_KEY_SIZE = 32;
-    static const size_t PRIVATE_KEY_SIZE = 64;
-    static const size_t SIGNATURE_SIZE = 17088;
+    static constexpr size_t PUBLIC_KEY_SIZE = OQS_SIG_sphincs_sha2_128f_simple_length_public_key;    // 32
+    static constexpr size_t PRIVATE_KEY_SIZE = OQS_SIG_sphincs_sha2_128f_simple_length_secret_key;   // 64
+    static constexpr size_t SIGNATURE_SIZE = OQS_SIG_sphincs_sha2_128f_simple_length_signature;      // 17088
 
     SPHINCS();
     ~SPHINCS();

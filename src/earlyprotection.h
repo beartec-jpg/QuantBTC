@@ -102,7 +102,7 @@ public:
         if (m_peer_activation.count(peer_id)) {
             return 0; // already registered
         }
-        int delay = ACTIVATION_DELAY_MIN_SECS + GetRandInt(ACTIVATION_DELAY_MAX_SECS - ACTIVATION_DELAY_MIN_SECS + 1);
+        int delay = ACTIVATION_DELAY_MIN_SECS + FastRandomContext{}.randrange(ACTIVATION_DELAY_MAX_SECS - ACTIVATION_DELAY_MIN_SECS + 1);
         auto now = std::chrono::steady_clock::now();
         m_peer_activation[peer_id] = now + std::chrono::seconds(delay);
         return delay;
