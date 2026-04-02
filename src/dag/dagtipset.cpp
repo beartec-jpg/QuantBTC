@@ -14,6 +14,7 @@ void DagTipSet::InsertTip(const uint256& hash, uint64_t blue_score)
 {
     m_score_to_hash.emplace(blue_score, hash);
     m_hash_to_score[hash] = blue_score;
+    m_known_scores[hash] = blue_score;
 }
 
 void DagTipSet::RemoveTip(const uint256& hash)
@@ -47,13 +48,20 @@ void DagTipSet::BlockDisconnected(const uint256& block_hash,
     size_t before = m_score_to_hash.size();
     // Remove the disconnected block from tips
     RemoveTip(block_hash);
-    // Re-add parents as tips (they are now childless again).
-    // We insert with score 0 as a fallback; the correct score will be
-    // set if/when the parent is later re-selected via BlockConnected.
+    // Re-add parents as tips (they are now childless again) only when we know
+    // their score; avoid corrupting order with a synthetic score=0.
     for (const uint256& p : parent_hashes) {
-        if (!p.IsNull() && m_hash_to_score.find(p) == m_hash_to_score.end()) {
-            InsertTip(p, 0);
+        if (p.IsNull() || m_hash_to_score.find(p) != m_hash_to_score.end()) {
+            continue;
         }
+        auto known = m_known_scores.find(p);
+        if (known != m_known_scores.end()) {
+            InsertTip(p, known->second);
+            continue;
+        }
+        LogPrint(BCLog::VALIDATION,
+                 "DagTipSet::BlockDisconnected skipping parent %s due to unknown blue_score\n",
+                 p.ToString().substr(0, 16));
     }
     LogPrint(BCLog::VALIDATION,
              "DagTipSet::BlockDisconnected %s parents=%u tips: %u -> %u\n",
@@ -81,6 +89,7 @@ void DagTipSet::Clear()
 {
     m_score_to_hash.clear();
     m_hash_to_score.clear();
+    m_known_scores.clear();
 }
 
 } // namespace dag

@@ -9,6 +9,8 @@
 
 namespace pqc {
 
+// NOT PRODUCTION: experimental/test-only NTRU implementation.
+
 // NTRU parameters for n = 821, q = 4096
 #define NTRU_N 821
 #define NTRU_Q 4096

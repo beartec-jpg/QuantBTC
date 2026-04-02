@@ -4,6 +4,8 @@
 
 namespace pqc {
 
+// NOT PRODUCTION: placeholder SQIsign implementation.
+
 SQIsign::SQIsign() {}
 SQIsign::~SQIsign() {}
 

@@ -12,6 +12,10 @@ AM_LDFLAGS = $(LIBTOOL_LDFLAGS) $(HARDENED_LDFLAGS) $(SANITIZER_LDFLAGS) $(CORE_
 AM_CXXFLAGS = $(CORE_CXXFLAGS) $(DEBUG_CXXFLAGS) $(HARDENED_CXXFLAGS) $(WARN_CXXFLAGS) $(NOWARN_CXXFLAGS) $(ERROR_CXXFLAGS) $(SANITIZER_CXXFLAGS)
 AM_OBJCXXFLAGS = $(AM_CXXFLAGS)
 AM_CPPFLAGS = $(DEBUG_CPPFLAGS) $(HARDENED_CPPFLAGS) $(CORE_CPPFLAGS)
+
+# liboqs (Open Quantum Safe) for post-quantum cryptography
+LIBOQS_CFLAGS = -I/usr/local/include
+LIBOQS_LIBS = -L/usr/local/lib -loqs
 AM_LIBTOOLFLAGS = --preserve-dup-deps
 PTHREAD_FLAGS = $(PTHREAD_CFLAGS) $(PTHREAD_LIBS)
 EXTRA_LIBRARIES =
@@ -560,7 +564,7 @@ libbitcoin_wallet_tool_a_SOURCES = \
 # crypto_base contains the unspecialized (unoptimized) versions of our
 # crypto functions. Functions that require custom compiler flags and/or
 # runtime opt-in are omitted.
-crypto_libbitcoin_crypto_base_la_CPPFLAGS = $(AM_CPPFLAGS)
+crypto_libbitcoin_crypto_base_la_CPPFLAGS = $(AM_CPPFLAGS) $(LIBOQS_CFLAGS)
 
 # Specify -static in both CXXFLAGS and LDFLAGS so libtool will only build a
 # static version of this library. We don't need a dynamic version, and a dynamic
@@ -899,7 +903,7 @@ bitcoin_bin_ldadd = \
   $(LIBMEMENV) \
   $(LIBSECP256K1)
 
-bitcoin_bin_ldadd += $(BDB_LIBS) $(MINIUPNPC_LIBS) $(NATPMP_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(SQLITE_LIBS)
+bitcoin_bin_ldadd += $(BDB_LIBS) $(MINIUPNPC_LIBS) $(NATPMP_LIBS) $(EVENT_PTHREADS_LIBS) $(EVENT_LIBS) $(ZMQ_LIBS) $(SQLITE_LIBS) $(LIBOQS_LIBS)
 
 bitcoind_SOURCES = $(bitcoin_daemon_sources) init/bitcoind.cpp
 bitcoind_CPPFLAGS = $(bitcoin_bin_cppflags)
@@ -930,7 +934,7 @@ bitcoin_cli_LDADD = \
   $(LIBBITCOIN_UTIL) \
   $(LIBBITCOIN_CRYPTO)
 
-bitcoin_cli_LDADD += $(EVENT_LIBS)
+bitcoin_cli_LDADD += $(EVENT_LIBS) $(LIBOQS_LIBS)
 #
 
 # bitcoin-tx binary #

@@ -595,7 +595,7 @@ public:
         consensus.nPowTargetSpacing = 10 * 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.enforce_BIP94 = false;
-        consensus.fPowNoRetargeting = true;
+        consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1512; // 75%
         consensus.nMinerConfirmationWindow = 2016;
 
@@ -811,12 +811,13 @@ public:
         // QuantumBTC: Early protection ON by default for regtest
         consensus.fEarlyProtection = true;
 
-        // Unique QBTC regtest magic bytes — differ from Bitcoin Core's 0xfa 0xbf 0xb5 0xda
-        pchMessageStart[0] = 0xd2;
-        pchMessageStart[1] = 0xc4;
-        pchMessageStart[2] = 0xa6;
-        pchMessageStart[3] = 0xb8;
-        nDefaultPort = 28444; // Unique QBTC regtest port (Bitcoin Core uses 18444)
+        // Use QuantumBTC-specific regtest network identifiers to avoid collisions
+        // with Bitcoin Core regtest peers on the same machine.
+        pchMessageStart[0] = 0xa3;
+        pchMessageStart[1] = 0xc7;
+        pchMessageStart[2] = 0x4d;
+        pchMessageStart[3] = 0x91;
+        nDefaultPort = 28444;
         nPruneAfterHeight = opts.fastprune ? 100 : 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
@@ -865,28 +866,7 @@ public:
             }
         };
 
-        m_assumeutxo_data = {
-            {   // For use by unit tests
-                .height = 110,
-                .hash_serialized = AssumeutxoHash{uint256{"6657b736d4fe4db0cbc796789e812d5dba7f5c143764b1b6905612f1830609d1"}},
-                .m_chain_tx_count = 111,
-                .blockhash = consteval_ctor(uint256{"696e92821f65549c7ee134edceeeeaaa4105647a3c4fd9f298c0aec0ab50425c"}),
-            },
-            {
-                // For use by fuzz target src/test/fuzz/utxo_snapshot.cpp
-                .height = 200,
-                .hash_serialized = AssumeutxoHash{uint256{"4f34d431c3e482f6b0d67b64609ece3964dc8d7976d02ac68dd7c9c1421738f2"}},
-                .m_chain_tx_count = 201,
-                .blockhash = consteval_ctor(uint256{"5e93653318f294fb5aa339d00bbf8cf1c3515488ad99412c37608b139ea63b27"}),
-            },
-            {
-                // For use by test/functional/feature_assumeutxo.py
-                .height = 299,
-                .hash_serialized = AssumeutxoHash{uint256{"a4bf3407ccb2cc0145c49ebba8fa91199f8a3903daf0883875941497d2493c27"}},
-                .m_chain_tx_count = 334,
-                .blockhash = consteval_ctor(uint256{"3bb7ce5eba0be48939b7a521ac1ba9316afee2c7bada3a0cca24188e6d7d96c0"}),
-            },
-        };
+        m_assumeutxo_data = {};
 
         chainTxData = ChainTxData{
             0,

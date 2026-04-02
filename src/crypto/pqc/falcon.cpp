@@ -4,6 +4,8 @@
 
 namespace pqc {
 
+// NOT PRODUCTION: placeholder Falcon implementation.
+
 Falcon::Falcon() {}
 Falcon::~Falcon() {}
 

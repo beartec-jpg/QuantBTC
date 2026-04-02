@@ -187,25 +187,8 @@ GhostdagData GhostdagManager::ComputeGhostdag(
     uint64_t sp_blue_score = sp_data ? sp_data->blue_score : 0;
     uint64_t sp_blue_work = sp_data ? sp_data->blue_work : 0;
 
-    // 3. Get the "inherited" blue set from selected parent's chain
-    //    For efficiency, we only need the blues from the selected parent itself
-    //    (its mergeset blues + its own chain blues are already scored)
-    std::vector<uint256> inherited_blues;
-    if (sp_data && !sp_data->selected_parent.IsNull()) {
-        // Collect blues from selected parent's blue chain (simplified:
-        // use selected parent chain blues up to K depth)
-        uint256 cur = result.selected_parent;
-        uint32_t depth = 0;
-        while (!cur.IsNull() && depth < m_k + 1) {
-            inherited_blues.push_back(cur);
-            const GhostdagData* d = provider.GetGhostdagData(cur);
-            if (!d || d->selected_parent.IsNull()) break;
-            cur = d->selected_parent;
-            ++depth;
-        }
-    } else {
-        inherited_blues.push_back(result.selected_parent);
-    }
+    // 3. Inherit the full selected-parent chain blue context.
+    std::vector<uint256> inherited_blues = SelectedParentChain(result.selected_parent, provider);
 
     // 4. Compute the mergeset
     std::vector<uint256> mergeset = ComputeMergeset(parents, result.selected_parent, provider);
@@ -303,10 +286,10 @@ std::vector<uint256> ComputeVirtualSelectedParentChain(
 {
     GhostdagManager mgr(k);
     GhostdagData vd = mgr.ComputeVirtual(tips, provider);
-    uint256 best = mgr.SelectBestParent(tips, provider);
-    return best != uint256{}
-        ? std::vector<uint256>({best})
-        : std::vector<uint256>{};
+    if (vd.selected_parent.IsNull()) {
+        return {};
+    }
+    return {vd.selected_parent};
 }
 
 } // namespace dag

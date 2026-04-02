@@ -102,7 +102,7 @@ public:
         if (m_peer_activation.count(peer_id)) {
             return 0; // already registered
         }
-        int delay = ACTIVATION_DELAY_MIN_SECS + m_rng.randrange(ACTIVATION_DELAY_MAX_SECS - ACTIVATION_DELAY_MIN_SECS + 1);
+        int delay = ACTIVATION_DELAY_MIN_SECS + GetRandInt(ACTIVATION_DELAY_MAX_SECS - ACTIVATION_DELAY_MIN_SECS + 1);
         auto now = std::chrono::steady_clock::now();
         m_peer_activation[peer_id] = now + std::chrono::seconds(delay);
         return delay;
@@ -320,7 +320,6 @@ public:
 
 private:
     std::mutex m_mutex;
-    FastRandomContext m_rng{};
 
     /** Peer ID -> activation time point (after which full weight applies). */
     std::map<int64_t, std::chrono::steady_clock::time_point> m_peer_activation;

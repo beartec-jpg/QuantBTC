@@ -1,20 +1,32 @@
-// Copyright (c) 2026 beartec-jpg / QuantumBTC
+// Copyright (c) 2026 The QuantumBTC developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
-
-#include <boost/test/unit_test.hpp>
 
 #include <dag/dagtipset.h>
 #include <dag/ghostdag.h>
 #include <uint256.h>
+
+#include <boost/test/unit_test.hpp>
 
 #include <unordered_map>
 #include <vector>
 
 namespace {
 
-/** Simple in-memory block provider for GHOSTDAG unit tests. */
-class TestBlockProvider : public dag::IGhostdagBlockProvider {
+/** Deterministic test hash from an integer. */
+uint256 MakeHash(unsigned n)
+{
+    uint256 h;
+    *h.begin() = static_cast<uint8_t>(n & 0xff);
+    *(h.begin() + 1) = static_cast<uint8_t>((n >> 8) & 0xff);
+    return h;
+}
+
+// =========================================================================
+// Minimal IGhostdagBlockProvider for unit-testing GhostdagManager in
+// isolation (no CBlockIndex required).
+// =========================================================================
+class TestBlockProvider final : public dag::IGhostdagBlockProvider {
 public:
     struct BlockInfo {
         dag::GhostdagData ghostdag;
@@ -23,31 +35,48 @@ public:
     };
 
     void AddBlock(const uint256& hash, const std::vector<uint256>& parents,
-                  const dag::GhostdagData& gd, uint64_t work = 1)
+                  const dag::GhostdagData& data, uint64_t work = 1)
     {
-        m_blocks[hash] = {gd, parents, work};
+        m_blocks[hash] = {data, parents, work};
+    }
+
+    // Store computed GHOSTDAG result for a block so later queries can use it.
+    void StoreGhostdag(const uint256& hash, const dag::GhostdagData& data)
+    {
+        m_blocks[hash].ghostdag = data;
     }
 
     const dag::GhostdagData* GetGhostdagData(const uint256& hash) const override
     {
         auto it = m_blocks.find(hash);
-        return it != m_blocks.end() ? &it->second.ghostdag : nullptr;
+        if (it == m_blocks.end()) return nullptr;
+        return &it->second.ghostdag;
     }
 
     std::vector<uint256> GetParents(const uint256& hash) const override
     {
         auto it = m_blocks.find(hash);
-        return it != m_blocks.end() ? it->second.parents : std::vector<uint256>{};
+        if (it == m_blocks.end()) return {};
+        return it->second.parents;
     }
 
     bool IsAncestorOf(const uint256& ancestor, const uint256& block) const override
     {
-        // Simple recursive check for the test DAG
+        // BFS from block toward parents
         if (ancestor == block) return true;
-        auto it = m_blocks.find(block);
-        if (it == m_blocks.end()) return false;
-        for (const uint256& p : it->second.parents) {
-            if (IsAncestorOf(ancestor, p)) return true;
+        std::vector<uint256> queue;
+        std::set<uint256> visited;
+        queue.push_back(block);
+        visited.insert(block);
+        size_t front = 0;
+        while (front < queue.size()) {
+            const uint256& cur = queue[front++];
+            auto it = m_blocks.find(cur);
+            if (it == m_blocks.end()) continue;
+            for (const uint256& p : it->second.parents) {
+                if (p == ancestor) return true;
+                if (visited.insert(p).second) queue.push_back(p);
+            }
         }
         return false;
     }
@@ -55,285 +84,315 @@ public:
     uint64_t GetBlockWork(const uint256& hash) const override
     {
         auto it = m_blocks.find(hash);
-        return it != m_blocks.end() ? it->second.work : 0;
+        if (it == m_blocks.end()) return 0;
+        return it->second.work;
     }
 
 private:
-    std::unordered_map<uint256, BlockInfo, BlockHasher> m_blocks;
+    std::map<uint256, BlockInfo> m_blocks;
 };
-
-/** Helper: create a uint256 from a small integer for readable test hashes. */
-uint256 MakeHash(uint8_t id)
-{
-    uint256 h;
-    h.SetNull();
-    *h.begin() = id;
-    return h;
-}
 
 } // namespace
 
 BOOST_AUTO_TEST_SUITE(dag_tests)
 
-// ---------------------------------------------------------------------------
-// GHOSTDAG tests
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------
+// DagTipSet tests
+// -----------------------------------------------------------------------
 
-BOOST_AUTO_TEST_CASE(ghostdag_select_best_parent_single)
+BOOST_AUTO_TEST_CASE(tipset_single_block)
 {
-    dag::GhostdagManager mgr(18);
-    TestBlockProvider provider;
+    dag::DagTipSet ts;
+    BOOST_CHECK_EQUAL(ts.Size(), 0U);
 
-    uint256 genesis = MakeHash(1);
-    dag::GhostdagData gd_genesis;
-    gd_genesis.blue_score = 0;
-    provider.AddBlock(genesis, {}, gd_genesis);
-
-    std::vector<uint256> candidates = {genesis};
-    uint256 best = mgr.SelectBestParent(candidates, provider);
-    BOOST_CHECK(best == genesis);
+    uint256 genesis = MakeHash(0);
+    ts.BlockConnected(genesis, /*blue_score=*/0, /*parents=*/{});
+    BOOST_CHECK_EQUAL(ts.Size(), 1U);
+    BOOST_CHECK(ts.IsTip(genesis));
 }
 
-BOOST_AUTO_TEST_CASE(ghostdag_select_best_parent_highest_score)
+BOOST_AUTO_TEST_CASE(tipset_parent_removed)
 {
-    dag::GhostdagManager mgr(18);
-    TestBlockProvider provider;
+    dag::DagTipSet ts;
+    uint256 genesis = MakeHash(0);
+    uint256 block1 = MakeHash(1);
 
-    uint256 a = MakeHash(1);
-    uint256 b = MakeHash(2);
-    uint256 c = MakeHash(3);
+    ts.BlockConnected(genesis, 0, {});
+    ts.BlockConnected(block1, 1, {genesis});
 
-    dag::GhostdagData gd_a; gd_a.blue_score = 5;
-    dag::GhostdagData gd_b; gd_b.blue_score = 10;
-    dag::GhostdagData gd_c; gd_c.blue_score = 3;
-
-    provider.AddBlock(a, {}, gd_a);
-    provider.AddBlock(b, {}, gd_b);
-    provider.AddBlock(c, {}, gd_c);
-
-    std::vector<uint256> candidates = {a, b, c};
-    uint256 best = mgr.SelectBestParent(candidates, provider);
-    BOOST_CHECK(best == b);
+    BOOST_CHECK(!ts.IsTip(genesis));
+    BOOST_CHECK(ts.IsTip(block1));
+    BOOST_CHECK_EQUAL(ts.Size(), 1U);
 }
 
-BOOST_AUTO_TEST_CASE(ghostdag_select_best_parent_tiebreak_by_hash)
+BOOST_AUTO_TEST_CASE(tipset_multiple_tips)
 {
-    dag::GhostdagManager mgr(18);
-    TestBlockProvider provider;
-
+    dag::DagTipSet ts;
+    uint256 genesis = MakeHash(0);
     uint256 a = MakeHash(1);
     uint256 b = MakeHash(2);
 
-    dag::GhostdagData gd_a; gd_a.blue_score = 5;
-    dag::GhostdagData gd_b; gd_b.blue_score = 5;
+    ts.BlockConnected(genesis, 0, {});
+    ts.BlockConnected(a, 1, {genesis});
+    ts.BlockConnected(b, 1, {genesis});
 
-    provider.AddBlock(a, {}, gd_a);
-    provider.AddBlock(b, {}, gd_b);
-
-    std::vector<uint256> candidates = {a, b};
-    uint256 best = mgr.SelectBestParent(candidates, provider);
-    // Tie-break by lower hash
-    BOOST_CHECK(best == a);
+    // genesis removed by both a and b; a and b are tips
+    BOOST_CHECK(!ts.IsTip(genesis));
+    BOOST_CHECK(ts.IsTip(a));
+    BOOST_CHECK(ts.IsTip(b));
+    BOOST_CHECK_EQUAL(ts.Size(), 2U);
 }
 
-BOOST_AUTO_TEST_CASE(ghostdag_select_best_parent_empty)
+BOOST_AUTO_TEST_CASE(tipset_mining_parents_ordered)
+{
+    dag::DagTipSet ts;
+    uint256 genesis = MakeHash(0);
+    uint256 low_score = MakeHash(1);
+    uint256 high_score = MakeHash(2);
+
+    ts.BlockConnected(genesis, 0, {});
+    ts.BlockConnected(low_score, 5, {genesis});
+    ts.BlockConnected(high_score, 10, {genesis});
+
+    auto parents = ts.GetMiningParents(32);
+    BOOST_REQUIRE(parents.size() == 2);
+    BOOST_CHECK(parents[0] == high_score); // highest score first
+    BOOST_CHECK(parents[1] == low_score);
+}
+
+BOOST_AUTO_TEST_CASE(tipset_mining_parents_capped)
+{
+    dag::DagTipSet ts;
+    uint256 genesis = MakeHash(0);
+    ts.BlockConnected(genesis, 0, {});
+
+    for (unsigned i = 1; i <= 10; ++i) {
+        ts.BlockConnected(MakeHash(i), i, {genesis});
+    }
+
+    auto parents = ts.GetMiningParents(3);
+    BOOST_CHECK_EQUAL(parents.size(), 3U);
+}
+
+BOOST_AUTO_TEST_CASE(tipset_disconnect_restores_parent)
+{
+    dag::DagTipSet ts;
+    uint256 genesis = MakeHash(0);
+    uint256 block1 = MakeHash(1);
+
+    ts.BlockConnected(genesis, 0, {});
+    ts.BlockConnected(block1, 1, {genesis});
+    BOOST_CHECK(!ts.IsTip(genesis));
+
+    ts.BlockDisconnected(block1, {genesis});
+    BOOST_CHECK(ts.IsTip(genesis));
+    BOOST_CHECK(!ts.IsTip(block1));
+}
+
+BOOST_AUTO_TEST_CASE(tipset_disconnect_preserves_score)
+{
+    dag::DagTipSet ts;
+    uint256 genesis = MakeHash(0);
+    uint256 a = MakeHash(1);
+    uint256 b = MakeHash(2);
+
+    ts.BlockConnected(genesis, 0, {});
+    ts.BlockConnected(a, 5, {genesis});
+    ts.BlockConnected(b, 10, {genesis});
+
+    // Disconnect b — genesis should be restored with its original score 0
+    ts.BlockDisconnected(b, {genesis});
+
+    BOOST_CHECK(ts.IsTip(genesis));
+    BOOST_CHECK(ts.IsTip(a));
+    BOOST_CHECK_EQUAL(ts.Size(), 2U);
+
+    // Mining parents should list a (score 5) before genesis (score 0)
+    auto parents = ts.GetMiningParents(32);
+    BOOST_REQUIRE(parents.size() == 2);
+    BOOST_CHECK(parents[0] == a);
+    BOOST_CHECK(parents[1] == genesis);
+}
+
+BOOST_AUTO_TEST_CASE(tipset_clear)
+{
+    dag::DagTipSet ts;
+    ts.BlockConnected(MakeHash(0), 0, {});
+    ts.BlockConnected(MakeHash(1), 1, {MakeHash(0)});
+    ts.Clear();
+    BOOST_CHECK_EQUAL(ts.Size(), 0U);
+}
+
+// -----------------------------------------------------------------------
+// GhostdagManager tests
+// -----------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(ghostdag_genesis)
 {
     dag::GhostdagManager mgr(18);
     TestBlockProvider provider;
 
-    std::vector<uint256> candidates;
-    uint256 best = mgr.SelectBestParent(candidates, provider);
-    BOOST_CHECK(best == uint256{});
-}
-
-BOOST_AUTO_TEST_CASE(ghostdag_compute_genesis)
-{
-    dag::GhostdagManager mgr(18);
-    TestBlockProvider provider;
-
-    // Genesis has no parents
     dag::GhostdagData result = mgr.ComputeGhostdag({}, provider);
     BOOST_CHECK_EQUAL(result.blue_score, 0U);
-    BOOST_CHECK_EQUAL(result.blue_work, 0U);
     BOOST_CHECK(result.selected_parent.IsNull());
 }
 
-BOOST_AUTO_TEST_CASE(ghostdag_compute_single_parent)
+BOOST_AUTO_TEST_CASE(ghostdag_single_parent)
 {
     dag::GhostdagManager mgr(18);
     TestBlockProvider provider;
 
-    uint256 genesis = MakeHash(1);
-    dag::GhostdagData gd_genesis;
-    gd_genesis.blue_score = 0;
-    gd_genesis.blue_work = 1;
-    provider.AddBlock(genesis, {}, gd_genesis, 1);
+    uint256 genesis = MakeHash(0);
+    dag::GhostdagData gen_data;
+    gen_data.blue_score = 0;
+    gen_data.blue_work = 0;
+    provider.AddBlock(genesis, {}, gen_data);
 
     dag::GhostdagData result = mgr.ComputeGhostdag({genesis}, provider);
     BOOST_CHECK(result.selected_parent == genesis);
-    BOOST_CHECK(result.blue_score > 0);
+    BOOST_CHECK_EQUAL(result.blue_score, 1U); // genesis blue_score + 0 blues in mergeset + 1
+    BOOST_CHECK(result.mergeset_blues.empty());
+    BOOST_CHECK(result.mergeset_reds.empty());
 }
 
-BOOST_AUTO_TEST_CASE(ghostdag_virtual_selected_parent_chain)
+BOOST_AUTO_TEST_CASE(ghostdag_select_best_parent)
+{
+    dag::GhostdagManager mgr(18);
+    TestBlockProvider provider;
+
+    uint256 a = MakeHash(1);
+    dag::GhostdagData data_a;
+    data_a.blue_score = 5;
+    provider.AddBlock(a, {}, data_a);
+
+    uint256 b = MakeHash(2);
+    dag::GhostdagData data_b;
+    data_b.blue_score = 10;
+    provider.AddBlock(b, {}, data_b);
+
+    uint256 c = MakeHash(3);
+    dag::GhostdagData data_c;
+    data_c.blue_score = 10; // tie with b
+    provider.AddBlock(c, {}, data_c);
+
+    // b should win over a (higher score)
+    uint256 best = mgr.SelectBestParent({a, b}, provider);
+    BOOST_CHECK(best == b);
+
+    // Between b and c (same score), lower hash wins
+    best = mgr.SelectBestParent({b, c}, provider);
+    BOOST_CHECK(best == (b < c ? b : c));
+}
+
+BOOST_AUTO_TEST_CASE(ghostdag_mergeset_classification)
+{
+    // Build a simple diamond: genesis -> A, genesis -> B, then C parents both A and B
+    dag::GhostdagManager mgr(18);
+    TestBlockProvider provider;
+
+    uint256 genesis = MakeHash(0);
+    dag::GhostdagData gen_data;
+    gen_data.blue_score = 0;
+    gen_data.blue_work = 0;
+    provider.AddBlock(genesis, {}, gen_data);
+
+    uint256 a = MakeHash(1);
+    dag::GhostdagData data_a;
+    data_a.blue_score = 1;
+    data_a.blue_work = 1;
+    data_a.selected_parent = genesis;
+    provider.AddBlock(a, {genesis}, data_a);
+
+    uint256 b = MakeHash(2);
+    dag::GhostdagData data_b;
+    data_b.blue_score = 1;
+    data_b.blue_work = 1;
+    data_b.selected_parent = genesis;
+    provider.AddBlock(b, {genesis}, data_b);
+
+    // Block C with parents A and B
+    dag::GhostdagData result = mgr.ComputeGhostdag({a, b}, provider);
+
+    // The selected parent should be whichever has the lower hash (tie on score=1)
+    uint256 expected_sp = (a < b) ? a : b;
+    uint256 expected_merge = (a < b) ? b : a;
+    BOOST_CHECK(result.selected_parent == expected_sp);
+
+    // The other should appear in the mergeset blues (anticone size <= K=18)
+    BOOST_CHECK_EQUAL(result.mergeset_blues.size(), 1U);
+    BOOST_CHECK(result.mergeset_blues[0] == expected_merge);
+    BOOST_CHECK(result.mergeset_reds.empty());
+
+    // Blue score = selected_parent.blue_score (1) + mergeset_blues (1) + 1 = 3
+    BOOST_CHECK_EQUAL(result.blue_score, 3U);
+}
+
+BOOST_AUTO_TEST_CASE(ghostdag_virtual)
+{
+    dag::GhostdagManager mgr(18);
+    TestBlockProvider provider;
+
+    uint256 genesis = MakeHash(0);
+    dag::GhostdagData gen_data;
+    gen_data.blue_score = 0;
+    provider.AddBlock(genesis, {}, gen_data);
+
+    // ComputeVirtual with single tip = same as ComputeGhostdag
+    dag::GhostdagData vd = mgr.ComputeVirtual({genesis}, provider);
+    BOOST_CHECK(vd.selected_parent == genesis);
+    BOOST_CHECK_EQUAL(vd.blue_score, 1U);
+}
+
+BOOST_AUTO_TEST_CASE(virtual_selected_parent_chain)
 {
     TestBlockProvider provider;
 
-    uint256 genesis = MakeHash(1);
-    dag::GhostdagData gd_genesis;
-    gd_genesis.blue_score = 0;
-    provider.AddBlock(genesis, {}, gd_genesis);
+    uint256 genesis = MakeHash(0);
+    dag::GhostdagData gen_data;
+    gen_data.blue_score = 0;
+    provider.AddBlock(genesis, {}, gen_data);
 
-    uint256 block_a = MakeHash(2);
-    dag::GhostdagData gd_a;
-    gd_a.blue_score = 1;
-    gd_a.selected_parent = genesis;
-    provider.AddBlock(block_a, {genesis}, gd_a);
+    uint256 a = MakeHash(1);
+    dag::GhostdagData data_a;
+    data_a.blue_score = 1;
+    data_a.selected_parent = genesis;
+    provider.AddBlock(a, {genesis}, data_a);
 
-    // Tips = {block_a}
-    std::vector<uint256> chain = dag::ComputeVirtualSelectedParentChain({block_a}, provider, 18);
-    BOOST_CHECK(!chain.empty());
-    BOOST_CHECK(chain[0] == block_a);
+    auto chain = dag::ComputeVirtualSelectedParentChain({a}, provider, 18);
+    // Should return {a} (the selected parent of the virtual block)
+    BOOST_REQUIRE_EQUAL(chain.size(), 1U);
+    BOOST_CHECK(chain[0] == a);
 }
 
-// ---------------------------------------------------------------------------
-// DagTipSet tests
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------
+// Topological ordering test
+// -----------------------------------------------------------------------
 
-BOOST_AUTO_TEST_CASE(dagtipset_initially_empty)
+BOOST_AUTO_TEST_CASE(topological_order_simple)
 {
-    dag::DagTipSet tips;
-    BOOST_CHECK_EQUAL(tips.Size(), 0U);
-}
+    dag::GhostdagManager mgr(18);
+    TestBlockProvider provider;
 
-BOOST_AUTO_TEST_CASE(dagtipset_block_connected_adds_tip)
-{
-    dag::DagTipSet tips;
-    uint256 genesis = MakeHash(1);
+    uint256 genesis = MakeHash(0);
+    dag::GhostdagData gen_data;
+    gen_data.blue_score = 0;
+    provider.AddBlock(genesis, {}, gen_data);
 
-    tips.BlockConnected(genesis, 0, {});
-    BOOST_CHECK_EQUAL(tips.Size(), 1U);
-    BOOST_CHECK(tips.IsTip(genesis));
-}
+    uint256 a = MakeHash(1);
+    dag::GhostdagData data_a;
+    data_a.blue_score = 1;
+    data_a.selected_parent = genesis;
+    provider.AddBlock(a, {genesis}, data_a);
 
-BOOST_AUTO_TEST_CASE(dagtipset_block_connected_removes_parents)
-{
-    dag::DagTipSet tips;
-    uint256 genesis = MakeHash(1);
-    uint256 block_a = MakeHash(2);
+    std::unordered_set<uint256, BlockHasher> all{genesis, a};
+    dag::GhostdagData vd;
+    vd.selected_parent = a;
+    vd.blue_score = 2;
 
-    tips.BlockConnected(genesis, 0, {});
-    BOOST_CHECK(tips.IsTip(genesis));
-
-    // block_a references genesis as parent → genesis is no longer a tip
-    tips.BlockConnected(block_a, 1, {genesis});
-    BOOST_CHECK(!tips.IsTip(genesis));
-    BOOST_CHECK(tips.IsTip(block_a));
-    BOOST_CHECK_EQUAL(tips.Size(), 1U);
-}
-
-BOOST_AUTO_TEST_CASE(dagtipset_multiple_tips)
-{
-    dag::DagTipSet tips;
-    uint256 genesis = MakeHash(1);
-    uint256 block_a = MakeHash(2);
-    uint256 block_b = MakeHash(3);
-
-    tips.BlockConnected(genesis, 0, {});
-    // Two blocks both reference genesis
-    tips.BlockConnected(block_a, 1, {genesis});
-    tips.BlockConnected(block_b, 2, {});
-
-    BOOST_CHECK(tips.IsTip(block_a));
-    BOOST_CHECK(tips.IsTip(block_b));
-    BOOST_CHECK_EQUAL(tips.Size(), 2U);
-}
-
-BOOST_AUTO_TEST_CASE(dagtipset_mining_parents_order)
-{
-    dag::DagTipSet tips;
-    uint256 block_a = MakeHash(1);
-    uint256 block_b = MakeHash(2);
-    uint256 block_c = MakeHash(3);
-
-    tips.BlockConnected(block_a, 5, {});
-    tips.BlockConnected(block_b, 10, {});
-    tips.BlockConnected(block_c, 3, {});
-
-    auto parents = tips.GetMiningParents(3);
-    BOOST_CHECK_EQUAL(parents.size(), 3U);
-    // Highest blue_score first
-    BOOST_CHECK(parents[0] == block_b);
-}
-
-BOOST_AUTO_TEST_CASE(dagtipset_mining_parents_max_limit)
-{
-    dag::DagTipSet tips;
-    for (uint8_t i = 1; i <= 40; ++i) {
-        tips.BlockConnected(MakeHash(i), i, {});
-    }
-
-    // MAX_BLOCK_PARENTS = 32 by default
-    auto parents = tips.GetMiningParents(dag::MAX_BLOCK_PARENTS);
-    BOOST_CHECK(parents.size() <= dag::MAX_BLOCK_PARENTS);
-}
-
-BOOST_AUTO_TEST_CASE(dagtipset_block_disconnected)
-{
-    dag::DagTipSet tips;
-    uint256 genesis = MakeHash(1);
-    uint256 block_a = MakeHash(2);
-
-    tips.BlockConnected(genesis, 0, {});
-    tips.BlockConnected(block_a, 1, {genesis});
-
-    BOOST_CHECK(!tips.IsTip(genesis));
-    BOOST_CHECK(tips.IsTip(block_a));
-
-    // Disconnect block_a → it is removed, genesis becomes tip again
-    tips.BlockDisconnected(block_a, {genesis});
-    BOOST_CHECK(tips.IsTip(genesis));
-    BOOST_CHECK(!tips.IsTip(block_a));
-}
-
-BOOST_AUTO_TEST_CASE(dagtipset_clear)
-{
-    dag::DagTipSet tips;
-    tips.BlockConnected(MakeHash(1), 0, {});
-    tips.BlockConnected(MakeHash(2), 1, {});
-    BOOST_CHECK(tips.Size() > 0);
-
-    tips.Clear();
-    BOOST_CHECK_EQUAL(tips.Size(), 0U);
-}
-
-// ---------------------------------------------------------------------------
-// DAG parent validation tests
-// ---------------------------------------------------------------------------
-
-BOOST_AUTO_TEST_CASE(dag_max_block_parents_constant)
-{
-    // Verify the MAX_BLOCK_PARENTS constant is set to 32
-    BOOST_CHECK_EQUAL(dag::MAX_BLOCK_PARENTS, 32U);
-}
-
-BOOST_AUTO_TEST_CASE(dag_parent_count_within_limit)
-{
-    // Simulate validation: a block with parents within limit should be valid
-    std::vector<uint256> parents;
-    for (uint8_t i = 1; i <= dag::MAX_BLOCK_PARENTS; ++i) {
-        parents.push_back(MakeHash(i));
-    }
-    BOOST_CHECK(parents.size() <= dag::MAX_BLOCK_PARENTS);
-}
-
-BOOST_AUTO_TEST_CASE(dag_parent_count_exceeds_limit)
-{
-    // Simulate validation: a block with too many parents should be rejected
-    std::vector<uint256> parents;
-    for (uint8_t i = 1; i <= dag::MAX_BLOCK_PARENTS + 1; ++i) {
-        parents.push_back(MakeHash(i));
-    }
-    BOOST_CHECK(parents.size() > dag::MAX_BLOCK_PARENTS);
+    auto order = mgr.TopologicalOrder(all, vd, provider);
+    BOOST_REQUIRE_EQUAL(order.size(), 2U);
+    BOOST_CHECK(order[0] == genesis); // genesis first (lower blue score)
+    BOOST_CHECK(order[1] == a);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

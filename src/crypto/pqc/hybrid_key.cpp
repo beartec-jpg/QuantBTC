@@ -76,9 +76,14 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
         return false;
     }
 
-    if (!PQCConfig::GetInstance().enable_hybrid_signatures || m_pqc_private_key.empty()) {
+    if (!PQCConfig::GetInstance().enable_hybrid_signatures) {
         signature = std::move(classical_sig);
         return true;
+    }
+
+    if (m_pqc_private_key.empty()) {
+        LogPrintf("HybridKey::Sign: hybrid mode enabled but PQC private key is missing\n");
+        return false;
     }
 
     // Real Dilithium PQC signature
@@ -86,7 +91,7 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
     std::vector<unsigned char> msg_bytes(hash.begin(), hash.end());
     PQCManager& manager = PQCManager::GetInstance();
     if (!manager.Sign(PQCAlgorithm::DILITHIUM, msg_bytes, m_pqc_private_key, pqc_sig)) {
-        LogPrintf("HybridKey::Sign: Dilithium signing failed; hybrid mode requires PQC signature\n");
+        LogPrintf("HybridKey::Sign: Dilithium signing failed in hybrid mode\n");
         return false;
     }
 

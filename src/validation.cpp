@@ -4285,16 +4285,13 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
     // large by filling up the coinbase witness, which doesn't change
     // the block hash, so we couldn't mark the block as permanently
     // failed).
-    //
-    // When the PQC deployment is active, use the larger nMaxBlockWeightPQC
-    // limit to accommodate post-quantum signatures (Dilithium/SPHINCS+ are
-    // 1–50× larger than ECDSA).  Otherwise use the standard 4 MB limit.
-    const Consensus::Params& consensusParams = chainman.GetConsensus();
-    const unsigned int nMaxWeight = DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_PQC)
-        ? consensusParams.nMaxBlockWeightPQC
-        : MAX_BLOCK_WEIGHT;
-    if (GetBlockWeight(block) > nMaxWeight) {
+    const int64_t block_weight = GetBlockWeight(block);
+    if (block_weight > MAX_BLOCK_WEIGHT) {
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-weight", strprintf("%s : weight limit failed", __func__));
+    }
+    if (GetConsensus().nMaxBlockWeightPQC > 0 && block_weight > static_cast<int64_t>(GetConsensus().nMaxBlockWeightPQC)) {
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-pqc-blk-weight",
+                             strprintf("%s : PQC weight limit failed", __func__));
     }
 
     return true;
@@ -4350,11 +4347,16 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
                     strprintf("block has %u DAG parents, max is %u",
                         block.hashParents.size(), GetConsensus().nMaxDagParents));
             }
+                        std::set<uint256> seen_extra_parents;
             for (const uint256& parent_hash : block.hashParents) {
                 // Extra parents must not equal the selected parent (redundant)
                 if (parent_hash == block.hashPrevBlock) {
                     return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "duplicate-dag-parent",
                         "DAG extra parent duplicates selected parent");
+                }
+                if (!seen_extra_parents.insert(parent_hash).second) {
+                    return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "duplicate-dag-parent",
+                        "DAG extra parent is duplicated in hashParents");
                 }
                 BlockMap::iterator mi2 = m_blockman.m_block_index.find(parent_hash);
                 if (mi2 == m_blockman.m_block_index.end()) {
@@ -4365,6 +4367,13 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
                 if (mi2->second.nStatus & BLOCK_FAILED_MASK) {
                     return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-dag-parent",
                         strprintf("DAG parent %s is invalid", parent_hash.ToString()));
+                }
+                const CBlockIndex& dag_parent_index = mi2->second;
+                if (dag_parent_index.nHeight > pindexPrev->nHeight &&
+                    dag_parent_index.GetAncestor(pindexPrev->nHeight) == pindexPrev) {
+                    return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                        "dag-parent-descends-from-selected-parent",
+                        "DAG extra parent descends from selected parent chain");
                 }
             }
         }
@@ -4614,9 +4623,11 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
             double weight = bwi.weight;
 
             if (bwi.peer_id == -1) {
+                  g_early_protection.RegisterPeer(-1);
+                  double w_activation = g_early_protection.GetActivationWeight(-1);
                 double w_throttle = g_early_protection.RecordBlockIPAndGetThrottleWeight("127.0.0.1");
                 double w_ramp = g_early_protection.RecordBlockAndGetRampWeight(-1);
-                weight = w_throttle * w_ramp;
+                  weight = w_activation * w_throttle * w_ramp;
             }
 
             pindex->nEarlyProtectionWeight = weight;

@@ -23,7 +23,7 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
         else if (arg == "-pqchybridsig=1") {
             enable_hybrid_signatures = true;
         }
-        else if (arg.substr(0, 9) == "-pqcalgo=") {
+        else if (arg.rfind("-pqcalgo=", 0) == 0) {
             std::string algoList = arg.substr(9);
             enabled_kems.clear();
             
@@ -53,8 +53,8 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
                 enabled_kems.push_back(PQCAlgorithm::NTRU);
             }
         }
-        else if (arg.substr(0, 9) == "-pqcsig=") {
-            std::string sigList = arg.substr(9);
+        else if (arg.rfind("-pqcsig=", 0) == 0) {
+            std::string sigList = arg.substr(8);
             enabled_signatures.clear();
             
             size_t pos = 0;

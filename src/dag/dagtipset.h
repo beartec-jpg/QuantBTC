@@ -86,6 +86,9 @@ private:
     /** Reverse lookup: hash → blue_score, for O(log n) removal. */
     std::map<uint256, uint64_t> m_hash_to_score;
 
+    /** Historical lookup: hash → blue_score for known blocks (including non-tips). */
+    std::map<uint256, uint64_t> m_known_scores;
+
     void RemoveTip(const uint256& hash);
     void InsertTip(const uint256& hash, uint64_t blue_score);
 };

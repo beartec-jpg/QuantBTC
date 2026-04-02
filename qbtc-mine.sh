@@ -14,6 +14,12 @@ COUNT="${1:-1}"
 CHAIN="${2:-qbtctestnet}"
 CLI="./src/bitcoin-cli -${CHAIN}"
 
+get_mining_descriptor() {
+    local addr
+    addr=$($CLI getnewaddress "" "bech32")
+    $CLI getaddressinfo "$addr" | python3 -c 'import json,sys; print(json.load(sys.stdin)["desc"])'
+}
+
 status() {
     $CLI getblockchaininfo | python3 -c "
 import sys, json
@@ -29,8 +35,7 @@ if [ "$COUNT" = "status" ]; then
 fi
 
 echo "Mining $COUNT block(s) on $CHAIN..."
-ADDR=$($CLI getnewaddress "" "bech32")
-echo "  Mining to address: $ADDR"
+DESC="$(get_mining_descriptor)"
 for i in $(seq 1 "$COUNT"); do
     RESULT=$($CLI generateblock "$ADDR" '[]' 2>&1)
     HASH=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'][:16])" 2>/dev/null)

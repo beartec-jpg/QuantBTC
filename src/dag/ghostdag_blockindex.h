@@ -10,6 +10,7 @@
 #include <node/blockstorage.h>
 #include <uint256.h>
 
+#include <unordered_set>
 #include <vector>
 
 namespace dag {
@@ -90,11 +91,13 @@ private:
         // Slow path for DAG: BFS through vDagParents
         std::vector<const CBlockIndex*> queue;
         std::unordered_set<const CBlockIndex*> visited;
+        static constexpr size_t MAX_BFS_VISITS = 100000;
         queue.push_back(pBlock);
         visited.insert(pBlock);
 
         size_t front = 0;
         while (front < queue.size()) {
+            if (visited.size() > MAX_BFS_VISITS) return false;
             const CBlockIndex* cur = queue[front++];
             if (cur == pAncestor) return true;
             if (cur->nHeight <= pAncestor->nHeight) continue;

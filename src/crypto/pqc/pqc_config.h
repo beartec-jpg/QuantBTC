@@ -25,6 +25,7 @@ struct PQCConfig {
     bool enable_hybrid_keys{true};
     bool enable_hybrid_signatures{false};
     PQCMode pqc_mode{PQCMode::HYBRID};
+    // Keep broken/experimental PQC algorithms disabled by default until they are hardened.
     std::vector<PQCAlgorithm> enabled_kems{};
     std::vector<PQCSignatureScheme> enabled_signatures{};
     

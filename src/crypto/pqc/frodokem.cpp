@@ -6,9 +6,11 @@
 #include "../random.h"
 #include <support/cleanse.h>
 #include <string.h>
-#include <memory>
+#include <vector>
 
 namespace pqc {
+
+// NOT PRODUCTION: experimental/test-only FrodoKEM implementation.
 
 // FrodoKEM-976 parameters
 #define FRODO_N 976
@@ -42,37 +44,19 @@ static void sample_error(uint16_t *e, size_t n) {
     }
 }
 
-/**
- * Deterministically sample an error matrix from a 32-byte seed.
- * Uses SHA-256 in counter mode with a domain separation byte.
- * Each output element is a small value lifted into [0, FRODO_Q).
- */
-static void sample_error_deterministic(uint16_t *e, size_t n, const unsigned char *seed, unsigned char domain)
-{
-    // Each SHA-256 call produces 32 bytes → 16 uint16_t samples
-    for (size_t block = 0; block * 16 < n; block++) {
-        unsigned char counter[4];
-        counter[0] = domain;
-        counter[1] = (unsigned char)(block & 0xff);
-        counter[2] = (unsigned char)((block >> 8) & 0xff);
-        counter[3] = 0;
-        unsigned char tmp[32];
-        CSHA256().Write(seed, 32).Write(counter, 4).Finalize(tmp);
-        for (int i = 0; i < 16 && block * 16 + i < n; i++) {
-            // Interpret two bytes as a small signed integer in {-2,-1,0,1,2}
-            int16_t val = (int16_t)(((uint16_t)tmp[2*i] | ((uint16_t)tmp[2*i+1] << 8)) % 5) - 2;
-            e[block * 16 + i] = (uint16_t)((val + FRODO_Q) % FRODO_Q);
-        }
-    }
-}
-
-/**
- * Build the public matrix A from the 32-byte seed stored in pk[0..31].
- * A is allocated on the heap (976×976 uint16_t ≈ 1.86 MB) to avoid
- * stack overflow.
- */
-static void build_matrix_A(uint16_t *A, const unsigned char *seed)
-{
+bool FrodoKEM::KeyGen(unsigned char *pk, unsigned char *sk) {
+    // Heap-allocated: A is ~1.9MB, too large for the stack.
+    std::vector<uint16_t> A_vec(FRODO_N * FRODO_N);
+    uint16_t* A = A_vec.data();
+    uint16_t S[FRODO_N * FRODO_NBAR];
+    uint16_t E[FRODO_N * FRODO_NBAR];
+    uint16_t B[FRODO_N * FRODO_NBAR];
+    unsigned char seed[32];
+    
+    // Generate random seed for matrix A
+    GetStrongRandBytes(seed);
+    
+    // Generate matrix A pseudorandomly
     CSHA256 sha256;
     for(size_t i = 0; i < FRODO_N; i++) {
         for(size_t j = 0; j < FRODO_N; j++) {
@@ -170,14 +154,34 @@ bool FrodoKEM::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char 
     uint16_t Sp[FRODO_MBAR * FRODO_N];
     uint16_t Ep[FRODO_MBAR * FRODO_N];
     uint16_t Epp[FRODO_MBAR * FRODO_NBAR];
-    sample_error_deterministic(Sp,  FRODO_MBAR * FRODO_N,    r_seed, 0x01);
-    sample_error_deterministic(Ep,  FRODO_MBAR * FRODO_N,    r_seed, 0x02);
-    sample_error_deterministic(Epp, FRODO_MBAR * FRODO_NBAR, r_seed, 0x03);
-
-    // A is ~1.86 MB — must be on the heap to avoid stack overflow
-    std::unique_ptr<uint16_t[]> A(new uint16_t[FRODO_N * FRODO_N]);
-    build_matrix_A(A.get(), pk);
-
+    uint16_t V[FRODO_MBAR * FRODO_NBAR];
+    unsigned char mu[32];
+    
+    // Generate random mu
+    GetStrongRandBytes(mu);
+    
+    // Sample error matrices
+    sample_error(Sp, FRODO_MBAR * FRODO_N);
+    sample_error(Ep, FRODO_MBAR * FRODO_N);
+    sample_error(Epp, FRODO_MBAR * FRODO_NBAR);
+    
+    // Reconstruct A from seed (heap-allocated: ~1.9MB)
+    std::vector<uint16_t> A_vec(FRODO_N * FRODO_N);
+    uint16_t* A = A_vec.data();
+    const unsigned char *seed = pk;
+    CSHA256 sha256;
+    for(size_t i = 0; i < FRODO_N; i++) {
+        for(size_t j = 0; j < FRODO_N; j++) {
+            unsigned char tmp[32];
+            sha256.Reset();
+            sha256.Write(seed, 32);
+            sha256.Write((unsigned char*)&i, sizeof(i));
+            sha256.Write((unsigned char*)&j, sizeof(j));
+            sha256.Finalize(tmp);
+            A[i * FRODO_N + j] = (*(uint16_t*)tmp) % FRODO_Q;
+        }
+    }
+    
     // Unpack B from public key
     uint16_t B[FRODO_N * FRODO_NBAR];
     unpack(B, pk + 32, FRODO_N * FRODO_NBAR);

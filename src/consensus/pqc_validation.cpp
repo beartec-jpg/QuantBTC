@@ -1,6 +1,7 @@
 #include <consensus/pqc_validation.h>
+#include <consensus/validation.h>
+#include <crypto/pqc/pqc_config.h>
 #include <crypto/pqc/dilithium.h>
-#include <crypto/pqc/sphincs.h>
 
 namespace Consensus {
 
@@ -16,25 +17,57 @@ bool IsPQCActivated(int nHeight)
 }
 
 bool HasPQCSignatures(const CTransaction& tx) {
-    // Detect PQC hybrid witness: [ECDSA sig, pubkey, PQC sig, PQC pubkey]
-    // sign.cpp produces witness v0 transactions with a 4-element stack.
     for (const auto& input : tx.vin) {
-        if (!input.scriptWitness.IsNull() && input.scriptWitness.stack.size() == 4) {
-            const auto& pqc_sig = input.scriptWitness.stack[2];
-            const auto& pqc_pubkey = input.scriptWitness.stack[3];
-            // Dilithium: sig=2420, pubkey=1312
-            if (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
-                pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+        const auto& stack = input.scriptWitness.stack;
+        if (stack.size() == 4 &&
+            stack[2].size() == pqc::Dilithium::SIGNATURE_SIZE &&
+            stack[3].size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
                 return true;
-            }
-            // SPHINCS+: sig<=17088, pubkey=32
-            if (!pqc_sig.empty() && pqc_sig.size() <= pqc::SPHINCS::SIGNATURE_SIZE &&
-                pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
-                return true;
-            }
         }
     }
     return false;
+}
+
+bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidationState& state) {
+    if (!(flags & SCRIPT_VERIFY_PQC)) {
+        return true;
+    }
+
+    bool pqc_found = false;
+
+    for (size_t i = 0; i < tx.vin.size(); i++) {
+        const auto& witness_stack = tx.vin[i].scriptWitness.stack;
+        if (witness_stack.empty()) {
+            continue;
+        }
+
+        if (witness_stack.size() == 4) {
+            pqc_found = true;
+            if (witness_stack[2].size() != pqc::Dilithium::SIGNATURE_SIZE ||
+                witness_stack[3].size() != pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                                     "bad-pqc-witness",
+                                     "Invalid PQC witness element sizes");
+            }
+        }
+    }
+
+    if ((flags & SCRIPT_VERIFY_HYBRID_SIG) && !pqc_found) {
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                             "missing-pqc-sig",
+                             "Missing required PQC signature");
+    }
+
+    return true;
+}
+
+bool IsPQCActivated(int nHeight) {
+    (void)nHeight;
+    return pqc::PQCConfig::GetInstance().enable_pqc;
+}
+
+bool IsPQCRequired(int nHeight) {
+    return IsPQCActivated(nHeight);
 }
 
 } // namespace Consensus

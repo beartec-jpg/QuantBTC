@@ -9,15 +9,9 @@
 #define FRODO_NBAR 8
 #define FRODO_MBAR 8
 #define FRODO_Q 65536
-// Public key: seed (32 bytes) || Pack(B) (2 * FRODO_N * FRODO_NBAR bytes)
-#define FRODO_PUBLIC_KEY_BYTES (32 + 2 * FRODO_N * FRODO_NBAR)
-// Secret key layout (FO transform): Pack(S) || pk || s || pk_hash
-//   Pack(S)  : 2 * FRODO_N * FRODO_NBAR bytes
-//   pk       : FRODO_PUBLIC_KEY_BYTES bytes
-//   s        : 32 bytes (rejection seed)
-//   pk_hash  : 32 bytes (cached SHA256(pk))
-#define FRODO_SECRET_KEY_BYTES (2 * FRODO_N * FRODO_NBAR + FRODO_PUBLIC_KEY_BYTES + 32 + 32)
-#define FRODO_CIPHERTEXT_BYTES (2 * FRODO_MBAR * FRODO_N + 2 * FRODO_MBAR * FRODO_NBAR)
+#define FRODO_PUBLIC_KEY_BYTES 15648
+#define FRODO_SECRET_KEY_BYTES 31264
+#define FRODO_CIPHERTEXT_BYTES 15744
 #define FRODO_SHARED_SECRET_BYTES 32
 
 namespace pqc {

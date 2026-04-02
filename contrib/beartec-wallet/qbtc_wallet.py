@@ -2,6 +2,9 @@
 """
 QuantumBTC (QBTC) wallet integration library for BearTec Wallet.
 
+NOT PRODUCTION: this module is for testnet/integration testing while PQC
+primitives in the node are still placeholder implementations.
+
 Supports:
   - PQC + ECDSA keypair generation from a BIP-32 seed
   - qbtct1... Bech32 address creation
@@ -433,9 +436,19 @@ class QBTCRpc:
         return self.call("decoderawtransaction", [hex_tx])
 
     def sendtoaddress(self, address: str, amount: float, fee_rate: int = 10):
-        # Positional args: address, amount, comment, comment_to, subtractfeefromamount,
-        #                   replaceable, conf_target, estimate_mode, avoid_reuse, fee_rate
-        return self.call("sendtoaddress", [address, amount, "", "", False, False, None, "unset", None, fee_rate])
+        # sendtoaddress expects positional arguments in the node RPC implementation.
+        return self.call("sendtoaddress", [
+            address,
+            amount,
+            "",
+            "",
+            False,
+            True,
+            None,
+            "unset",
+            None,
+            fee_rate,
+        ])
 
 
 # ---------------------------------------------------------------------------

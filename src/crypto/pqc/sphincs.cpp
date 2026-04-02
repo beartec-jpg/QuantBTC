@@ -26,6 +26,8 @@ static_assert(pqc::SPHINCS::SIGNATURE_SIZE   == CRYPTO_BYTES,
 
 namespace pqc {
 
+// NOT PRODUCTION: placeholder SPHINCS+ implementation.
+
 SPHINCS::SPHINCS() {}
 SPHINCS::~SPHINCS() {}
 
