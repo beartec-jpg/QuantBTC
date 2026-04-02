@@ -15,8 +15,8 @@ protection against potential quantum computer attacks.
 - **FrodoKEM-976**: A conservative KEM based on the learning with errors problem
 - **NTRU-HPS-4096-821**: A lattice-based cryptosystem with long-standing security analysis
 
-### Digital Signatures (Coming Soon)
-- **Dilithium**: A lattice-based signature scheme
+### Digital Signatures
+- **Dilithium (ML-DSA-44)**: CRYSTALS-Dilithium2 lattice-based signature scheme (NIST FIPS 204). Real reference implementation using the pq-crystals/dilithium portable C code.
 - **Falcon**: A fast lattice-based signature scheme
 - **SPHINCS+**: A stateless hash-based signature scheme
 
