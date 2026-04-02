@@ -8,8 +8,8 @@ namespace pqc {
 
 class Dilithium {
 public:
-    static const size_t PUBLIC_KEY_SIZE = 1312;  // For CRYSTALS-Dilithium2
-    static const size_t PRIVATE_KEY_SIZE = 2528;
+    static const size_t PUBLIC_KEY_SIZE = 1312;  // For CRYSTALS-Dilithium2 (ML-DSA-44)
+    static const size_t PRIVATE_KEY_SIZE = 2560; // NIST ML-DSA-44 secret key
     static const size_t SIGNATURE_SIZE = 2420;
 
     Dilithium();
