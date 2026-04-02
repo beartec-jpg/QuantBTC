@@ -8,9 +8,10 @@ namespace pqc {
 
 class SPHINCS {
 public:
-    static const size_t PUBLIC_KEY_SIZE = 32;  // Adjust sizes based on specific SPHINCS+ parameter set
+    // SLH-DSA-SHA2-128f (SPHINCS+-SHA2-128f) parameter set
+    static const size_t PUBLIC_KEY_SIZE = 32;
     static const size_t PRIVATE_KEY_SIZE = 64;
-    static const size_t SIGNATURE_SIZE = 8080;  // For SPHINCS+-128f
+    static const size_t SIGNATURE_SIZE = 17088;
 
     SPHINCS();
     ~SPHINCS();

@@ -621,6 +621,32 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/pqc/falcon.h \
   crypto/pqc/sphincs.cpp \
   crypto/pqc/sphincs.h \
+  crypto/pqc/sphincsplus/address.c \
+  crypto/pqc/sphincsplus/address.h \
+  crypto/pqc/sphincsplus/api.h \
+  crypto/pqc/sphincsplus/context.h \
+  crypto/pqc/sphincsplus/fors.c \
+  crypto/pqc/sphincsplus/fors.h \
+  crypto/pqc/sphincsplus/hash.h \
+  crypto/pqc/sphincsplus/hash_sha2.c \
+  crypto/pqc/sphincsplus/merkle.c \
+  crypto/pqc/sphincsplus/merkle.h \
+  crypto/pqc/sphincsplus/params.h \
+  crypto/pqc/sphincsplus/randombytes.h \
+  crypto/pqc/sphincsplus/sha2.c \
+  crypto/pqc/sphincsplus/sha2.h \
+  crypto/pqc/sphincsplus/sha2_offsets.h \
+  crypto/pqc/sphincsplus/sign.c \
+  crypto/pqc/sphincsplus/thash.h \
+  crypto/pqc/sphincsplus/thash_sha2_simple.c \
+  crypto/pqc/sphincsplus/utils.c \
+  crypto/pqc/sphincsplus/utils.h \
+  crypto/pqc/sphincsplus/utilsx1.c \
+  crypto/pqc/sphincsplus/utilsx1.h \
+  crypto/pqc/sphincsplus/wots.c \
+  crypto/pqc/sphincsplus/wots.h \
+  crypto/pqc/sphincsplus/wotsx1.c \
+  crypto/pqc/sphincsplus/wotsx1.h \
   crypto/pqc/sqisign.cpp \
   crypto/pqc/sqisign.h
 

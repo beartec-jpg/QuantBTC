@@ -1,5 +1,6 @@
 #include "pqc_manager.h"
 #include "dilithium.h"
+#include "sphincs.h"
 #include <logging.h>
 
 namespace pqc {
@@ -23,7 +24,10 @@ bool PQCManager::GenerateSignatureKeyPair(PQCAlgorithm algo,
                 Dilithium dil;
                 return dil.GenerateKeyPair(publicKey, privateKey);
             }
-            case PQCAlgorithm::SPHINCS:
+            case PQCAlgorithm::SPHINCS: {
+                SPHINCS sph;
+                return sph.GenerateKeyPair(publicKey, privateKey);
+            }
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
                 LogPrintf("PQCManager::GenerateSignatureKeyPair: Algorithm not yet implemented\n");
@@ -49,7 +53,10 @@ bool PQCManager::Sign(PQCAlgorithm algo,
                 Dilithium dil;
                 return dil.Sign(message, privateKey, signature);
             }
-            case PQCAlgorithm::SPHINCS:
+            case PQCAlgorithm::SPHINCS: {
+                SPHINCS sph;
+                return sph.Sign(message, privateKey, signature);
+            }
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
                 LogPrintf("PQCManager::Sign: Algorithm not yet implemented\n");
@@ -75,7 +82,10 @@ bool PQCManager::Verify(PQCAlgorithm algo,
                 Dilithium dil;
                 return dil.Verify(message, signature, publicKey);
             }
-            case PQCAlgorithm::SPHINCS:
+            case PQCAlgorithm::SPHINCS: {
+                SPHINCS sph;
+                return sph.Verify(message, signature, publicKey);
+            }
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
                 LogPrintf("PQCManager::Verify: Algorithm not yet implemented\n");
