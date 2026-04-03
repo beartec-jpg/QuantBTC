@@ -130,6 +130,7 @@ BITCOIN_TESTS =\
   test/peerman_tests.cpp \
   test/pmt_tests.cpp \
   test/pqc_dilithium_tests.cpp \
+  test/pqc_signature_tests.cpp \
   test/policy_fee_tests.cpp \
   test/policyestimator_tests.cpp \
   test/pool_tests.cpp \
