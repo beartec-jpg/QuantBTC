@@ -1956,7 +1956,7 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                         return set_error(serror, SCRIPT_ERR_PQC_VERIFY_FAILED);
                     }
                 } else if (pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE &&
-                           pqc_sig.size() == pqc::SPHINCS::SIGNATURE_SIZE) {
+                           !pqc_sig.empty() && pqc_sig.size() <= pqc::SPHINCS::SIGNATURE_SIZE) {
                     // SPHINCS+ (SLH-DSA-SHA2-128f) verification path.
                     if (!checker.CheckSPHINCSSignature(pqc_sig, pqc_pubkey, stack[0], pqc_scriptCode, SigVersion::WITNESS_V0)) {
                         return set_error(serror, SCRIPT_ERR_PQC_VERIFY_FAILED);
