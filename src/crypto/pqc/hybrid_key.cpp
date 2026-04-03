@@ -87,9 +87,8 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
     std::vector<unsigned char> msg_bytes(hash.begin(), hash.end());
     PQCManager& manager = PQCManager::GetInstance();
     if (!manager.Sign(PQCAlgorithm::DILITHIUM, msg_bytes, m_pqc_private_key, pqc_sig)) {
-        LogPrintf("HybridKey::Sign: Dilithium signing failed, using classical-only\n");
-        signature = std::move(classical_sig);
-        return true;
+        LogPrintf("HybridKey::Sign: Dilithium signing failed; hybrid mode requires PQC signature\n");
+        return false;
     }
 
     // Hybrid signature format:

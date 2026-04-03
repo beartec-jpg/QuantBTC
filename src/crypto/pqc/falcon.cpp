@@ -1,3 +1,4 @@
+// NOT PRODUCTION — STUB ONLY: Falcon is not implemented; all methods return false.
 #include "falcon.h"
 #include <logging.h>
 

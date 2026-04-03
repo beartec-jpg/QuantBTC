@@ -1,3 +1,4 @@
+// NOT PRODUCTION — STUB ONLY: SQIsign is not implemented; all methods return false.
 #include "sqisign.h"
 #include <logging.h>
 
