@@ -433,6 +433,8 @@ class QBTCRpc:
         return self.call("decoderawtransaction", [hex_tx])
 
     def sendtoaddress(self, address: str, amount: float, fee_rate: int = 10):
+        # Positional args: address, amount, comment, comment_to, subtractfeefromamount,
+        #                   replaceable, conf_target, estimate_mode, avoid_reuse, fee_rate
         return self.call("sendtoaddress", [address, amount, "", "", False, False, None, "unset", None, fee_rate])
 
 
