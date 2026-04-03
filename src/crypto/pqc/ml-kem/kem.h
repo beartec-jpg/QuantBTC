@@ -1,5 +1,5 @@
-#ifndef KEM_H
-#define KEM_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_KEM_KEM_H
+#define BITCOIN_CRYPTO_PQC_ML_KEM_KEM_H
 
 #include <stdint.h>
 #include "params.h"

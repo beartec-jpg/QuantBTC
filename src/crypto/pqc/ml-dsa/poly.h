@@ -1,5 +1,5 @@
-#ifndef POLY_H
-#define POLY_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_DSA_POLY_H
+#define BITCOIN_CRYPTO_PQC_ML_DSA_POLY_H
 
 #include <stdint.h>
 #include "params.h"

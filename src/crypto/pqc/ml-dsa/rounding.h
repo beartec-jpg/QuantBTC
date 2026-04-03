@@ -1,5 +1,5 @@
-#ifndef ROUNDING_H
-#define ROUNDING_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_DSA_ROUNDING_H
+#define BITCOIN_CRYPTO_PQC_ML_DSA_ROUNDING_H
 
 #include <stdint.h>
 #include "params.h"

@@ -1,5 +1,5 @@
-#ifndef PARAMS_H
-#define PARAMS_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_DSA_PARAMS_H
+#define BITCOIN_CRYPTO_PQC_ML_DSA_PARAMS_H
 
 #include "config.h"
 

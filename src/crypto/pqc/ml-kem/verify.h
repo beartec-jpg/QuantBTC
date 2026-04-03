@@ -1,5 +1,5 @@
-#ifndef VERIFY_H
-#define VERIFY_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_KEM_VERIFY_H
+#define BITCOIN_CRYPTO_PQC_ML_KEM_VERIFY_H
 
 #include <stddef.h>
 #include <stdint.h>

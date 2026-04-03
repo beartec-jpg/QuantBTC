@@ -1,5 +1,5 @@
-#ifndef RANDOMBYTES_H
-#define RANDOMBYTES_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_KEM_RANDOMBYTES_H
+#define BITCOIN_CRYPTO_PQC_ML_KEM_RANDOMBYTES_H
 
 #include <stddef.h>
 #include <stdint.h>

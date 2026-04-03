@@ -1,5 +1,5 @@
-#ifndef PACKING_H
-#define PACKING_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_DSA_PACKING_H
+#define BITCOIN_CRYPTO_PQC_ML_DSA_PACKING_H
 
 #include <stdint.h>
 #include "params.h"

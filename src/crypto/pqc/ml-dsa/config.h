@@ -2,8 +2,8 @@
  * Hardcoded for Dilithium2 (ML-DSA-44) mode only.
  * Randomized signing is disabled for deterministic Bitcoin transaction signing.
  */
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_DSA_CONFIG_H
+#define BITCOIN_CRYPTO_PQC_ML_DSA_CONFIG_H
 
 #define DILITHIUM_MODE 2
 /* Deterministic (non-randomized) signing */
