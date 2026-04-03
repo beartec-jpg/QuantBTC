@@ -38,7 +38,6 @@ bool Kyber::KeyGen(unsigned char *pk, unsigned char *sk)
     int ret = crypto_kem_keypair(pk, sk);
     if (ret != 0) {
         LogPrintf("Kyber::KeyGen: crypto_kem_keypair failed (%d)\n", ret);
-        memory_cleanse(pk, KYBER_PUBLICKEYBYTES);
         memory_cleanse(sk, KYBER_SECRETKEYBYTES);
         return false;
     }
@@ -50,7 +49,6 @@ bool Kyber::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char *pk
     int ret = crypto_kem_enc(ct, ss, pk);
     if (ret != 0) {
         LogPrintf("Kyber::Encaps: crypto_kem_enc failed (%d)\n", ret);
-        memory_cleanse(ct, KYBER_CIPHERTEXTBYTES);
         memory_cleanse(ss, KYBER_SSBYTES);
         return false;
     }

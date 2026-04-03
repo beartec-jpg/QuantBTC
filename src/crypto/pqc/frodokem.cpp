@@ -215,7 +215,8 @@ bool FrodoKEM::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char 
     // Shared secret: ss = SHA256(ct || k)
     CSHA256().Write(ct, FRODO_CIPHERTEXT_BYTES).Write(k, 32).Finalize(ss);
 
-    // Cleanse sensitive intermediates
+    // Cleanse sensitive intermediates (mu: random message, sha512_out: derived
+    // key material, r_seed: blinding seed, Sp/Ep/Epp: secret error matrices)
     memory_cleanse(mu, sizeof(mu));
     memory_cleanse(sha512_out, sizeof(sha512_out));
     memory_cleanse(r_seed, sizeof(r_seed));
