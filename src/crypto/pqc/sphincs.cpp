@@ -2,6 +2,7 @@
 #include <logging.h>
 #include <random.h>
 #include <span.h>
+#include <support/cleanse.h>
 
 /* Provide the randombytes() function required by the SPHINCS+ reference
  * implementation using Bitcoin Core's cryptographically secure RNG. */
@@ -29,11 +30,13 @@ bool SPHINCS::GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<uint
         int ret = crypto_sign_keypair(public_key.data(), private_key.data());
         if (ret != 0) {
             LogPrintf("SPHINCS::GenerateKeyPair: crypto_sign_keypair failed (%d)\n", ret);
+            memory_cleanse(private_key.data(), private_key.size());
             return false;
         }
         return true;
     } catch (const std::exception& e) {
         LogPrintf("SPHINCS::GenerateKeyPair: %s\n", e.what());
+        memory_cleanse(private_key.data(), private_key.size());
         return false;
     }
 }
@@ -55,6 +58,7 @@ bool SPHINCS::Sign(const std::vector<uint8_t>& message, const std::vector<uint8_
 
         if (ret != 0) {
             LogPrintf("SPHINCS::Sign: crypto_sign_signature failed (%d)\n", ret);
+            memory_cleanse(signature.data(), signature.size());
             return false;
         }
 
@@ -62,6 +66,7 @@ bool SPHINCS::Sign(const std::vector<uint8_t>& message, const std::vector<uint8_
         return true;
     } catch (const std::exception& e) {
         LogPrintf("SPHINCS::Sign: %s\n", e.what());
+        memory_cleanse(signature.data(), signature.size());
         return false;
     }
 }
