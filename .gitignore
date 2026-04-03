@@ -155,3 +155,6 @@ confdefs.h
 conftest.cpp
 conftest.err
 confi*/
+
+# Out-of-tree build directory
+build-fresh/
