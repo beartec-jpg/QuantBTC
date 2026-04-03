@@ -1,6 +1,12 @@
 #ifndef BITCOIN_CRYPTO_PQC_FALCON_H
 #define BITCOIN_CRYPTO_PQC_FALCON_H
 
+// ============================================================================
+// WARNING: THIS ALGORITHM IS NOT IMPLEMENTED
+// All methods return false. Do NOT use until a real implementation is integrated.
+// See TODO.md for implementation status.
+// ============================================================================
+
 #include <stdint.h>
 #include <vector>
 

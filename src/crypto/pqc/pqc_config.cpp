@@ -1,4 +1,5 @@
 #include "pqc_config.h"
+#include <logging.h>
 
 namespace pqc {
 
@@ -62,11 +63,14 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
                 if (sig == "dilithium") {
                     enabled_signatures.push_back(PQCSignatureScheme::DILITHIUM);
                 }
-                else if (sig == "falcon") {
-                    enabled_signatures.push_back(PQCSignatureScheme::FALCON);
-                }
                 else if (sig == "sphincs") {
                     enabled_signatures.push_back(PQCSignatureScheme::SPHINCS_PLUS);
+                }
+                else if (sig == "falcon") {
+                    LogPrintf("PQC WARNING: falcon signature scheme is not yet implemented, ignoring\n");
+                }
+                else if (sig == "sqisign") {
+                    LogPrintf("PQC WARNING: sqisign signature scheme is not yet implemented, ignoring\n");
                 }
                 sigList.erase(0, pos + 1);
             }
@@ -75,11 +79,14 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
             if (sigList == "dilithium") {
                 enabled_signatures.push_back(PQCSignatureScheme::DILITHIUM);
             }
-            else if (sigList == "falcon") {
-                enabled_signatures.push_back(PQCSignatureScheme::FALCON);
-            }
             else if (sigList == "sphincs") {
                 enabled_signatures.push_back(PQCSignatureScheme::SPHINCS_PLUS);
+            }
+            else if (sigList == "falcon") {
+                LogPrintf("PQC WARNING: falcon signature scheme is not yet implemented, ignoring\n");
+            }
+            else if (sigList == "sqisign") {
+                LogPrintf("PQC WARNING: sqisign signature scheme is not yet implemented, ignoring\n");
             }
         }
     }

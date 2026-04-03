@@ -31,8 +31,7 @@ struct PQCConfig {
         PQCAlgorithm::NTRU
     };
     std::vector<PQCSignatureScheme> enabled_signatures{
-        PQCSignatureScheme::DILITHIUM,
-        PQCSignatureScheme::FALCON
+        PQCSignatureScheme::DILITHIUM
     };
     
     static PQCConfig& GetInstance() {
