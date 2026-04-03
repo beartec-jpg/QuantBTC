@@ -1,5 +1,6 @@
 #include <consensus/pqc_validation.h>
-#include <consensus/pqc_witness.h>
+#include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/sphincs.h>
 
 namespace Consensus {
 
@@ -15,10 +16,20 @@ bool IsPQCActivated(int nHeight)
 }
 
 bool HasPQCSignatures(const CTransaction& tx) {
-    // Check for witness version 2 (PQC)
+    // Detect PQC hybrid witness: [ECDSA sig, pubkey, PQC sig, PQC pubkey]
+    // sign.cpp produces witness v0 transactions with a 4-element stack.
     for (const auto& input : tx.vin) {
-        if (!input.scriptWitness.IsNull() && !input.scriptWitness.stack.empty()) {
-            if (input.scriptWitness.stack[0].size() > 0 && input.scriptWitness.stack[0][0] == WITNESS_V2_PQC) {
+        if (!input.scriptWitness.IsNull() && input.scriptWitness.stack.size() == 4) {
+            const auto& pqc_sig = input.scriptWitness.stack[2];
+            const auto& pqc_pubkey = input.scriptWitness.stack[3];
+            // Dilithium: sig=2420, pubkey=1312
+            if (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
+                pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                return true;
+            }
+            // SPHINCS+: sig<=17088, pubkey=32
+            if (!pqc_sig.empty() && pqc_sig.size() <= pqc::SPHINCS::SIGNATURE_SIZE &&
+                pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
                 return true;
             }
         }

@@ -891,6 +891,7 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
                     memory_cleanse(hmac_out, 64);
                     memory_cleanse(dil_seed.data(), dil_seed.size());
                     memory_cleanse(pqc_priv.data(), pqc_priv.size());
+                    ecdsa_key = CKey{};
                 }
             }
         }

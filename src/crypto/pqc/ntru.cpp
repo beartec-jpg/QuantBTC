@@ -186,19 +186,18 @@ bool NTRU::KeyGen(unsigned char *pk, unsigned char *sk) {
     int16_t f[NTRU_N];
     int16_t g[NTRU_N];
     int16_t h[NTRU_N];
-    FastRandomContext rng;
-    
-    // Generate small polynomial f
-    for(int i = 0; i < NTRU_N; i++) {
-        f[i] = (static_cast<int16_t>(rng.randrange(3)) - 1) % NTRU_Q;
-        if(f[i] < 0) f[i] += NTRU_Q;
-    }
-    
-    // Generate small polynomial g
-    for(int i = 0; i < NTRU_N; i++) {
-        g[i] = (static_cast<int16_t>(rng.randrange(3)) - 1) % NTRU_Q;
-        if(g[i] < 0) g[i] += NTRU_Q;
-    }
+
+    // Use cryptographic randomness for secret polynomial generation.
+    // GetStrongRandBytes provides a 32-byte seed which is expanded
+    // deterministically via SHA-256 in counter mode by sample_poly_deterministic.
+    unsigned char f_seed[32];
+    unsigned char g_seed[32];
+    GetStrongRandBytes(f_seed);
+    GetStrongRandBytes(g_seed);
+    sample_poly_deterministic(f, f_seed);
+    sample_poly_deterministic(g, g_seed);
+    memory_cleanse(f_seed, sizeof(f_seed));
+    memory_cleanse(g_seed, sizeof(g_seed));
     
     // Compute f^-1
     int16_t f_inv[NTRU_N];
