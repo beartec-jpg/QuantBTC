@@ -194,7 +194,7 @@ bool PQCManager::HybridEncapsulate(const std::vector<unsigned char>& publicKey,
     // Combine shared secrets using HKDF-SHA256 (RFC 5869) with domain separation
     sharedSecret.resize(32);
     CHKDF_HMAC_SHA256_L32 hkdf(combinedSecret.data(), combinedSecret.size(),
-                               "QuantBTC-HybridKEM-v1");
+                               "QuantBTC-HybridKEM-Salt");
     hkdf.Expand32("QuantBTC-HybridKEM-v1", sharedSecret.data());
     memory_cleanse(combinedSecret.data(), combinedSecret.size());
     return true;
@@ -247,7 +247,7 @@ bool PQCManager::HybridDecapsulate(const std::vector<unsigned char>& privateKey,
     // Combine shared secrets using HKDF-SHA256 (RFC 5869) with domain separation
     sharedSecret.resize(32);
     CHKDF_HMAC_SHA256_L32 hkdf(combinedSecret.data(), combinedSecret.size(),
-                               "QuantBTC-HybridKEM-v1");
+                               "QuantBTC-HybridKEM-Salt");
     hkdf.Expand32("QuantBTC-HybridKEM-v1", sharedSecret.data());
     memory_cleanse(combinedSecret.data(), combinedSecret.size());
     return true;
