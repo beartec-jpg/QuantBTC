@@ -55,7 +55,7 @@ std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const ChainType chain)
     case ChainType::QBTCTESTNET:
         return std::make_unique<CBaseChainParams>("qbtctestnet", 28332, 28334);
     case ChainType::QBTCMAIN:
-        return std::make_unique<CBaseChainParams>("qbtcmain", 38332, 38335);
+        return std::make_unique<CBaseChainParams>("qbtcmain", 58332, 58334);
     }
     assert(false);
 }
