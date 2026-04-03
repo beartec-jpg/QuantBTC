@@ -125,12 +125,14 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
     if (signature.size() < 2) return false;
     
     uint8_t csig_len = signature[0];
-    if (signature.size() < static_cast<size_t>(1 + csig_len + 1)) return false;
+    if (signature.size() < static_cast<size_t>(1 + csig_len + Dilithium::SIGNATURE_SIZE)) return false;
     
     std::vector<unsigned char> classical_sig(signature.begin() + 1, 
                                             signature.begin() + 1 + csig_len);
     std::vector<unsigned char> pqc_sig(signature.begin() + 1 + csig_len,
                                       signature.end());
+
+    if (pqc_sig.size() != Dilithium::SIGNATURE_SIZE) return false;
 
     // Verify classical ECDSA signature
     if (!m_classical_key.GetPubKey().Verify(hash, classical_sig)) {

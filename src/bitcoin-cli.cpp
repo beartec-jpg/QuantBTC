@@ -437,6 +437,10 @@ private:
             return " signet";
         case ChainType::REGTEST:
             return " regtest";
+        case ChainType::QBTCTESTNET:
+            return " qbtctestnet";
+        case ChainType::QBTCMAIN:
+            return " qbtcmain";
         case ChainType::MAIN:
             return "";
         }

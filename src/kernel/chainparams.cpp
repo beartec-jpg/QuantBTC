@@ -664,6 +664,99 @@ public:
     }
 };
 
+/**
+ * QuantumBTC mainnet — standalone PQC-enabled chain with its own network identity.
+ */
+class CQbtcMainParams : public CChainParams
+{
+public:
+    CQbtcMainParams()
+    {
+        m_chain_type = ChainType::QBTCMAIN;
+        consensus.signet_blocks = false;
+        consensus.signet_challenge.clear();
+        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.BIP34Height = 1;
+        consensus.BIP34Hash = uint256();
+        consensus.BIP65Height = 1;
+        consensus.BIP66Height = 1;
+        consensus.CSVHeight = 1;
+        consensus.SegwitHeight = 0;
+        consensus.MinBIP9WarningHeight = 0;
+        consensus.powLimit = uint256{"00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
+        consensus.nPowTargetSpacing = 10 * 60;
+        consensus.fPowAllowMinDifficultyBlocks = false;
+        consensus.enforce_BIP94 = false;
+        consensus.fPowNoRetargeting = false;
+        consensus.nRuleChangeActivationThreshold = 1815; // 90% of 2016
+        consensus.nMinerConfirmationWindow = 2016;
+
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].min_activation_height = 0;
+
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
+
+        // Deployment of PQC — always active on QBTC mainnet (PQC from genesis)
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].min_activation_height = 0;
+
+        consensus.nMinimumChainWork = uint256{};
+        consensus.defaultAssumeValid = uint256{};
+
+        // QuantumBTC BlockDAG: enabled
+        consensus.fDagMode = true;
+        consensus.ghostdag_k = 18;
+        consensus.nDagTargetSpacingMs = 1000;  // 1-second blocks
+        consensus.nMaxDagParents = 32;
+        consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB
+
+        // QuantumBTC: Early protection ON
+        consensus.fEarlyProtection = true;
+
+        // Unique magic bytes for QBTC mainnet
+        pchMessageStart[0] = 0xe3;
+        pchMessageStart[1] = 0xb5;
+        pchMessageStart[2] = 0xd7;
+        pchMessageStart[3] = 0xa9;
+        nDefaultPort = 58333;
+        nPruneAfterHeight = 100000;
+        m_assumed_blockchain_size = 0;
+        m_assumed_chain_state_size = 0;
+
+        genesis = CreateQuantumBTCGenesisBlock(1743379200, 0, 0x207fffff, 1, 50 * COIN);
+        consensus.hashGenesisBlock = genesis.GetHash();
+        assert(consensus.hashGenesisBlock == uint256{"434500d82dcecdcea5c11037ded57cda49875d9335f9125893194a2cf825d151"});
+        assert(genesis.hashMerkleRoot == uint256{"da5becb22904228b97769ee90301c1224f2433ecdc782b8670f875b196bf756d"});
+
+        vFixedSeeds.clear();
+        vSeeds.clear();
+
+        fDefaultConsistencyChecks = false;
+        m_is_mockable_chain = false;
+
+        checkpointData = {{}};
+        m_assumeutxo_data = {};
+        chainTxData = ChainTxData{0, 0, 0};
+
+        // QuantumBTC mainnet address prefixes
+        base58Prefixes[PUBKEY_ADDRESS] = std::vector<unsigned char>(1, 58);  // 'Q' prefix
+        base58Prefixes[SCRIPT_ADDRESS] = std::vector<unsigned char>(1, 60);  // 'R' prefix
+        base58Prefixes[SECRET_KEY]     = std::vector<unsigned char>(1, 186);
+        base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x88, 0xB2, 0x1F};
+        base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x88, 0xAD, 0xE5};
+
+        bech32_hrp = "qbtc"; // QuantumBTC mainnet bech32 prefix
+    }
+};
+
 class CRegTestParams : public CChainParams
 {
 public:
@@ -842,6 +935,11 @@ std::unique_ptr<const CChainParams> CChainParams::QbtcTestNet()
     return std::make_unique<const CQbtcTestNetParams>();
 }
 
+std::unique_ptr<const CChainParams> CChainParams::QbtcMain()
+{
+    return std::make_unique<const CQbtcMainParams>();
+}
+
 std::vector<int> CChainParams::GetAvailableSnapshotHeights() const
 {
     std::vector<int> heights;
@@ -860,6 +958,8 @@ std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
     const auto testnet4_msg = CChainParams::TestNet4()->MessageStart();
     const auto regtest_msg = CChainParams::RegTest({})->MessageStart();
     const auto signet_msg = CChainParams::SigNet({})->MessageStart();
+    const auto qbtc_testnet_msg = CChainParams::QbtcTestNet()->MessageStart();
+    const auto qbtc_main_msg = CChainParams::QbtcMain()->MessageStart();
 
     if (std::equal(message.begin(), message.end(), mainnet_msg.data())) {
         return ChainType::MAIN;
@@ -871,6 +971,10 @@ std::optional<ChainType> GetNetworkForMagic(const MessageStartChars& message)
         return ChainType::REGTEST;
     } else if (std::equal(message.begin(), message.end(), signet_msg.data())) {
         return ChainType::SIGNET;
+    } else if (std::equal(message.begin(), message.end(), qbtc_testnet_msg.data())) {
+        return ChainType::QBTCTESTNET;
+    } else if (std::equal(message.begin(), message.end(), qbtc_main_msg.data())) {
+        return ChainType::QBTCMAIN;
     }
     return std::nullopt;
 }

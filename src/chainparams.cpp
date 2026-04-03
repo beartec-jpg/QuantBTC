@@ -129,6 +129,8 @@ std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, c
     }
     case ChainType::QBTCTESTNET:
         return CChainParams::QbtcTestNet();
+    case ChainType::QBTCMAIN:
+        return CChainParams::QbtcMain();
     }
     assert(false);
 }

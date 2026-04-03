@@ -20,6 +20,7 @@ void SetupChainParamsBaseOptions(ArgsManager& argsman)
     argsman.AddArg("-testnet", "Use the testnet3 chain. Equivalent to -chain=test. Support for testnet3 is deprecated and will be removed in an upcoming release. Consider moving to testnet4 now by using -testnet4.", ArgsManager::ALLOW_ANY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg("-testnet4", "Use the testnet4 chain. Equivalent to -chain=testnet4.", ArgsManager::ALLOW_ANY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg("-qbtctestnet", "Use the QuantumBTC testnet chain. Equivalent to -chain=qbtctestnet.", ArgsManager::ALLOW_ANY, OptionsCategory::CHAINPARAMS);
+    argsman.AddArg("-qbtcmain", "Use the QuantumBTC mainnet chain. Equivalent to -chain=qbtcmain.", ArgsManager::ALLOW_ANY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg("-vbparams=deployment:start:end[:min_activation_height]", "Use given start/end times and min_activation_height for specified version bits deployment (regtest-only)", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg("-signet", "Use the signet chain. Equivalent to -chain=signet. Note that the network is defined by the -signetchallenge parameter", ArgsManager::ALLOW_ANY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg("-signetchallenge", "Blocks must satisfy the given script to be considered valid (only for signet networks; defaults to the global default signet test network challenge)", ArgsManager::ALLOW_ANY | ArgsManager::DISALLOW_NEGATION, OptionsCategory::CHAINPARAMS);
@@ -53,6 +54,8 @@ std::unique_ptr<CBaseChainParams> CreateBaseChainParams(const ChainType chain)
         return std::make_unique<CBaseChainParams>("regtest", 18443, 18445);
     case ChainType::QBTCTESTNET:
         return std::make_unique<CBaseChainParams>("qbtctestnet", 28332, 28334);
+    case ChainType::QBTCMAIN:
+        return std::make_unique<CBaseChainParams>("qbtcmain", 58332, 58334);
     }
     assert(false);
 }

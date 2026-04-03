@@ -163,6 +163,7 @@ public:
     static std::unique_ptr<const CChainParams> TestNet();
     static std::unique_ptr<const CChainParams> TestNet4();
     static std::unique_ptr<const CChainParams> QbtcTestNet();
+    static std::unique_ptr<const CChainParams> QbtcMain();
 
 protected:
     CChainParams() = default;

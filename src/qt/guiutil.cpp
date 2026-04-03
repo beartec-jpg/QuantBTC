@@ -121,6 +121,10 @@ static std::string DummyAddress(const CChainParams &params)
     case ChainType::REGTEST:
         addr = "bcrt1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqsr2427";
         break;
+    case ChainType::QBTCTESTNET:
+    case ChainType::QBTCMAIN:
+        addr = "qbtc1p35yvjel7srp783ztf8v6jdra7dhfzk5jaun8xz2qp6ws7z80n4tqvyqrll";
+        break;
     } // no default case, so the compiler can warn about missing cases
     assert(!addr.empty());
 
