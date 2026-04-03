@@ -107,7 +107,7 @@ class PQCWitnessTest(BitcoinTestFramework):
 
         # Should be rejected - sizes don't match any supported PQC algorithm
         assert_raises_rpc_error(
-            -26, "",  # Script verify error
+            -26, "PQC public key or signature size mismatch",
             node.sendrawtransaction, tx_hex,
         )
         self.log.info("  -> Correctly rejected wrong Dilithium sig size")
@@ -126,7 +126,7 @@ class PQCWitnessTest(BitcoinTestFramework):
         tx_hex = self._create_spending_tx(node, utxo, fake_sig, fake_pk)
 
         assert_raises_rpc_error(
-            -26, "",
+            -26, "PQC public key or signature size mismatch",
             node.sendrawtransaction, tx_hex,
         )
         self.log.info("  -> Correctly rejected wrong SPHINCS+ sig size")
@@ -145,7 +145,7 @@ class PQCWitnessTest(BitcoinTestFramework):
         tx_hex = self._create_spending_tx(node, utxo, fake_sig, fake_pk)
 
         assert_raises_rpc_error(
-            -26, "",
+            -26, "PQC public key or signature size mismatch",
             node.sendrawtransaction, tx_hex,
         )
         self.log.info("  -> Correctly rejected unsupported PQC sizes")
@@ -165,7 +165,7 @@ class PQCWitnessTest(BitcoinTestFramework):
 
         # Should be rejected - signature verification will fail
         assert_raises_rpc_error(
-            -26, "",
+            -26, "Post-quantum signature verification failed",
             node.sendrawtransaction, tx_hex,
         )
         self.log.info("  -> Correctly rejected invalid Dilithium signature")
@@ -184,7 +184,7 @@ class PQCWitnessTest(BitcoinTestFramework):
         tx_hex = self._create_spending_tx(node, utxo, fake_sig, fake_pk)
 
         assert_raises_rpc_error(
-            -26, "",
+            -26, "Post-quantum signature verification failed",
             node.sendrawtransaction, tx_hex,
         )
         self.log.info("  -> Correctly rejected invalid SPHINCS+ signature")

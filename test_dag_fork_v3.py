@@ -23,6 +23,7 @@ MINING_ADDR = _get_mining_address()
 def rpc(*args):
     r = subprocess.run(CLI + list(args), capture_output=True, text=True)
     if r.returncode != 0:
+        print(f"  ERR {' '.join(args[:2])}: {r.stderr.strip()}")
         return None
     if not r.stdout.strip():
         return None
