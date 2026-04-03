@@ -115,6 +115,7 @@ BASE_SCRIPTS = [
     'feature_segwit.py --legacy-wallet',
     'feature_segwit.py --descriptors --v1transport',
     'feature_segwit.py --descriptors --v2transport',
+    'feature_pqc_witness.py',
     'p2p_tx_download.py',
     'wallet_avoidreuse.py --legacy-wallet',
     'wallet_avoidreuse.py --descriptors',

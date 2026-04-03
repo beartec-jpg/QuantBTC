@@ -84,6 +84,9 @@ typedef enum ScriptError_t
 
     /* Post-quantum cryptography */
     SCRIPT_ERR_PQC_VERIFY_FAILED,
+    SCRIPT_ERR_PQC_WITNESS_MALFORMED,
+    SCRIPT_ERR_PQC_ALGO_UNSUPPORTED,
+    SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH,
 
     SCRIPT_ERR_ERROR_COUNT
 } ScriptError;

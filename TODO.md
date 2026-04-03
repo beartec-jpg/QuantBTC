@@ -35,7 +35,7 @@
 - [ ] **Fix `GetMiningParents` iteration order documentation** — `dagtipset.h` says "highest-scored tips first"; confirm the `TipOrder` comparator and iteration direction are consistent.
 - [ ] **Fix locally-mined blocks bypass activation delay** — `validation.cpp:4608` applies only IP throttle + ramp weight for `peer_id=-1`; the peer activation delay is also not applied to local miners, making the protection bypassable.
 - [ ] **Replace `std::mt19937` with Bitcoin Core RNG in `earlyprotection.h:324`** — `std::random_device` may be deterministic on some platforms; use `GetRandInt()`.
-- [ ] **Fix `qbtc-mine.sh` mining descriptor** — the hardcoded `raw(51)#8lvh9jxk` descriptor produces an unspendable/non-standard output; replace with a proper P2WPKH or P2TR descriptor.
+- [x] **Fix `qbtc-mine.sh` mining descriptor** — replaced `raw(51)#8lvh9jxk` anyone-can-spend descriptors with proper P2WPKH addresses via `getnewaddress`.
 - [ ] **Fix `QBTCRpc.sendtoaddress` in wallet** — `qbtc_wallet.py:443` passes a dict as `params`, but the RPC method expects positional args.
 - [ ] **Fix `pqc_config.cpp` PQC algorithm config** — `pqc_config.h` defaults `enabled_kems` to Kyber+FrodoKEM+NTRU and `enabled_signatures` to Dilithium+Falcon, but both are broken; default to empty/disabled until fixed.
 - [ ] **Add `hashParents` ancestral ordering check** — optionally verify that DAG parents don't include the block's own selected-chain descendants (prevents trivial DAG cycles).
