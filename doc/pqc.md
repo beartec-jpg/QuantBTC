@@ -25,7 +25,10 @@ protection against potential quantum computer attacks.
   - Public key: 32 bytes, private key: 64 bytes, signature: 17 088 bytes
   - Pure hash-based construction (SHA-256 only), no external dependencies
   - Implemented using the sphincs/sphincsplus reference C implementation
-- **Falcon** (FN-DSA-512): A fast lattice-based signature scheme (Coming Soon)
+- **Falcon** (FN-DSA-512): A fast lattice-based signature scheme — **Not Yet Implemented — Disabled**
+  - All operations return errors if selected; this algorithm will be enabled once a real implementation is integrated
+- **SQIsign**: An isogeny-based signature scheme — **Not Yet Implemented — Disabled**
+  - All operations return errors if selected; this algorithm is awaiting NIST standardization
 
 ## Configuration Options
 
@@ -35,7 +38,7 @@ The following command-line options are available:
 - `-pqchybridkeys=0|1`: Enable/disable hybrid key generation (default: 1)
 - `-pqchybridsig=0|1`: Enable/disable hybrid signatures (default: 1)
 - `-pqcalgo=algo1,algo2,...`: Specify enabled PQC algorithms (default: kyber,frodo,ntru)
-- `-pqcsig=sig1,sig2,...`: Specify enabled signature schemes (default: dilithium,falcon)
+- `-pqcsig=sig1,sig2,...`: Specify enabled signature schemes (default: dilithium). Note: `falcon` and `sqisign` are not yet implemented and will be ignored with a warning if specified.
 
 Example:
 ```bash

@@ -30,7 +30,7 @@ bool PQCManager::GenerateSignatureKeyPair(PQCAlgorithm algo,
             }
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::GenerateSignatureKeyPair: Algorithm not yet implemented\n");
+                LogPrintf("PQCManager::GenerateSignatureKeyPair: DISABLED — algorithm not implemented, all operations rejected\n");
                 return false;
             
             default:
@@ -59,7 +59,7 @@ bool PQCManager::Sign(PQCAlgorithm algo,
             }
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::Sign: Algorithm not yet implemented\n");
+                LogPrintf("PQCManager::Sign: DISABLED — algorithm not implemented, all operations rejected\n");
                 return false;
             
             default:
@@ -88,7 +88,7 @@ bool PQCManager::Verify(PQCAlgorithm algo,
             }
             case PQCAlgorithm::FALCON:
             case PQCAlgorithm::SQISIGN:
-                LogPrintf("PQCManager::Verify: Algorithm not yet implemented\n");
+                LogPrintf("PQCManager::Verify: DISABLED — algorithm not implemented, all operations rejected\n");
                 return false;
             
             default:

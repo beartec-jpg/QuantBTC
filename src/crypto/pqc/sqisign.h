@@ -1,6 +1,12 @@
 #ifndef BITCOIN_CRYPTO_PQC_SQISIGN_H
 #define BITCOIN_CRYPTO_PQC_SQISIGN_H
 
+// ============================================================================
+// WARNING: THIS ALGORITHM IS NOT IMPLEMENTED
+// All methods return false. Do NOT use until a real implementation is integrated.
+// See TODO.md for implementation status.
+// ============================================================================
+
 #include <stdint.h>
 #include <vector>
 
@@ -8,9 +14,9 @@ namespace pqc {
 
 class SQIsign {
 public:
-    static const size_t PUBLIC_KEY_SIZE = 64;    // Sizes to be adjusted based on final parameters
-    static const size_t PRIVATE_KEY_SIZE = 32;
-    static const size_t SIGNATURE_SIZE = 204;
+    static const size_t PUBLIC_KEY_SIZE = 64;    // SQIsign NIST Level 1
+    static const size_t PRIVATE_KEY_SIZE = 16;   // SQIsign NIST Level 1
+    static const size_t SIGNATURE_SIZE = 8864;   // SQIsign NIST Level 1
 
     SQIsign();
     ~SQIsign();
