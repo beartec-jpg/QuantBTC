@@ -3,6 +3,7 @@
 #include "../sha256.h"
 #include "../random.h"
 #include <string.h>
+#include <vector>
 
 namespace pqc {
 
@@ -38,8 +39,16 @@ static void sample_error(uint16_t *e, size_t n) {
     }
 }
 
+/** Read a little-endian uint16_t from a byte buffer without strict-aliasing UB. */
+static inline uint16_t load_le16(const unsigned char *src) {
+    uint16_t val;
+    memcpy(&val, src, sizeof(val));
+    return val;
+}
+
 bool FrodoKEM::KeyGen(unsigned char *pk, unsigned char *sk) {
-    uint16_t A[FRODO_N * FRODO_N];
+    // Heap-allocate the large matrix A (~1.9 MB) to avoid stack overflow.
+    std::vector<uint16_t> A(FRODO_N * FRODO_N);
     uint16_t S[FRODO_N * FRODO_NBAR];
     uint16_t E[FRODO_N * FRODO_NBAR];
     uint16_t B[FRODO_N * FRODO_NBAR];
@@ -58,7 +67,7 @@ bool FrodoKEM::KeyGen(unsigned char *pk, unsigned char *sk) {
             sha256.Write((unsigned char*)&i, sizeof(i));
             sha256.Write((unsigned char*)&j, sizeof(j));
             sha256.Finalize(tmp);
-            A[i * FRODO_N + j] = (*(uint16_t*)tmp) % FRODO_Q;
+            A[i * FRODO_N + j] = load_le16(tmp) % FRODO_Q;
         }
     }
     
@@ -103,8 +112,8 @@ bool FrodoKEM::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char 
     sample_error(Ep, FRODO_MBAR * FRODO_N);
     sample_error(Epp, FRODO_MBAR * FRODO_NBAR);
     
-    // Reconstruct A from seed
-    uint16_t A[FRODO_N * FRODO_N];
+    // Reconstruct A from seed (heap-allocated to avoid stack overflow)
+    std::vector<uint16_t> A(FRODO_N * FRODO_N);
     const unsigned char *seed = pk;
     CSHA256 sha256;
     for(size_t i = 0; i < FRODO_N; i++) {
@@ -115,7 +124,7 @@ bool FrodoKEM::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char 
             sha256.Write((unsigned char*)&i, sizeof(i));
             sha256.Write((unsigned char*)&j, sizeof(j));
             sha256.Finalize(tmp);
-            A[i * FRODO_N + j] = (*(uint16_t*)tmp) % FRODO_Q;
+            A[i * FRODO_N + j] = load_le16(tmp) % FRODO_Q;
         }
     }
     

@@ -32,7 +32,7 @@ bool HasPQCSignatures(const CTransaction& tx) {
     return false;
 }
 
-bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, ValidationState& state) {
+bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, TxValidationState& state) {
     if (!(flags & SCRIPT_VERIFY_PQC)) {
         // PQC verification not required
         return true;
@@ -60,9 +60,8 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, ValidationSt
                 // which is not available here without UTXO access.  Pass an empty script;
                 // full verification is performed by the script interpreter (VerifyScript).
                 if (!VerifyPQCSignature(tx, i, pqc_sig, CScript())) {
-                    return state.Invalid(ValidationInvalidReason::CONSENSUS,
-                                       false,
-                                       REJECT_INVALID, "bad-pqc-sig",
+                    return state.Invalid(TxValidationResult::TX_CONSENSUS,
+                                       "bad-pqc-sig",
                                        "PQC signature verification failed");
                 }
             }
@@ -71,9 +70,8 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, ValidationSt
     
     // If PQC signatures are required but none found
     if ((flags & SCRIPT_VERIFY_HYBRID_SIG) && !pqc_found) {
-        return state.Invalid(ValidationInvalidReason::CONSENSUS,
-                           false,
-                           REJECT_INVALID, "missing-pqc-sig",
+        return state.Invalid(TxValidationResult::TX_CONSENSUS,
+                           "missing-pqc-sig",
                            "Missing required PQC signature");
     }
     
