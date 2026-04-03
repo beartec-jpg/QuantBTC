@@ -11,6 +11,12 @@
 #include <vector>
 
 // Post-quantum cryptography specific script types and functions
+//
+// TODO: The functions below (SolvePQC, GetScriptForPQCDestination,
+// ExtractPQCDestination, etc.) are defined but not yet called from the
+// script interpreter.  They will be wired into VerifyScript / EvalScript
+// once the PQC witness-v2 spending path is implemented.  Until then they
+// serve as tested building blocks for future integration.
 
 // PQC-specific script verification flags are defined in consensus/pqc_validation.h
 

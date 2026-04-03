@@ -4289,6 +4289,13 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-weight", strprintf("%s : weight limit failed", __func__));
     }
 
+    // QuantumBTC: also enforce the PQC-extended block weight limit from consensus params.
+    // nMaxBlockWeightPQC allows larger blocks to accommodate PQC signatures.
+    const Consensus::Params& consensusParams = chainman.GetConsensus();
+    if (GetBlockWeight(block) > consensusParams.nMaxBlockWeightPQC) {
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-weight-pqc", strprintf("%s : PQC weight limit failed", __func__));
+    }
+
     return true;
 }
 

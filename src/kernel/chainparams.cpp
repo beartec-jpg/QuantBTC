@@ -132,6 +132,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = 1628640000; // August 11th, 2021
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 709632; // Approximately November 12th, 2021
 
+        // Deployment of PQC (post-quantum cryptography) — not active on legacy mainnet
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].min_activation_height = 0;
+
         consensus.nMinimumChainWork = uint256{"000000000000000000000000000000000000000088e186b70e0862c193ec44d6"};
         consensus.defaultAssumeValid = uint256{"000000000000000000011c5890365bdbe5d25b97ce0057589acaef4f1a57263f"}; // 856760
 
@@ -266,6 +272,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = 1628640000; // August 11th, 2021
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
 
+        // Deployment of PQC — not active on legacy testnet3
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].min_activation_height = 0;
+
         consensus.nMinimumChainWork = uint256{"000000000000000000000000000000000000000000000f209695166be8b61fa9"};
         consensus.defaultAssumeValid = uint256{"000000000000000465b1a66c9f386308e8c75acef9201f3f577811da09fc90ad"}; // 2873500
 
@@ -364,6 +376,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
+
+        // Deployment of PQC — not active on testnet4
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].min_activation_height = 0;
 
         consensus.nMinimumChainWork = uint256{"00000000000000000000000000000000000000000000005faa15d02e6202f3ba"};
         consensus.defaultAssumeValid = uint256{"000000005be348057db991fa5d89fe7c4695b667cfb311391a8db374b6f681fd"}; // 39550
@@ -505,6 +523,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
 
+        // Deployment of PQC — not active on signet
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].min_activation_height = 0;
+
         // message start is defined as the first 4 bytes of the sha256d of the block script
         HashWriter h{};
         h << consensus.signet_challenge;
@@ -585,6 +609,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0;
 
+        // Deployment of PQC — always active on QBTC testnet (PQC from genesis)
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].min_activation_height = 0;
+
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
 
@@ -610,6 +640,8 @@ public:
 
         genesis = CreateQuantumBTCGenesisBlock(1743379200, 0, 0x207fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
+        assert(consensus.hashGenesisBlock == uint256{"434500d82dcecdcea5c11037ded57cda49875d9335f9125893194a2cf825d151"});
+        assert(genesis.hashMerkleRoot == uint256{"da5becb22904228b97769ee90301c1224f2433ecdc782b8670f875b196bf756d"});
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -667,6 +699,12 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
 
+        // Deployment of PQC — always active on regtest (PQC from genesis)
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].bit = 3;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nStartTime = Consensus::BIP9Deployment::ALWAYS_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        consensus.vDeployments[Consensus::DEPLOYMENT_PQC].min_activation_height = 0;
+
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
 
@@ -680,11 +718,12 @@ public:
         // QuantumBTC: Early protection ON by default for regtest
         consensus.fEarlyProtection = true;
 
-        pchMessageStart[0] = 0xfa;
-        pchMessageStart[1] = 0xbf;
-        pchMessageStart[2] = 0xb5;
-        pchMessageStart[3] = 0xda;
-        nDefaultPort = 18444;
+        // Unique QBTC regtest magic bytes — differ from Bitcoin Core's 0xfa 0xbf 0xb5 0xda
+        pchMessageStart[0] = 0xd2;
+        pchMessageStart[1] = 0xc4;
+        pchMessageStart[2] = 0xa6;
+        pchMessageStart[3] = 0xb8;
+        nDefaultPort = 28444; // Unique QBTC regtest port (Bitcoin Core uses 18444)
         nPruneAfterHeight = opts.fastprune ? 100 : 1000;
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
@@ -717,9 +756,8 @@ public:
 
         genesis = CreateQuantumBTCGenesisBlock(1743379200, 0, 0x207fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        // Note: hashGenesisBlock and hashMerkleRoot will differ from Bitcoin's regtest
-        // because we use a different genesis message. No pre-computed assert here;
-        // the node will compute and log the actual hash on first start.
+        assert(consensus.hashGenesisBlock == uint256{"434500d82dcecdcea5c11037ded57cda49875d9335f9125893194a2cf825d151"});
+        assert(genesis.hashMerkleRoot == uint256{"da5becb22904228b97769ee90301c1224f2433ecdc782b8670f875b196bf756d"});
 
         vFixedSeeds.clear(); //!< Regtest mode doesn't have any fixed seeds.
         vSeeds.clear();
