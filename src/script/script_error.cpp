@@ -116,7 +116,13 @@ std::string ScriptErrorString(const ScriptError serror)
         case SCRIPT_ERR_SIG_FINDANDDELETE:
             return "Signature is found in scriptCode";
         case SCRIPT_ERR_PQC_VERIFY_FAILED:
-            return "Dilithium post-quantum signature verification failed";
+            return "Post-quantum signature verification failed";
+        case SCRIPT_ERR_PQC_WITNESS_MALFORMED:
+            return "Malformed PQC witness data";
+        case SCRIPT_ERR_PQC_ALGO_UNSUPPORTED:
+            return "Unsupported PQC signature algorithm";
+        case SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH:
+            return "PQC public key or signature size mismatch";
         case SCRIPT_ERR_UNKNOWN_ERROR:
         case SCRIPT_ERR_ERROR_COUNT:
         default: break;
