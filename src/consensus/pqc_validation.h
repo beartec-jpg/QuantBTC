@@ -3,13 +3,15 @@
 
 #include <primitives/transaction.h>
 #include <crypto/pqc/hybrid_key.h>
-#include <script/pqcscript.h>
+#include <script/interpreter.h>
+
+class BlockValidationState;
 
 namespace Consensus {
 
 /** PQC validation flags */
-static constexpr unsigned int SCRIPT_VERIFY_PQC = ::SCRIPT_VERIFY_PQC;  // Keep in sync with script flag definition.
-static const unsigned int SCRIPT_VERIFY_HYBRID_SIG = (1U << 25);  // Require both classical and PQC signatures
+static constexpr unsigned int SCRIPT_VERIFY_PQC = (1U << 21);
+static constexpr unsigned int SCRIPT_VERIFY_HYBRID_SIG = (1U << 25);
 
 /**
  * Check if a transaction includes PQC signatures.

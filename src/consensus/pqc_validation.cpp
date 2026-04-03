@@ -5,17 +5,6 @@
 
 namespace Consensus {
 
-// PQC activation height.  Set to 0 so that PQC is active from genesis on all
-// QBTC networks.  This matches the BIP9 deployment entry DEPLOYMENT_PQC which
-// is set to ALWAYS_ACTIVE on QBTC chains.  On legacy Bitcoin chains
-// DEPLOYMENT_PQC is set to NEVER_ACTIVE and this height check is moot.
-static const int PQC_ACTIVATION_HEIGHT = 0;
-
-bool IsPQCActivated(int nHeight)
-{
-    return nHeight >= PQC_ACTIVATION_HEIGHT;
-}
-
 bool HasPQCSignatures(const CTransaction& tx) {
     for (const auto& input : tx.vin) {
         const auto& stack = input.scriptWitness.stack;

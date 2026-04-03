@@ -2,6 +2,7 @@
 #include "dilithium.h"
 #include "falcon.h"
 #include "sphincs.h"
+#include <crypto/hkdf_sha256_32.h>
 #include <logging.h>
 #include <support/cleanse.h>
 
