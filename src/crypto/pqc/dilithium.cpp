@@ -43,11 +43,13 @@ bool Dilithium::GenerateKeyPair(std::vector<uint8_t>& public_key,
         int ret = crypto_sign_keypair(public_key.data(), private_key.data());
         if (ret != 0) {
             LogPrintf("Dilithium::GenerateKeyPair: crypto_sign_keypair failed (%d)\n", ret);
+            memory_cleanse(private_key.data(), private_key.size());
             return false;
         }
         return true;
     } catch (const std::exception& e) {
         LogPrintf("Dilithium::GenerateKeyPair: %s\n", e.what());
+        memory_cleanse(private_key.data(), private_key.size());
         return false;
     }
 }
@@ -70,11 +72,13 @@ bool Dilithium::DeriveKeyPair(const std::vector<uint8_t>& seed,
                                            seed.data());
         if (ret != 0) {
             LogPrintf("Dilithium::DeriveKeyPair: crypto_sign_seed_keypair failed (%d)\n", ret);
+            memory_cleanse(private_key.data(), private_key.size());
             return false;
         }
         return true;
     } catch (const std::exception& e) {
         LogPrintf("Dilithium::DeriveKeyPair: %s\n", e.what());
+        memory_cleanse(private_key.data(), private_key.size());
         return false;
     }
 }
@@ -101,11 +105,13 @@ bool Dilithium::Sign(const std::vector<uint8_t>& message,
         if (ret != 0 || siglen != SIGNATURE_SIZE) {
             LogPrintf("Dilithium::Sign: signing failed (ret=%d, siglen=%u)\n",
                       ret, (unsigned)siglen);
+            memory_cleanse(signature.data(), signature.size());
             return false;
         }
         return true;
     } catch (const std::exception& e) {
         LogPrintf("Dilithium::Sign: %s\n", e.what());
+        memory_cleanse(signature.data(), signature.size());
         return false;
     }
 }
