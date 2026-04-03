@@ -631,6 +631,7 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/pqc/ml-kem/randombytes.cpp \
   crypto/pqc/frodokem.cpp \
   crypto/pqc/frodokem.h \
+  crypto/pqc/pqc_fo_utils.h \
   crypto/pqc/ntru.cpp \
   crypto/pqc/ntru.h \
   crypto/pqc/pqc_manager.cpp \

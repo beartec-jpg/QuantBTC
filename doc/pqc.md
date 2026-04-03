@@ -16,7 +16,20 @@ protection against potential quantum computer attacks.
   - Public key: 1184 bytes, secret key: 2400 bytes, ciphertext: 1088 bytes, shared secret: 32 bytes
   - Implemented using the pq-crystals/kyber reference C implementation (Kyber-768 ref/)
 - **FrodoKEM-976**: A conservative KEM based on the learning with errors problem
+  - Implements IND-CCA2 security via the Fujisaki-Okamoto transform
+  - On decapsulation failure the implicit rejection path returns a deterministic pseudorandom
+    shared secret derived from a per-key rejection seed `s` and the ciphertext, preventing
+    adaptive chosen-ciphertext attacks
+  - Stack overflow fix: the 976×976 public matrix A (~1.86 MB) is allocated on the heap
+  - Public key: 15648 bytes, secret key: 31328 bytes, ciphertext: 15744 bytes, shared secret: 32 bytes
 - **NTRU-HPS-4096-821**: A lattice-based cryptosystem with long-standing security analysis
+  - Implements IND-CCA2 security via the Fujisaki-Okamoto transform
+  - The blinding polynomial `r` is derived deterministically from the message `m` and `H(pk)` via
+    SHA-512, enabling re-encryption and ciphertext comparison in Decaps
+  - On decapsulation failure the implicit rejection path returns a deterministic pseudorandom
+    shared secret derived from a per-key rejection seed `z` and the ciphertext
+  - Note: the underlying `poly_invert` has a known bug in its extended-GCD (separate TODO); the
+    FO transform is correct independently of the IND-CPA core
 
 ### Digital Signatures
 - **Dilithium** (ML-DSA-44): A lattice-based signature scheme (NIST FIPS 204)
