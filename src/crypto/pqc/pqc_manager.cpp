@@ -1,6 +1,7 @@
 #include "pqc_manager.h"
 #include "dilithium.h"
 #include "sphincs.h"
+#include "../sha256.h"
 #include <logging.h>
 
 namespace pqc {
@@ -162,15 +163,36 @@ bool PQCManager::HybridEncapsulate(const std::vector<unsigned char>& publicKey,
                 offset += KYBER_PUBLIC_KEY_BYTES;
                 break;
             }
-            // Similar implementations for FRODOKEM and NTRU
+            case PQCAlgorithm::FRODOKEM: {
+                unsigned char ct[FRODO_CIPHERTEXT_BYTES];
+                unsigned char ss[FRODO_SHARED_SECRET_BYTES];
+                if (!FrodoKEM::Encaps(ct, ss, &publicKey[offset])) {
+                    return false;
+                }
+                ciphertext.insert(ciphertext.end(), ct, ct + FRODO_CIPHERTEXT_BYTES);
+                combinedSecret.insert(combinedSecret.end(), ss, ss + FRODO_SHARED_SECRET_BYTES);
+                offset += FRODO_PUBLIC_KEY_BYTES;
+                break;
+            }
+            case PQCAlgorithm::NTRU: {
+                unsigned char ct[NTRU_CIPHERTEXT_BYTES];
+                unsigned char ss[NTRU_SHARED_SECRET_BYTES];
+                if (!NTRU::Encaps(ct, ss, &publicKey[offset])) {
+                    return false;
+                }
+                ciphertext.insert(ciphertext.end(), ct, ct + NTRU_CIPHERTEXT_BYTES);
+                combinedSecret.insert(combinedSecret.end(), ss, ss + NTRU_SHARED_SECRET_BYTES);
+                offset += NTRU_PUBLIC_KEY_BYTES;
+                break;
+            }
             default:
                 break;
         }
     }
 
-    // Combine shared secrets using SHA256
-    // TODO: Implement proper secret combining function
-    sharedSecret = combinedSecret;
+    // Combine shared secrets by hashing the concatenation with SHA256
+    sharedSecret.resize(32);
+    CSHA256().Write(combinedSecret.data(), combinedSecret.size()).Finalize(sharedSecret.data());
     return true;
 }
 
@@ -193,15 +215,34 @@ bool PQCManager::HybridDecapsulate(const std::vector<unsigned char>& privateKey,
                 ct_offset += KYBER_CIPHERTEXT_BYTES;
                 break;
             }
-            // Similar implementations for FRODOKEM and NTRU
+            case PQCAlgorithm::FRODOKEM: {
+                unsigned char ss[FRODO_SHARED_SECRET_BYTES];
+                if (!FrodoKEM::Decaps(ss, &ciphertext[ct_offset], &privateKey[sk_offset])) {
+                    return false;
+                }
+                combinedSecret.insert(combinedSecret.end(), ss, ss + FRODO_SHARED_SECRET_BYTES);
+                sk_offset += FRODO_SECRET_KEY_BYTES;
+                ct_offset += FRODO_CIPHERTEXT_BYTES;
+                break;
+            }
+            case PQCAlgorithm::NTRU: {
+                unsigned char ss[NTRU_SHARED_SECRET_BYTES];
+                if (!NTRU::Decaps(ss, &ciphertext[ct_offset], &privateKey[sk_offset])) {
+                    return false;
+                }
+                combinedSecret.insert(combinedSecret.end(), ss, ss + NTRU_SHARED_SECRET_BYTES);
+                sk_offset += NTRU_SECRET_KEY_BYTES;
+                ct_offset += NTRU_CIPHERTEXT_BYTES;
+                break;
+            }
             default:
                 break;
         }
     }
 
-    // Combine shared secrets using SHA256
-    // TODO: Implement proper secret combining function
-    sharedSecret = combinedSecret;
+    // Combine shared secrets by hashing the concatenation with SHA256
+    sharedSecret.resize(32);
+    CSHA256().Write(combinedSecret.data(), combinedSecret.size()).Finalize(sharedSecret.data());
     return true;
 }
 

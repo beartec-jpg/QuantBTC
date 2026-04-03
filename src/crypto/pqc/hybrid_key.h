@@ -20,6 +20,8 @@ public:
     bool SetClassicalKey(const CKey& key);
     bool SetPQCKey(const std::vector<unsigned char>& public_key,
                    const std::vector<unsigned char>& private_key);
+    // Set only the PQC public key (verification-only mode; no classical key required).
+    bool SetPQCPublicKey(const std::vector<unsigned char>& public_key);
 
     // Key operations
     bool Sign(const uint256& hash, std::vector<unsigned char>& signature) const;

@@ -823,6 +823,8 @@ libbitcoin_common_a_SOURCES = \
   script/solver.cpp \
   consensus/pqc_witness.cpp \
   consensus/pqc_witness.h \
+  consensus/pqc_validation.cpp \
+  consensus/pqc_validation.h \
   $(BITCOIN_CORE_H)
 #
 

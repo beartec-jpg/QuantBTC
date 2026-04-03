@@ -1700,6 +1700,28 @@ bool GenericTransactionSignatureChecker<T>::CheckSchnorrSignature(Span<const uns
 }
 
 template <class T>
+bool GenericTransactionSignatureChecker<T>::CheckDilithiumSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig_in, const CScript& scriptCode, SigVersion sigversion) const
+{
+    // The ECDSA signature has the hash type appended as its last byte.
+    if (ecdsa_sig_in.empty())
+        return false;
+    int nHashType = ecdsa_sig_in.back();
+
+    // Witness v0 sighash requires a non-negative amount.
+    if (sigversion == SigVersion::WITNESS_V0 && amount < 0) return HandleMissingData(m_mdb);
+
+    // Compute the BIP-143 witness v0 sighash — the same digest that the ECDSA
+    // signature covers, so both signatures commit to identical transaction data.
+    uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
+
+    // Feed the 32-byte sighash as the message to Dilithium verification.
+    std::vector<uint8_t> message(sighash.begin(), sighash.end());
+
+    pqc::Dilithium dilithium;
+    return dilithium.Verify(message, pqc_sig, pqc_pubkey);
+}
+
+template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckLockTime(const CScriptNum& nLockTime) const
 {
     // There are two kinds of nLockTime: lock-by-blockheight
@@ -1896,21 +1918,25 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             // BIP141 P2WPKH: 20-byte witness v0 program (which encodes Hash160(pubkey))
             if (stack.size() == 4) {
                 // QuantBTC PQC-extended P2WPKH: [ecdsa_sig, pubkey, pqc_sig, pqc_pubkey]
-                // Strip PQC elements; ECDSA verification proceeds normally below.
-                // Full Dilithium verification requires sighash recomputation
-                // (checker interface extension - tracked for future work).
                 const valtype& pqc_pubkey = SpanPopBack(stack);
                 const valtype& pqc_sig = SpanPopBack(stack);
 
-                if (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
-                    pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
-                    LogPrintf("PQC: accepted Dilithium witness (%u-byte sig, %u-byte pk) for ECDSA+PQC hybrid input\n",
-                              pqc_sig.size(), pqc_pubkey.size());
-                } else {
-                    LogPrintf("PQC: witness has unexpected PQC element sizes (sig=%u, pk=%u)\n",
-                              pqc_sig.size(), pqc_pubkey.size());
+                // Hard-fail on wrong-sized PQC elements — do NOT silently accept garbage.
+                if (pqc_sig.size() != pqc::Dilithium::SIGNATURE_SIZE ||
+                    pqc_pubkey.size() != pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                    return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
                 }
-                // stack now has 2 elements - proceed with standard ECDSA verification
+
+                // stack now has [ecdsa_sig, pubkey].  Build the implied P2PKH scriptCode
+                // (same one used for the ECDSA sighash) and verify the Dilithium signature.
+                CScript pqc_scriptCode;
+                pqc_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
+
+                // stack[0] is the ECDSA sig (its last byte carries the hashtype).
+                if (!checker.CheckDilithiumSignature(pqc_sig, pqc_pubkey, stack[0], pqc_scriptCode, SigVersion::WITNESS_V0)) {
+                    return set_error(serror, SCRIPT_ERR_PQC_VERIFY_FAILED);
+                }
+                // stack now has 2 elements — proceed with standard ECDSA verification.
             }
             if (stack.size() != 2) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH); // 2 items in witness

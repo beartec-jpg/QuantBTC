@@ -52,30 +52,126 @@ static void poly_invert(int16_t *out, const int16_t *in) {
         for(int j = 0; j < NTRU_N; j++) {
             r[j] = (r[j] - quotient * NTRU_P) % NTRU_Q;
             if(r[j] < 0) r[j] += NTRU_Q;
-        }
-        
-        // v = v - q * aux
-        for(int j = 0; j < NTRU_N; j++) {
-            v[j] = (v[j] - quotient * aux[j]) % NTRU_Q;
-            if(v[j] < 0) v[j] += NTRU_Q;
-        }
-        
-        // Check if done
-        bool done = true;
-        for(int j = 0; j < NTRU_N; j++) {
-            if(r[j] != 0) {
-                done = false;
-                break;
-            }
-        }
-        if(done) break;
-        
-        // Swap r and aux, v and out
-        memcpy(aux, r, NTRU_N * sizeof(int16_t));
-        memcpy(r, out, NTRU_N * sizeof(int16_t));
-        memcpy(out, v, NTRU_N * sizeof(int16_t));
-        memcpy(v, aux, NTRU_N * sizeof(int16_t));
+/**
+ * Compute the inverse of polynomial 'in' modulo (X^N - 1) over Z/qZ
+ * using the "almost inverse" algorithm (based on NTRU standard).
+ *
+ * First computes the inverse modulo 2 (binary), then lifts it to
+ * modulo q = 4096 via Newton iteration.
+ *
+ * Returns true on success, false if the polynomial is not invertible.
+ */
+static bool poly_invert(int16_t *out, const int16_t *in) {
+    // Step 1: Compute inverse mod 2 using the "almost inverse" algorithm
+    // in the ring Z_2[X]/(X^N - 1)
+    int16_t b[NTRU_N] = {0};
+    int16_t c[NTRU_N] = {0};
+    int16_t f[NTRU_N];
+    int16_t g[NTRU_N] = {0};
+
+    // f = input polynomial mod 2
+    for (int i = 0; i < NTRU_N; i++) {
+        f[i] = ((in[i] % 2) + 2) % 2;
     }
+
+    // g represents X^N - 1 in the quotient ring Z_2[X]/(X^N - 1).
+    // Coefficients at positions 0 and N-1 are set to 1, giving 1 + X^(N-1).
+    g[0] = 1;
+    g[NTRU_N - 1] = 1;
+
+    b[0] = 1;
+    // c is already zero
+
+    int deg_f = NTRU_N - 1;
+    while (deg_f >= 0 && f[deg_f] == 0) deg_f--;
+    int deg_g = NTRU_N - 1;
+    while (deg_g >= 0 && g[deg_g] == 0) deg_g--;
+
+    // Almost inverse mod 2
+    int k = 0;
+    const int max_iter = 2 * NTRU_N * NTRU_N;  // generous upper bound
+    for (int iter = 0; iter < max_iter; iter++) {
+        // Find lowest set coefficient of f
+        while (deg_f >= 0 && f[0] == 0) {
+            // f = f / x  (shift right)
+            for (int i = 0; i < NTRU_N - 1; i++) f[i] = f[i + 1];
+            f[NTRU_N - 1] = 0;
+            // c = c * x  (shift left, with wraparound mod X^N - 1)
+            int16_t last = c[NTRU_N - 1];
+            for (int i = NTRU_N - 1; i > 0; i--) c[i] = c[i - 1];
+            c[0] = last;
+            k++;
+            deg_f--;
+        }
+        if (deg_f < 0) {
+            // f is zero — input is not invertible mod 2
+            return false;
+        }
+        if (deg_f == 0) {
+            // f = 1 (constant) — we have the inverse mod 2
+            break;
+        }
+        if (deg_f < deg_g) {
+            // swap f <-> g, b <-> c
+            for (int i = 0; i < NTRU_N; i++) { int16_t t = f[i]; f[i] = g[i]; g[i] = t; }
+            for (int i = 0; i < NTRU_N; i++) { int16_t t = b[i]; b[i] = c[i]; c[i] = t; }
+            int tmp = deg_f; deg_f = deg_g; deg_g = tmp;
+        }
+        // f = f + g mod 2,  b = b + c mod 2
+        for (int i = 0; i < NTRU_N; i++) {
+            f[i] = (f[i] + g[i]) & 1;
+            b[i] = (b[i] + c[i]) & 1;
+        }
+        while (deg_f >= 0 && f[deg_f] == 0) deg_f--;
+    }
+
+    if (deg_f != 0) {
+        // Failed to converge — input is not invertible
+        return false;
+    }
+
+    // b now holds the inverse mod 2.  Adjust for the x^k rotation.
+    // Rotate b by (N - k) positions mod N to undo the k shifts.
+    {
+        int16_t tmp[NTRU_N];
+        int shift = ((k % NTRU_N) + NTRU_N) % NTRU_N;
+        for (int i = 0; i < NTRU_N; i++) {
+            tmp[(i + shift) % NTRU_N] = b[i];
+        }
+        memcpy(b, tmp, sizeof(tmp));
+    }
+
+    // Step 2: Lift from mod 2 to mod q = 4096 via Newton iteration.
+    // b holds inverse mod 2.  Newton: b_{i+1} = b_i * (2 - in * b_i) mod q
+    // log2(4096) = 12, so we need iterations for mod 4, 8, 16, ..., 4096
+    // That's 11 doublings (2 -> 4 -> 8 -> 16 -> 32 -> 64 -> 128 -> 256 -> 512 -> 1024 -> 2048 -> 4096)
+    for (int round = 0; round < 11; round++) {
+        int16_t temp[NTRU_N];
+        int16_t prod[NTRU_N];
+
+        // prod = in * b mod (X^N - 1)
+        poly_mul(prod, in, b);
+
+        // temp = 2 - prod
+        for (int i = 0; i < NTRU_N; i++) {
+            temp[i] = (-prod[i]) % NTRU_Q;
+            if (temp[i] < 0) temp[i] += NTRU_Q;
+        }
+        temp[0] = (2 - prod[0] % NTRU_Q + NTRU_Q) % NTRU_Q;
+
+        // b_new = b * temp mod (X^N - 1); use intermediate buffer to avoid aliasing
+        int16_t b_new[NTRU_N];
+        poly_mul(b_new, b, temp);
+        memcpy(b, b_new, sizeof(b_new));
+
+        // Reduce mod q
+        for (int i = 0; i < NTRU_N; i++) {
+            b[i] = ((b[i] % NTRU_Q) + NTRU_Q) % NTRU_Q;
+        }
+    }
+
+    memcpy(out, b, NTRU_N * sizeof(int16_t));
+    return true;
 }
 
 /**
@@ -125,6 +221,10 @@ bool NTRU::KeyGen(unsigned char *pk, unsigned char *sk) {
     int16_t f_inv[NTRU_N];
     memset(f_inv, 0, sizeof(f_inv));
     poly_invert(f_inv, f);
+    if (!poly_invert(f_inv, f)) {
+        // f is not invertible; retry key generation would be needed in practice.
+        return false;
+    }
     
     // Compute h = g * f^-1
     poly_mul(h, g, f_inv);
