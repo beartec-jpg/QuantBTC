@@ -18,6 +18,9 @@
 #include <util/time.h>
 #include <util/translation.h>
 #include <wallet/scriptpubkeyman.h>
+#include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/hybrid_key.h>
+#include <crypto/pqc/pqc_config.h>
 
 #include <optional>
 
@@ -2260,6 +2263,27 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                 continue;
             }
             m_map_pubkeys[pubkey] = i;
+
+            // QuantumBTC: generate PQC (Dilithium) key for each new ECDSA pubkey
+            if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
+                CKeyID keyid = pubkey.GetID();
+                if (m_map_pqc_keys.find(keyid) == m_map_pqc_keys.end()) {
+                    pqc::Dilithium dilithium;
+                    std::vector<unsigned char> pqc_pub(pqc::Dilithium::PUBLIC_KEY_SIZE);
+                    std::vector<unsigned char> pqc_priv(pqc::Dilithium::PRIVATE_KEY_SIZE);
+                    dilithium.GenerateKeyPair(pqc_pub, pqc_priv);
+
+                    pqc::HybridKey hybrid;
+                    hybrid.SetPQCKey(pqc_pub, pqc_priv);
+                    m_map_pqc_keys[keyid] = std::move(hybrid);
+
+                    if (!batch.WriteDescriptorPQCKey(id, pubkey, pqc_pub, pqc_priv)) {
+                        throw std::runtime_error(std::string(__func__) + ": writing PQC key failed");
+                    }
+                    WalletLogPrintf("PQC: generated Dilithium keypair for %s (index %d)\n",
+                                    keyid.ToString(), i);
+                }
+            }
         }
         // Merge and write the cache
         DescriptorCache new_items = m_wallet_descriptor.cache.MergeAndDiff(temp_cache);
@@ -2468,6 +2492,13 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
         FlatSigningProvider master_provider;
         master_provider.keys = GetKeys();
         m_wallet_descriptor.descriptor->ExpandPrivate(index, master_provider, *out_keys);
+
+        // QuantumBTC: populate PQC keys for signing
+        for (const auto& [keyid, pqckey] : m_map_pqc_keys) {
+            if (out_keys->keys.count(keyid)) {
+                out_keys->pqc_keys[keyid] = pqckey;
+            }
+        }
     }
 
     return out_keys;
@@ -2686,6 +2717,15 @@ bool DescriptorScriptPubKeyMan::AddCryptedKey(const CKeyID& key_id, const CPubKe
     }
 
     m_map_crypted_keys[key_id] = make_pair(pubkey, crypted_key);
+    return true;
+}
+
+bool DescriptorScriptPubKeyMan::AddPQCKey(const CKeyID& key_id, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& pqc_privkey)
+{
+    LOCK(cs_desc_man);
+    pqc::HybridKey hybrid;
+    hybrid.SetPQCKey(pqc_pubkey, pqc_privkey);
+    m_map_pqc_keys[key_id] = std::move(hybrid);
     return true;
 }
 

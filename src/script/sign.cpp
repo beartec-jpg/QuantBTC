@@ -97,7 +97,7 @@ bool MutableTransactionSignatureCreator::CreatePQCSig(const SigningProvider& pro
 
     pqc::HybridKey hybridKey;
     if (!provider.GetHybridKey(keyid, hybridKey)) return false;
-    if (!hybridKey.IsValid()) return false;
+    if (hybridKey.GetPQCPrivateKey().empty() || hybridKey.GetPQCPublicKey().empty()) return false;
 
     // Compute the same BIP143 sighash that ECDSA used
     const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
