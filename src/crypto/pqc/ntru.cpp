@@ -54,9 +54,10 @@ static bool poly_invert(int16_t *out, const int16_t *in) {
         f[i] = ((in[i] % 2) + 2) % 2;
     }
 
-    // g = X^N - 1 mod 2 = X^N + 1 mod 2
+    // g represents X^N - 1 in the quotient ring Z_2[X]/(X^N - 1).
+    // Coefficients at positions 0 and N-1 are set to 1, giving 1 + X^(N-1).
     g[0] = 1;
-    g[NTRU_N - 1] = 1;  // x^(N-1) + 1 represents X^N - 1 after reduction
+    g[NTRU_N - 1] = 1;
 
     b[0] = 1;
     // c is already zero
@@ -138,8 +139,10 @@ static bool poly_invert(int16_t *out, const int16_t *in) {
         }
         temp[0] = (2 - prod[0] % NTRU_Q + NTRU_Q) % NTRU_Q;
 
-        // b = b * temp mod (X^N - 1)
-        poly_mul(b, b, temp);
+        // b_new = b * temp mod (X^N - 1); use intermediate buffer to avoid aliasing
+        int16_t b_new[NTRU_N];
+        poly_mul(b_new, b, temp);
+        memcpy(b, b_new, sizeof(b_new));
 
         // Reduce mod q
         for (int i = 0; i < NTRU_N; i++) {
