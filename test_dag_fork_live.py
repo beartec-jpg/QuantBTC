@@ -4,7 +4,19 @@ This is the proven approach from the regtest test."""
 import subprocess, json, time, sys
 
 CLI = ["./src/bitcoin-cli", "-qbtctestnet"]
-DESC = "raw(51)#8lvh9jxk"  # OP_TRUE descriptor
+
+def _get_mining_address():
+    """Obtain a proper bech32 address for mining instead of anyone-can-spend."""
+    r = subprocess.run(CLI + ["getnewaddress", "", "bech32"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        subprocess.run(CLI + ["createwallet", "mining"],
+                       capture_output=True, text=True)
+        r = subprocess.run(CLI + ["getnewaddress", "", "bech32"],
+                           capture_output=True, text=True)
+    return r.stdout.strip()
+
+MINING_ADDR = _get_mining_address()
 
 def rpc(cmd, *args):
     r = subprocess.run(CLI + [cmd] + list(args), capture_output=True, text=True)
@@ -17,10 +29,10 @@ def rpc(cmd, *args):
         return r.stdout.strip()
 
 def mine_raw(n=1):
-    """Mine n blocks using generateblock (raw descriptor, no wallet needed)."""
+    """Mine n blocks using a proper bech32 address."""
     hashes = []
     for _ in range(n):
-        result = rpc("generateblock", DESC, "[]")
+        result = rpc("generateblock", MINING_ADDR, "[]")
         if result and "hash" in result:
             hashes.append(result["hash"])
     return hashes
@@ -62,7 +74,7 @@ for i in range(NUM_FORKS):
         continue
     
     # Mine a new block using generateblock
-    result = rpc("generateblock", DESC, "[]")
+    result = rpc("generateblock", MINING_ADDR, "[]")
     if result and "hash" in result:
         new_hash = result["hash"]
         fork_tip_hashes.append(new_hash)
@@ -86,7 +98,7 @@ print(f"\nAfter forks: height={info['blocks']} dag_tips={info['dag_tips']}")
 
 # --- Step 4: Mine merge block ---
 print("\nMining merge block...")
-result = rpc("generateblock", DESC, "[]")
+result = rpc("generateblock", MINING_ADDR, "[]")
 if result and "hash" in result:
     merge_hash = result["hash"]
     print(f"Merge block: {merge_hash[:16]}...")

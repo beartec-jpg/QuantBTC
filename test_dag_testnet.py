@@ -31,11 +31,24 @@ def rpc_must(*args):
         sys.exit(1)
     return r
 
+def _get_mining_address():
+    """Obtain a proper bech32 address for mining instead of anyone-can-spend."""
+    r = subprocess.run(CLI + ["getnewaddress", "", "bech32"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        subprocess.run(CLI + ["createwallet", "mining"],
+                       capture_output=True, text=True)
+        r = subprocess.run(CLI + ["getnewaddress", "", "bech32"],
+                           capture_output=True, text=True)
+    return r.stdout.strip()
+
+MINING_ADDR = _get_mining_address()
+
 def mine():
-    return rpc_must("generateblock", "raw(51)#8lvh9jxk", "[]")
+    return rpc_must("generateblock", MINING_ADDR, "[]")
 
 def mine_nosub():
-    return rpc("generateblock", "raw(51)#8lvh9jxk", "[]", "false")
+    return rpc("generateblock", MINING_ADDR, "[]", "false")
 
 # ── Phase 1: Baseline ────────────────────────────────────────────────
 print(f"=== DAG Fork/Merge Test on {CHAIN} ===\n")

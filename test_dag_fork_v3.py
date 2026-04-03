@@ -6,12 +6,23 @@ Adapted from the proven regtest test (run_ghostdag_test_v2.py).
 import subprocess, json, sys, time
 
 CLI = ["./src/bitcoin-cli", "-qbtctestnet"]
-DESC = "raw(51)#8lvh9jxk"
+
+def _get_mining_address():
+    """Obtain a proper bech32 address for mining instead of anyone-can-spend."""
+    r = subprocess.run(CLI + ["getnewaddress", "", "bech32"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        subprocess.run(CLI + ["createwallet", "mining"],
+                       capture_output=True, text=True)
+        r = subprocess.run(CLI + ["getnewaddress", "", "bech32"],
+                           capture_output=True, text=True)
+    return r.stdout.strip()
+
+MINING_ADDR = _get_mining_address()
 
 def rpc(*args):
     r = subprocess.run(CLI + list(args), capture_output=True, text=True)
     if r.returncode != 0:
-        print(f"  ERR {' '.join(args[:2])}: {r.stderr.strip()}")
         return None
     if not r.stdout.strip():
         return None
@@ -21,12 +32,12 @@ def rpc(*args):
         return r.stdout.strip()
 
 def mine():
-    result = rpc("generateblock", DESC, "[]")
+    result = rpc("generateblock", MINING_ADDR, "[]")
     return result["hash"] if result and "hash" in result else None
 
 def mine_nosub():
     """Create a block without submitting. Returns (hash, hex)."""
-    result = rpc("generateblock", DESC, "[]", "false")
+    result = rpc("generateblock", MINING_ADDR, "[]", "false")
     if result and "hash" in result:
         return result["hash"], result["hex"]
     return None, None

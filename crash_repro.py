@@ -3,7 +3,19 @@
 import subprocess, json, time, sys
 
 CLI = ["./src/bitcoin-cli", "-regtest"]
-DESC = "raw(51)#8lvh9jxk"
+
+def _get_mining_address():
+    """Obtain a proper bech32 address for mining instead of anyone-can-spend."""
+    r = subprocess.run(CLI + ["getnewaddress", "", "bech32"],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        subprocess.run(CLI + ["createwallet", "mining"],
+                       capture_output=True, text=True)
+        r = subprocess.run(CLI + ["getnewaddress", "", "bech32"],
+                           capture_output=True, text=True)
+    return r.stdout.strip()
+
+MINING_ADDR = _get_mining_address()
 
 def rpc(*args):
     r = subprocess.run(CLI + list(args), capture_output=True, text=True)
@@ -15,11 +27,11 @@ def rpc(*args):
         return r.stdout.strip()
 
 def mine():
-    result = rpc("generateblock", DESC, "[]")
+    result = rpc("generateblock", MINING_ADDR, "[]")
     return result["hash"] if result and "hash" in result else None
 
 def mine_nosub():
-    result = rpc("generateblock", DESC, "[]", "false")
+    result = rpc("generateblock", MINING_ADDR, "[]", "false")
     if result and "hash" in result:
         return result["hash"], result["hex"]
     return None, None

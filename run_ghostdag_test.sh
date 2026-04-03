@@ -4,10 +4,17 @@
 set -e
 
 CLI="./src/bitcoin-cli -regtest"
-DESC='raw(51)#8lvh9jxk'
+
+# Obtain a proper mining address instead of anyone-can-spend raw(51).
+ADDR=$($CLI getnewaddress "" "bech32" 2>/dev/null || echo "")
+if [ -z "$ADDR" ]; then
+    # Fallback: if wallet is not loaded, create one first.
+    $CLI createwallet "mining" >/dev/null 2>&1 || true
+    ADDR=$($CLI getnewaddress "" "bech32")
+fi
 
 mine() {
-    $CLI generateblock "$DESC" '[]' 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'])"
+    $CLI generateblock "$ADDR" '[]' 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'])"
 }
 
 echo "========================================================================"
