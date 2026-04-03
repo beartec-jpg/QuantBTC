@@ -1,8 +1,9 @@
 #include "pqc_manager.h"
 #include "dilithium.h"
 #include "sphincs.h"
-#include "../sha256.h"
+#include <crypto/hkdf_sha256_32.h>
 #include <logging.h>
+#include <support/cleanse.h>
 
 namespace pqc {
 
@@ -190,9 +191,12 @@ bool PQCManager::HybridEncapsulate(const std::vector<unsigned char>& publicKey,
         }
     }
 
-    // Combine shared secrets by hashing the concatenation with SHA256
+    // Combine shared secrets using HKDF-SHA256 (RFC 5869) with domain separation
     sharedSecret.resize(32);
-    CSHA256().Write(combinedSecret.data(), combinedSecret.size()).Finalize(sharedSecret.data());
+    CHKDF_HMAC_SHA256_L32 hkdf(combinedSecret.data(), combinedSecret.size(),
+                               "QuantBTC-HybridKEM-Salt");
+    hkdf.Expand32("QuantBTC-HybridKEM-v1", sharedSecret.data());
+    memory_cleanse(combinedSecret.data(), combinedSecret.size());
     return true;
 }
 
@@ -240,9 +244,12 @@ bool PQCManager::HybridDecapsulate(const std::vector<unsigned char>& privateKey,
         }
     }
 
-    // Combine shared secrets by hashing the concatenation with SHA256
+    // Combine shared secrets using HKDF-SHA256 (RFC 5869) with domain separation
     sharedSecret.resize(32);
-    CSHA256().Write(combinedSecret.data(), combinedSecret.size()).Finalize(sharedSecret.data());
+    CHKDF_HMAC_SHA256_L32 hkdf(combinedSecret.data(), combinedSecret.size(),
+                               "QuantBTC-HybridKEM-Salt");
+    hkdf.Expand32("QuantBTC-HybridKEM-v1", sharedSecret.data());
+    memory_cleanse(combinedSecret.data(), combinedSecret.size());
     return true;
 }
 

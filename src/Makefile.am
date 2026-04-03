@@ -816,8 +816,6 @@ libbitcoin_common_a_SOURCES = \
   script/descriptor.cpp \
   script/miniscript.cpp \
   script/parsing.cpp \
-  script/pqcscript.cpp \
-  script/pqcscript.h \
   script/sign.cpp \
   script/signingprovider.cpp \
   script/solver.cpp \
