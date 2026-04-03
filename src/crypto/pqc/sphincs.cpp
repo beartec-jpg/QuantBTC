@@ -84,6 +84,10 @@ bool SPHINCS::Verify(const std::vector<uint8_t>& message, const std::vector<uint
             LogPrintf("SPHINCS::Verify: invalid public key size %zu\n", public_key.size());
             return false;
         }
+        // SPHINCS+ reference implementations always produce SIGNATURE_SIZE bytes,
+        // but optimized implementations may emit shorter signatures.  We accept
+        // any non-empty signature up to the maximum; crypto_sign_verify performs
+        // full cryptographic validation of the actual signature content.
         if (signature.empty() || signature.size() > SIGNATURE_SIZE) {
             LogPrintf("SPHINCS::Verify: invalid signature size %zu\n", signature.size());
             return false;
