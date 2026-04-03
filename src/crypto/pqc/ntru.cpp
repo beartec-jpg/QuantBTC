@@ -1,6 +1,8 @@
 #include "ntru.h"
+#include "pqc_fo_utils.h"
 #include "../common.h"
 #include "../sha256.h"
+#include "../sha512.h"
 #include "../random.h"
 #include <string.h>
 
@@ -36,7 +38,7 @@ static void poly_invert(int16_t *out, const int16_t *in) {
     // Extended Euclidean algorithm in polynomial ring
     int16_t v[NTRU_N] = {0};
     int16_t r[NTRU_N];
-    int16_t aux[NTRU_N];
+    int16_t aux[NTRU_N] = {0};
     
     // Initialize
     memcpy(r, in, NTRU_N * sizeof(int16_t));
@@ -76,6 +78,31 @@ static void poly_invert(int16_t *out, const int16_t *in) {
     }
 }
 
+/**
+ * Deterministically sample a trinary polynomial from a 32-byte seed.
+ * Coefficients are in {0, NTRU_Q-1, 1} representing {0, -1, 1} mod NTRU_Q.
+ * Uses SHA-256 in counter mode to expand the seed.
+ */
+static void sample_poly_deterministic(int16_t *r, const unsigned char *seed)
+{
+    // Each SHA-256 block produces 32 bytes; iterate until all NTRU_N coefficients are filled
+    for (int block = 0; block * 32 < NTRU_N; block++) {
+        unsigned char counter[4];
+        counter[0] = (unsigned char)(block & 0xff);
+        counter[1] = (unsigned char)((block >> 8) & 0xff);
+        counter[2] = 0;
+        counter[3] = 0;
+        unsigned char tmp[32];
+        CSHA256().Write(seed, 32).Write(counter, 4).Finalize(tmp);
+        for (int i = 0; i < 32 && block * 32 + i < NTRU_N; i++) {
+            int idx = block * 32 + i;
+            // Map byte mod 3 to {0, -1, 1} then lift to [0, NTRU_Q)
+            int16_t val = (int16_t)(tmp[i] % 3) - 1; // {-1, 0, 1}
+            r[idx] = (int16_t)((val + NTRU_Q) % NTRU_Q);
+        }
+    }
+}
+
 bool NTRU::KeyGen(unsigned char *pk, unsigned char *sk) {
     int16_t f[NTRU_N];
     int16_t g[NTRU_N];
@@ -96,79 +123,134 @@ bool NTRU::KeyGen(unsigned char *pk, unsigned char *sk) {
     
     // Compute f^-1
     int16_t f_inv[NTRU_N];
+    memset(f_inv, 0, sizeof(f_inv));
     poly_invert(f_inv, f);
     
     // Compute h = g * f^-1
     poly_mul(h, g, f_inv);
     
-    // Pack public and private keys
+    // Pack public key: h (raw int16_t array, NTRU_N * 2 bytes)
     memcpy(pk, h, NTRU_N * sizeof(int16_t));
-    memcpy(sk, f, NTRU_N * sizeof(int16_t));
-    memcpy(sk + NTRU_N * sizeof(int16_t), g, NTRU_N * sizeof(int16_t));
+
+    // Pack secret key: f || pk || z
+    //   f   : NTRU_N * 2 bytes
+    //   pk  : NTRU_PUBLIC_KEY_BYTES bytes (= NTRU_N * 2)
+    //   z   : 32 bytes (rejection seed for implicit rejection)
+    unsigned char *sk_f  = sk;
+    unsigned char *sk_pk = sk + NTRU_N * 2;
+    unsigned char *sk_z  = sk + NTRU_N * 2 + NTRU_PUBLIC_KEY_BYTES;
+
+    memcpy(sk_f,  f,  NTRU_N * sizeof(int16_t));
+    memcpy(sk_pk, pk, NTRU_PUBLIC_KEY_BYTES);
+    GetStrongRandBytes({sk_z, 32});
     
     return true;
 }
 
 bool NTRU::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char *pk) {
-    int16_t r[NTRU_N];
-    int16_t h[NTRU_N];
     unsigned char m[32];
-    FastRandomContext rng;
     
-    // Generate random message
+    // Generate random 32-byte message
     GetStrongRandBytes(m);
     
-    // Unpack public key
+    // pk_hash = SHA256(pk)
+    unsigned char pk_hash[32];
+    CSHA256().Write(pk, NTRU_PUBLIC_KEY_BYTES).Finalize(pk_hash);
+
+    // (r_seed || ss_seed) = SHA512(m || H(pk))
+    unsigned char sha512_out[64];
+    CSHA512().Write(m, 32).Write(pk_hash, 32).Finalize(sha512_out);
+    const unsigned char *r_seed  = sha512_out;
+    const unsigned char *ss_seed = sha512_out + 32;
+
+    // Unpack public key h
+    int16_t h[NTRU_N];
     memcpy(h, pk, NTRU_N * sizeof(int16_t));
+
+    // Sample blinding polynomial r deterministically from r_seed
+    int16_t r[NTRU_N];
+    sample_poly_deterministic(r, r_seed);
     
-    // Generate small polynomial r
-    for(int i = 0; i < NTRU_N; i++) {
-        r[i] = (static_cast<int16_t>(rng.randrange(3)) - 1) % NTRU_Q;
-        if(r[i] < 0) r[i] += NTRU_Q;
-    }
-    
-    // Compute e = r * h
+    // Compute e = r * h + Encode(m)
     int16_t e[NTRU_N];
     poly_mul(e, r, h);
-    
-    // Add message encoding
     for(int i = 0; i < NTRU_N; i++) {
-        e[i] = (e[i] + ((m[i/8] >> (i%8)) & 1) * (NTRU_Q/2)) % NTRU_Q;
+        e[i] = (int16_t)((e[i] + ((m[i/8] >> (i%8)) & 1) * (NTRU_Q/2)) % NTRU_Q);
     }
     
     // Pack ciphertext
     memcpy(ct, e, NTRU_N * sizeof(int16_t));
     
-    // Generate shared secret
-    CSHA256().Write(m, 32).Finalize(ss);
+    // Shared secret: ss = SHA256(ss_seed || ct)
+    CSHA256().Write(ss_seed, 32).Write(ct, NTRU_CIPHERTEXT_BYTES).Finalize(ss);
     
     return true;
 }
 
 bool NTRU::Decaps(unsigned char *ss, const unsigned char *ct, const unsigned char *sk) {
-    int16_t e[NTRU_N];
+    // Unpack secret key: f || pk || z
+    const unsigned char *sk_f  = sk;
+    const unsigned char *sk_pk = sk + NTRU_N * 2;
+    const unsigned char *z     = sk + NTRU_N * 2 + NTRU_PUBLIC_KEY_BYTES;
+
     int16_t f[NTRU_N];
-    int16_t g[NTRU_N];
-    
-    // Unpack ciphertext and secret key
+    memcpy(f, sk_f, NTRU_N * sizeof(int16_t));
+
+    int16_t h[NTRU_N];
+    memcpy(h, sk_pk, NTRU_N * sizeof(int16_t));
+
+    // Unpack ciphertext
+    int16_t e[NTRU_N];
     memcpy(e, ct, NTRU_N * sizeof(int16_t));
-    memcpy(f, sk, NTRU_N * sizeof(int16_t));
-    memcpy(g, sk + NTRU_N * sizeof(int16_t), NTRU_N * sizeof(int16_t));
     
     // Compute f * e
     int16_t fe[NTRU_N];
     poly_mul(fe, f, e);
     
-    // Recover message
-    unsigned char m[32] = {0};
+    // Recover m'
+    unsigned char m_prime[32] = {0};
     for(int i = 0; i < NTRU_N; i++) {
         if(fe[i] > NTRU_Q/2) {
-            m[i/8] |= 1 << (i%8);
+            m_prime[i/8] |= (unsigned char)(1 << (i%8));
         }
     }
-    
-    // Generate shared secret
-    CSHA256().Write(m, 32).Finalize(ss);
+
+    // Re-derive (r_seed' || ss_seed') = SHA512(m' || H(pk))
+    unsigned char pk_hash[32];
+    CSHA256().Write(sk_pk, NTRU_PUBLIC_KEY_BYTES).Finalize(pk_hash);
+
+    unsigned char sha512_out[64];
+    CSHA512().Write(m_prime, 32).Write(pk_hash, 32).Finalize(sha512_out);
+    const unsigned char *r_seed_prime  = sha512_out;
+    const unsigned char *ss_seed_prime = sha512_out + 32;
+
+    // Re-sample r' from r_seed'
+    int16_t r_prime[NTRU_N];
+    sample_poly_deterministic(r_prime, r_seed_prime);
+
+    // Re-encrypt: e' = r' * h + Encode(m')
+    int16_t e_prime[NTRU_N];
+    poly_mul(e_prime, r_prime, h);
+    for(int i = 0; i < NTRU_N; i++) {
+        e_prime[i] = (int16_t)((e_prime[i] + ((m_prime[i/8] >> (i%8)) & 1) * (NTRU_Q/2)) % NTRU_Q);
+    }
+
+    // Pack re-encrypted ciphertext
+    unsigned char ct_prime[NTRU_CIPHERTEXT_BYTES];
+    memcpy(ct_prime, e_prime, NTRU_N * sizeof(int16_t));
+
+    // Constant-time comparison: fail != 0 if ciphertexts differ
+    int fail = ct_verify(ct, ct_prime, NTRU_CIPHERTEXT_BYTES);
+
+    // Compute both candidate shared secrets
+    unsigned char ss_good[32];
+    unsigned char ss_bad[32];
+    CSHA256().Write(ss_seed_prime, 32).Write(ct, NTRU_CIPHERTEXT_BYTES).Finalize(ss_good);
+    CSHA256().Write(z, 32).Write(ct, NTRU_CIPHERTEXT_BYTES).Finalize(ss_bad);
+
+    // Constant-time selection: use ss_bad (rejection) if fail != 0
+    memcpy(ss, ss_good, 32);
+    ct_cmov(ss, ss_bad, 32, fail);
     
     return true;
 }

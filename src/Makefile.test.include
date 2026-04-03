@@ -94,6 +94,8 @@ BITCOIN_TESTS =\
   test/cuckoocache_tests.cpp \
   test/pqc_kyber_tests.cpp \
   test/pqc_sphincs_tests.cpp \
+  test/pqc_ntru_fo_tests.cpp \
+  test/pqc_frodo_fo_tests.cpp \
   test/dbwrapper_tests.cpp \
   test/denialofservice_tests.cpp \
   test/descriptor_tests.cpp \

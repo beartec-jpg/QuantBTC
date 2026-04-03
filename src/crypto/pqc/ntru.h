@@ -7,9 +7,14 @@
 // NTRU-HPS-4096-821 parameters
 #define NTRU_N 821
 #define NTRU_Q 4096
-#define NTRU_PUBLIC_KEY_BYTES 1230
-#define NTRU_SECRET_KEY_BYTES 1590
-#define NTRU_CIPHERTEXT_BYTES 1230
+// Public key / ciphertext: n coefficients packed as raw int16_t (2 bytes each)
+#define NTRU_PUBLIC_KEY_BYTES (NTRU_N * 2)
+// Secret key layout (FO transform): f || pk || z
+//   f  : NTRU_N * 2 bytes (raw int16_t array)
+//   pk : NTRU_PUBLIC_KEY_BYTES bytes
+//   z  : 32 bytes (rejection seed)
+#define NTRU_SECRET_KEY_BYTES (NTRU_N * 2 + NTRU_PUBLIC_KEY_BYTES + 32)
+#define NTRU_CIPHERTEXT_BYTES (NTRU_N * 2)
 #define NTRU_SHARED_SECRET_BYTES 32
 
 namespace pqc {
