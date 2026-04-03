@@ -8,6 +8,7 @@
 #include <crypto/pqc/dilithium.h>
 #include <crypto/pqc/hybrid_key.h>
 #include <crypto/pqc/pqc_config.h>
+#include <crypto/pqc/sphincs.h>
 #include <key_io.h>
 #include <rpc/util.h>
 #include <script/script.h>
@@ -675,8 +676,15 @@ RPCHelpMan getaddressinfo()
             pqc::HybridKey hybrid_key;
             if (provider->GetHybridKey(keyid, hybrid_key) && hybrid_key.IsValid()) {
                 ret.pushKV("has_pqc_key", true);
-                ret.pushKV("pqc_algorithm", "dilithium");
                 const auto& pqc_pub = hybrid_key.GetPQCPublicKey();
+                // Determine algorithm from PQC public key size
+                if (pqc_pub.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                    ret.pushKV("pqc_algorithm", "dilithium");
+                } else if (pqc_pub.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
+                    ret.pushKV("pqc_algorithm", "sphincs+");
+                } else {
+                    ret.pushKV("pqc_algorithm", "unknown");
+                }
                 if (!pqc_pub.empty()) {
                     ret.pushKV("pqc_pubkey", HexStr(pqc_pub));
                 }
