@@ -4,24 +4,23 @@
 #include <stdint.h>
 #include <vector>
 
-#include <oqs/oqs.h>
-
 namespace pqc {
 
 /**
  * CRYSTALS-Dilithium / ML-DSA-44 digital signature scheme.
  *
- * Wraps the liboqs OQS_SIG implementation of NIST FIPS 204 (ML-DSA-44),
- * the mandatory post-quantum digital signature standard.
+ * Wraps the vendored pq-crystals ML-DSA-44 reference implementation.
+ * The vendored configuration uses deterministic signing, which is required
+ * for stable Bitcoin transaction signing behavior.
  *
  * Security level: NIST Level 2 (roughly equivalent to AES-128).
  */
 class Dilithium {
 public:
-    // ML-DSA-44 sizes from FIPS 204 / liboqs
-    static constexpr size_t PUBLIC_KEY_SIZE = OQS_SIG_ml_dsa_44_length_public_key;   // 1312
-    static constexpr size_t PRIVATE_KEY_SIZE = OQS_SIG_ml_dsa_44_length_secret_key;  // 2560
-    static constexpr size_t SIGNATURE_SIZE = OQS_SIG_ml_dsa_44_length_signature;     // 2420
+    static constexpr size_t PUBLIC_KEY_SIZE = 1312;
+    static constexpr size_t PRIVATE_KEY_SIZE = 2560;
+    static constexpr size_t SIGNATURE_SIZE = 2420;
+    static constexpr size_t SEED_SIZE = 32;
 
     Dilithium();
     ~Dilithium();

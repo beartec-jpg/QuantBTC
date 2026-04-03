@@ -2729,6 +2729,12 @@ bool DescriptorScriptPubKeyMan::AddPQCKey(const CKeyID& key_id, const std::vecto
     return true;
 }
 
+size_t DescriptorScriptPubKeyMan::GetPQCKeyCount() const
+{
+    LOCK(cs_desc_man);
+    return m_map_pqc_keys.size();
+}
+
 bool DescriptorScriptPubKeyMan::HasWalletDescriptor(const WalletDescriptor& desc) const
 {
     LOCK(cs_desc_man);

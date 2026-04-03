@@ -219,14 +219,8 @@ static RPCHelpMan getpqcinfo()
     // Count hybrid keys in the wallet
     int pqc_key_count = 0;
     for (const auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
-        if (auto* filling = dynamic_cast<FillableSigningProvider*>(spk_man)) {
-            LOCK(filling->cs_KeyStore);
-            for (const auto& keyid : filling->GetKeys()) {
-                pqc::HybridKey hybrid_key;
-                if (filling->GetHybridKey(keyid, hybrid_key) && hybrid_key.IsValid()) {
-                    ++pqc_key_count;
-                }
-            }
+        if (auto* desc_man = dynamic_cast<DescriptorScriptPubKeyMan*>(spk_man)) {
+            pqc_key_count += desc_man->GetPQCKeyCount();
         }
     }
     obj.pushKV("wallet_pqc_key_count", pqc_key_count);

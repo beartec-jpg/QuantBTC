@@ -134,6 +134,26 @@ BOOST_AUTO_TEST_CASE(different_seeds_different_keys)
     BOOST_CHECK(sk1 != sk2);
 }
 
+BOOST_AUTO_TEST_CASE(deterministic_signature_same_key_same_message)
+{
+    pqc::Dilithium dil;
+
+    std::vector<uint8_t> seed(32);
+    for (int i = 0; i < 32; ++i) seed[i] = static_cast<uint8_t>(0xa0 + i);
+
+    std::vector<uint8_t> pk, sk;
+    BOOST_REQUIRE(dil.DeriveKeyPair(seed, pk, sk));
+
+    const std::vector<uint8_t> msg = {'Q', 'B', 'T', 'C'};
+    std::vector<uint8_t> sig1, sig2;
+    BOOST_REQUIRE(dil.Sign(msg, sk, sig1));
+    BOOST_REQUIRE(dil.Sign(msg, sk, sig2));
+
+    BOOST_CHECK_EQUAL(sig1.size(), pqc::Dilithium::SIGNATURE_SIZE);
+    BOOST_CHECK(sig1 == sig2);
+    BOOST_CHECK(dil.Verify(msg, sig1, pk));
+}
+
 // DeriveKeyPair rejects a seed shorter than 32 bytes
 BOOST_AUTO_TEST_CASE(derive_rejects_short_seed)
 {

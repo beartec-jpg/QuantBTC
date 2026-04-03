@@ -686,6 +686,7 @@ public:
     bool AddKey(const CKeyID& key_id, const CKey& key);
     bool AddCryptedKey(const CKeyID& key_id, const CPubKey& pubkey, const std::vector<unsigned char>& crypted_key);
     bool AddPQCKey(const CKeyID& key_id, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& pqc_privkey);
+    size_t GetPQCKeyCount() const;
 
     bool HasWalletDescriptor(const WalletDescriptor& desc) const;
     void UpdateWalletDescriptor(WalletDescriptor& descriptor);
