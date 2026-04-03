@@ -4285,7 +4285,15 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
     // large by filling up the coinbase witness, which doesn't change
     // the block hash, so we couldn't mark the block as permanently
     // failed).
-    if (GetBlockWeight(block) > MAX_BLOCK_WEIGHT) {
+    //
+    // When the PQC deployment is active, use the larger nMaxBlockWeightPQC
+    // limit to accommodate post-quantum signatures (Dilithium/SPHINCS+ are
+    // 1–50× larger than ECDSA).  Otherwise use the standard 4 MB limit.
+    const Consensus::Params& consensusParams = chainman.GetConsensus();
+    const unsigned int nMaxWeight = DeploymentActiveAfter(pindexPrev, chainman, Consensus::DEPLOYMENT_PQC)
+        ? consensusParams.nMaxBlockWeightPQC
+        : MAX_BLOCK_WEIGHT;
+    if (GetBlockWeight(block) > nMaxWeight) {
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-blk-weight", strprintf("%s : weight limit failed", __func__));
     }
 
