@@ -8,6 +8,18 @@
 #include <stddef.h>
 
 /**
+ * Constant-time primitives for the Fujisaki-Okamoto (FO) transform.
+ *
+ * These helpers are used by NTRU::Decaps() (ntru.cpp) and
+ * FrodoKEM::Decaps() (frodokem.cpp) to implement the full FO
+ * transform: each Decaps re-encrypts the recovered plaintext,
+ * compares the result against the received ciphertext with
+ * ct_verify(), and uses ct_cmov() to select between the real
+ * shared secret and a rejection value in constant time.
+ * This provides IND-CCA2 security.
+ */
+
+/**
  * Constant-time comparison of two byte arrays.
  * Returns 0 if equal, non-zero otherwise.
  * Must not branch on secret data to prevent timing side-channels.

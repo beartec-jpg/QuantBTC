@@ -12,7 +12,6 @@
 #include <pubkey.h>
 #include <script/interpreter.h>
 #include <script/keyorigin.h>
-#include <script/pqcscript.h>
 #include <crypto/pqc/hybrid_key.h>
 #include <uint256.h>
 #include <script/signingprovider.h>

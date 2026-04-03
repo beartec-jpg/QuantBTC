@@ -23,10 +23,9 @@ bool HybridKey::Generate() {
         PQCManager& manager = PQCManager::GetInstance();
         if (!manager.GenerateSignatureKeyPair(PQCAlgorithm::DILITHIUM,
                                               m_pqc_public_key, m_pqc_private_key)) {
-            LogPrintf("HybridKey::Generate: Dilithium keygen failed, falling back to classical-only\n");
-            // Still valid as a classical key
-            m_is_valid = true;
-            return true;
+            LogPrintf("HybridKey::Generate: Dilithium keygen failed; PQC is enabled, aborting\n");
+            m_is_valid = false;
+            return false;
         }
         LogPrintf("HybridKey::Generate: generated hybrid key (ECDSA + Dilithium, pqc_pk=%u bytes)\n",
                   m_pqc_public_key.size());
