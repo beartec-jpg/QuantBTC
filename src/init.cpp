@@ -454,11 +454,15 @@ void SetupServerArgs(ArgsManager& argsman)
     const auto testnet4BaseParams = CreateBaseChainParams(ChainType::TESTNET4);
     const auto signetBaseParams = CreateBaseChainParams(ChainType::SIGNET);
     const auto regtestBaseParams = CreateBaseChainParams(ChainType::REGTEST);
+    const auto qbtctestnetBaseParams = CreateBaseChainParams(ChainType::QBTCTESTNET);
+    const auto qbtcmainBaseParams = CreateBaseChainParams(ChainType::QBTCMAIN);
     const auto defaultChainParams = CreateChainParams(argsman, ChainType::MAIN);
     const auto testnetChainParams = CreateChainParams(argsman, ChainType::TESTNET);
     const auto testnet4ChainParams = CreateChainParams(argsman, ChainType::TESTNET4);
     const auto signetChainParams = CreateChainParams(argsman, ChainType::SIGNET);
     const auto regtestChainParams = CreateChainParams(argsman, ChainType::REGTEST);
+    const auto qbtctestnetChainParams = CreateChainParams(argsman, ChainType::QBTCTESTNET);
+    const auto qbtcmainChainParams = CreateChainParams(argsman, ChainType::QBTCMAIN);
 
     // Hidden Options
     std::vector<std::string> hidden_args = {
@@ -470,7 +474,7 @@ void SetupServerArgs(ArgsManager& argsman)
 #if HAVE_SYSTEM
     argsman.AddArg("-alertnotify=<cmd>", "Execute command when an alert is raised (%s in cmd is replaced by message)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
 #endif
-    argsman.AddArg("-assumevalid=<hex>", strprintf("If this block is in the chain assume that it and its ancestors are valid and potentially skip their script verification (0 to verify all, default: %s, testnet3: %s, testnet4: %s, signet: %s)", defaultChainParams->GetConsensus().defaultAssumeValid.GetHex(), testnetChainParams->GetConsensus().defaultAssumeValid.GetHex(), testnet4ChainParams->GetConsensus().defaultAssumeValid.GetHex(), signetChainParams->GetConsensus().defaultAssumeValid.GetHex()), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-assumevalid=<hex>", strprintf("If this block is in the chain assume that it and its ancestors are valid and potentially skip their script verification (0 to verify all, default: %s, testnet3: %s, testnet4: %s, signet: %s, qbtctestnet: %s, qbtcmain: %s)", defaultChainParams->GetConsensus().defaultAssumeValid.GetHex(), testnetChainParams->GetConsensus().defaultAssumeValid.GetHex(), testnet4ChainParams->GetConsensus().defaultAssumeValid.GetHex(), signetChainParams->GetConsensus().defaultAssumeValid.GetHex(), qbtctestnetChainParams->GetConsensus().defaultAssumeValid.GetHex(), qbtcmainChainParams->GetConsensus().defaultAssumeValid.GetHex()), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blocksdir=<dir>", "Specify directory to hold blocks subdirectory for *.dat files (default: <datadir>)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-blocksxor",
                    strprintf("Whether an XOR-key applies to blocksdir *.dat files. "
@@ -496,7 +500,7 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-maxmempool=<n>", strprintf("Keep the transaction memory pool below <n> megabytes (default: %u)", DEFAULT_MAX_MEMPOOL_SIZE_MB), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-maxorphantx=<n>", strprintf("Keep at most <n> unconnectable transactions in memory (default: %u)", DEFAULT_MAX_ORPHAN_TRANSACTIONS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-mempoolexpiry=<n>", strprintf("Do not keep transactions in the mempool longer than <n> hours (default: %u)", DEFAULT_MEMPOOL_EXPIRY_HOURS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-minimumchainwork=<hex>", strprintf("Minimum work assumed to exist on a valid chain in hex (default: %s, testnet3: %s, testnet4: %s, signet: %s)", defaultChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnetChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnet4ChainParams->GetConsensus().nMinimumChainWork.GetHex(), signetChainParams->GetConsensus().nMinimumChainWork.GetHex()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-minimumchainwork=<hex>", strprintf("Minimum work assumed to exist on a valid chain in hex (default: %s, testnet3: %s, testnet4: %s, signet: %s, qbtctestnet: %s, qbtcmain: %s)", defaultChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnetChainParams->GetConsensus().nMinimumChainWork.GetHex(), testnet4ChainParams->GetConsensus().nMinimumChainWork.GetHex(), signetChainParams->GetConsensus().nMinimumChainWork.GetHex(), qbtctestnetChainParams->GetConsensus().nMinimumChainWork.GetHex(), qbtcmainChainParams->GetConsensus().nMinimumChainWork.GetHex()), ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::OPTIONS);
     argsman.AddArg("-par=<n>", strprintf("Set the number of script verification threads (0 = auto, up to %d, <0 = leave that many cores free, default: %d)",
         MAX_SCRIPTCHECK_THREADS, DEFAULT_SCRIPTCHECK_THREADS), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-persistmempool", strprintf("Whether to save the mempool on shutdown and load on restart (default: %u)", DEFAULT_PERSIST_MEMPOOL), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -745,7 +749,17 @@ void InitParameterInteraction(ArgsManager& args)
     // QuantumBTC: Wire -pqc and -pqcmode to PQCConfig
     {
         auto& pqcconf = pqc::PQCConfig::GetInstance();
-        pqcconf.enable_pqc = args.GetBoolArg("-pqc", false);
+
+        // Auto-enable PQC on chains where DEPLOYMENT_PQC is ALWAYS_ACTIVE
+        bool pqc_default = false;
+        try {
+            ChainType chain = args.GetChainType();
+            if (chain == ChainType::QBTCTESTNET || chain == ChainType::QBTCMAIN || chain == ChainType::REGTEST) {
+                pqc_default = true;
+            }
+        } catch (...) {} // chain type not yet determined — use false
+
+        pqcconf.enable_pqc = args.GetBoolArg("-pqc", pqc_default);
         pqcconf.enable_hybrid_signatures = pqcconf.enable_pqc; // default: same as -pqc
         std::string pqcmode = args.GetArg("-pqcmode", "hybrid");
         if (pqcmode == "classical") {

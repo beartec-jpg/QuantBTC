@@ -90,6 +90,8 @@ static ScriptErrorDesc script_errors[]={
     {SCRIPT_ERR_WITNESS_PUBKEYTYPE, "WITNESS_PUBKEYTYPE"},
     {SCRIPT_ERR_OP_CODESEPARATOR, "OP_CODESEPARATOR"},
     {SCRIPT_ERR_SIG_FINDANDDELETE, "SIG_FINDANDDELETE"},
+    {SCRIPT_ERR_PQC_SIG_SIZE, "PQC_SIG_SIZE"},
+    {SCRIPT_ERR_PQC_SIG, "PQC_SIG"},
 };
 
 static std::string FormatScriptError(ScriptError_t err)

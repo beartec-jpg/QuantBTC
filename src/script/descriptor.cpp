@@ -15,6 +15,8 @@
 #include <uint256.h>
 
 #include <common/args.h>
+#include <crypto/pqc/pqc_config.h>
+#include <crypto/pqc/dilithium.h>
 #include <span.h>
 #include <util/bip32.h>
 #include <util/check.h>
@@ -900,14 +902,21 @@ public:
 
     std::optional<int64_t> MaxSatSize(bool use_max_sig) const override {
         const auto sig_size = use_max_sig ? 72 : 71;
-        return (1 + sig_size + 1 + 33);
+        int64_t size = 1 + sig_size + 1 + 33; // compactsize + ecdsa_sig + compactsize + ec_pubkey
+        if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
+            // PQC witness adds: compactsize(2420) + dilithium_sig + compactsize(1312) + dilithium_pk
+            size += 3 + pqc::Dilithium::SIGNATURE_SIZE + 3 + pqc::Dilithium::PUBLIC_KEY_SIZE;
+        }
+        return size;
     }
 
     std::optional<int64_t> MaxSatisfactionWeight(bool use_max_sig) const override {
         return MaxSatSize(use_max_sig);
     }
 
-    std::optional<int64_t> MaxSatisfactionElems() const override { return 2; }
+    std::optional<int64_t> MaxSatisfactionElems() const override {
+        return pqc::PQCConfig::GetInstance().enable_hybrid_signatures ? 4 : 2;
+    }
 };
 
 /** A parsed combo(P) descriptor. */

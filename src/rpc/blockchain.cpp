@@ -16,6 +16,7 @@
 #include <consensus/params.h>
 #include <consensus/validation.h>
 #include <core_io.h>
+#include <crypto/pqc/pqc_config.h>
 #include <deploymentinfo.h>
 #include <deploymentstatus.h>
 #include <flatfile.h>
@@ -1408,7 +1409,7 @@ RPCHelpMan getblockchaininfo()
     bool dag_active = gArgs.GetBoolArg("-dag", consensus.fDagMode);
     obj.pushKV("ticker", CURRENCY_UNIT);
     obj.pushKV("dagmode", dag_active);
-    bool pqc_active = gArgs.GetBoolArg("-pqc", false);
+    bool pqc_active = pqc::PQCConfig::GetInstance().enable_pqc;
     obj.pushKV("pqc", pqc_active);
     if (dag_active) {
         obj.pushKV("ghostdag_k", (uint64_t)consensus.ghostdag_k);

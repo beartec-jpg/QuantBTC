@@ -127,7 +127,9 @@ BITCOIN_TESTS =\
   test/peerman_tests.cpp \
   test/pmt_tests.cpp \
   test/pqc_dilithium_tests.cpp \
+  test/pqc_fee_tests.cpp \
   test/pqc_signature_tests.cpp \
+  test/pqc_witness_tests.cpp \
   test/policy_fee_tests.cpp \
   test/policyestimator_tests.cpp \
   test/pool_tests.cpp \
@@ -320,6 +322,7 @@ test_fuzz_fuzz_SOURCES = \
  test/fuzz/crypto_chacha20poly1305.cpp \
  test/fuzz/crypto_common.cpp \
  test/fuzz/crypto_pqc.cpp \
+ test/fuzz/pqc_witness.cpp \
  test/fuzz/crypto_diff_fuzz_chacha20.cpp \
  test/fuzz/crypto_hkdf_hmac_sha256_l32.cpp \
  test/fuzz/crypto_poly1305.cpp \

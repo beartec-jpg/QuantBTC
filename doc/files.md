@@ -41,6 +41,8 @@ Chain option                     | Data directory path
 `-chain=testnet4` or `-testnet4` | *path_to_datadir*`/testnet4/`
 `-chain=signet` or `-signet`     | *path_to_datadir*`/signet/`
 `-chain=regtest` or `-regtest`   | *path_to_datadir*`/regtest/`
+`-chain=qbtctestnet` or `-qbtctestnet` | *path_to_datadir*`/qbtctestnet/`
+`-chain=qbtcmain` or `-qbtcmain`      | *path_to_datadir*`/qbtcmain/`
 
 ## Data directory layout
 
