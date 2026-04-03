@@ -605,6 +605,30 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   support/cleanse.cpp \
   crypto/pqc/kyber.cpp \
   crypto/pqc/kyber.h \
+  crypto/pqc/ml-kem/params.h \
+  crypto/pqc/ml-kem/api.h \
+  crypto/pqc/ml-kem/kem.h \
+  crypto/pqc/ml-kem/kem.c \
+  crypto/pqc/ml-kem/indcpa.h \
+  crypto/pqc/ml-kem/indcpa.c \
+  crypto/pqc/ml-kem/poly.h \
+  crypto/pqc/ml-kem/poly.c \
+  crypto/pqc/ml-kem/polyvec.h \
+  crypto/pqc/ml-kem/polyvec.c \
+  crypto/pqc/ml-kem/ntt.h \
+  crypto/pqc/ml-kem/ntt.c \
+  crypto/pqc/ml-kem/reduce.h \
+  crypto/pqc/ml-kem/reduce.c \
+  crypto/pqc/ml-kem/cbd.h \
+  crypto/pqc/ml-kem/cbd.c \
+  crypto/pqc/ml-kem/verify.h \
+  crypto/pqc/ml-kem/verify.c \
+  crypto/pqc/ml-kem/symmetric.h \
+  crypto/pqc/ml-kem/symmetric-shake.c \
+  crypto/pqc/ml-kem/fips202.h \
+  crypto/pqc/ml-kem/fips202.c \
+  crypto/pqc/ml-kem/randombytes.h \
+  crypto/pqc/ml-kem/randombytes.cpp \
   crypto/pqc/frodokem.cpp \
   crypto/pqc/frodokem.h \
   crypto/pqc/ntru.cpp \
