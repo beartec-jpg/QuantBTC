@@ -1,5 +1,5 @@
-#ifndef FIPS202_H
-#define FIPS202_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_DSA_FIPS202_H
+#define BITCOIN_CRYPTO_PQC_ML_DSA_FIPS202_H
 
 #include <stddef.h>
 #include <stdint.h>

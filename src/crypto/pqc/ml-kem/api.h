@@ -1,5 +1,5 @@
-#ifndef API_H
-#define API_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_KEM_API_H
+#define BITCOIN_CRYPTO_PQC_ML_KEM_API_H
 
 #include <stdint.h>
 

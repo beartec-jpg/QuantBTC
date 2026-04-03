@@ -1,5 +1,5 @@
-#ifndef SYMMETRIC_H
-#define SYMMETRIC_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_KEM_SYMMETRIC_H
+#define BITCOIN_CRYPTO_PQC_ML_KEM_SYMMETRIC_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -30,4 +30,4 @@ void kyber_shake256_rkprf(uint8_t out[KYBER_SSBYTES], const uint8_t key[KYBER_SY
 #define prf(OUT, OUTBYTES, KEY, NONCE) kyber_shake256_prf(OUT, OUTBYTES, KEY, NONCE)
 #define rkprf(OUT, KEY, INPUT) kyber_shake256_rkprf(OUT, KEY, INPUT)
 
-#endif /* SYMMETRIC_H */
+#endif /* BITCOIN_CRYPTO_PQC_ML_KEM_SYMMETRIC_H */

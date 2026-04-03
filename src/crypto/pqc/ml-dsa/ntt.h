@@ -1,5 +1,5 @@
-#ifndef NTT_H
-#define NTT_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_DSA_NTT_H
+#define BITCOIN_CRYPTO_PQC_ML_DSA_NTT_H
 
 #include <stdint.h>
 #include "params.h"

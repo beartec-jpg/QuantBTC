@@ -1,5 +1,5 @@
-#ifndef CBD_H
-#define CBD_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_KEM_CBD_H
+#define BITCOIN_CRYPTO_PQC_ML_KEM_CBD_H
 
 #include <stdint.h>
 #include "params.h"

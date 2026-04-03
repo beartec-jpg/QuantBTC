@@ -1,5 +1,5 @@
-#ifndef SYMMETRIC_H
-#define SYMMETRIC_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_DSA_SYMMETRIC_H
+#define BITCOIN_CRYPTO_PQC_ML_DSA_SYMMETRIC_H
 
 #include <stdint.h>
 #include "params.h"

@@ -4,6 +4,7 @@
 #include "../sha256.h"
 #include "../sha512.h"
 #include "../random.h"
+#include <support/cleanse.h>
 #include <string.h>
 
 namespace pqc {
@@ -203,6 +204,9 @@ bool NTRU::KeyGen(unsigned char *pk, unsigned char *sk) {
     int16_t f_inv[NTRU_N];
     if (!poly_invert(f_inv, f)) {
         // f is not invertible; retry key generation would be needed in practice.
+        memory_cleanse(f, sizeof(f));
+        memory_cleanse(g, sizeof(g));
+        memory_cleanse(f_inv, sizeof(f_inv));
         return false;
     }
     
@@ -223,6 +227,11 @@ bool NTRU::KeyGen(unsigned char *pk, unsigned char *sk) {
     memcpy(sk_f,  f,  NTRU_N * sizeof(int16_t));
     memcpy(sk_pk, pk, NTRU_PUBLIC_KEY_BYTES);
     GetStrongRandBytes({sk_z, 32});
+
+    // Cleanse sensitive intermediates
+    memory_cleanse(f, sizeof(f));
+    memory_cleanse(g, sizeof(g));
+    memory_cleanse(f_inv, sizeof(f_inv));
     
     return true;
 }
@@ -263,6 +272,11 @@ bool NTRU::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char *pk)
     
     // Shared secret: ss = SHA256(ss_seed || ct)
     CSHA256().Write(ss_seed, 32).Write(ct, NTRU_CIPHERTEXT_BYTES).Finalize(ss);
+
+    // Cleanse sensitive intermediates
+    memory_cleanse(m, sizeof(m));
+    memory_cleanse(sha512_out, sizeof(sha512_out));
+    memory_cleanse(r, sizeof(r));
     
     return true;
 }
@@ -331,6 +345,15 @@ bool NTRU::Decaps(unsigned char *ss, const unsigned char *ct, const unsigned cha
     // Constant-time selection: use ss_bad (rejection) if fail != 0
     memcpy(ss, ss_good, 32);
     ct_cmov(ss, ss_bad, 32, fail);
+
+    // Cleanse sensitive intermediates
+    memory_cleanse(f, sizeof(f));
+    memory_cleanse(fe, sizeof(fe));
+    memory_cleanse(m_prime, sizeof(m_prime));
+    memory_cleanse(sha512_out, sizeof(sha512_out));
+    memory_cleanse(r_prime, sizeof(r_prime));
+    memory_cleanse(ss_good, sizeof(ss_good));
+    memory_cleanse(ss_bad, sizeof(ss_bad));
     
     return true;
 }

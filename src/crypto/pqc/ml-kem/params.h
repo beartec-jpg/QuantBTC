@@ -1,5 +1,5 @@
-#ifndef PARAMS_H
-#define PARAMS_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_KEM_PARAMS_H
+#define BITCOIN_CRYPTO_PQC_ML_KEM_PARAMS_H
 
 #ifndef KYBER_K
 #define KYBER_K 3	/* Change this for different security strengths */

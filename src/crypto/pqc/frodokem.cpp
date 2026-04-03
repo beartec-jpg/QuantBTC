@@ -4,6 +4,7 @@
 #include "../sha256.h"
 #include "../sha512.h"
 #include "../random.h"
+#include <support/cleanse.h>
 #include <string.h>
 #include <memory>
 
@@ -135,6 +136,11 @@ bool FrodoKEM::KeyGen(unsigned char *pk, unsigned char *sk) {
     memcpy(sk_pk, pk, FRODO_PUBLIC_KEY_BYTES);
     GetStrongRandBytes({sk_s, 32});
     memcpy(sk_pk_hash, pk_hash, 32);
+
+    // Cleanse sensitive intermediates
+    memory_cleanse(S, sizeof(S));
+    memory_cleanse(E, sizeof(E));
+    memory_cleanse(seed, sizeof(seed));
     
     return true;
 }
@@ -208,6 +214,14 @@ bool FrodoKEM::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char 
     
     // Shared secret: ss = SHA256(ct || k)
     CSHA256().Write(ct, FRODO_CIPHERTEXT_BYTES).Write(k, 32).Finalize(ss);
+
+    // Cleanse sensitive intermediates
+    memory_cleanse(mu, sizeof(mu));
+    memory_cleanse(sha512_out, sizeof(sha512_out));
+    memory_cleanse(r_seed, sizeof(r_seed));
+    memory_cleanse(Sp, sizeof(Sp));
+    memory_cleanse(Ep, sizeof(Ep));
+    memory_cleanse(Epp, sizeof(Epp));
     
     return true;
 }
@@ -319,6 +333,18 @@ bool FrodoKEM::Decaps(unsigned char *ss, const unsigned char *ct, const unsigned
     // Constant-time selection: use ss_bad (rejection) if fail != 0
     memcpy(ss, ss_good, 32);
     ct_cmov(ss, ss_bad, 32, fail);
+
+    // Cleanse sensitive intermediates
+    memory_cleanse(S, sizeof(S));
+    memory_cleanse(W, sizeof(W));
+    memory_cleanse(mu_prime, sizeof(mu_prime));
+    memory_cleanse(sha512_out, sizeof(sha512_out));
+    memory_cleanse(r_seed_prime, sizeof(r_seed_prime));
+    memory_cleanse(Sp_prime, sizeof(Sp_prime));
+    memory_cleanse(Ep_prime, sizeof(Ep_prime));
+    memory_cleanse(Epp_prime, sizeof(Epp_prime));
+    memory_cleanse(ss_good, sizeof(ss_good));
+    memory_cleanse(ss_bad, sizeof(ss_bad));
 
     return true;
 }

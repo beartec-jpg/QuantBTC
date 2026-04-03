@@ -1,5 +1,5 @@
-#ifndef INDCPA_H
-#define INDCPA_H
+#ifndef BITCOIN_CRYPTO_PQC_ML_KEM_INDCPA_H
+#define BITCOIN_CRYPTO_PQC_ML_KEM_INDCPA_H
 
 #include <stdint.h>
 #include "params.h"
