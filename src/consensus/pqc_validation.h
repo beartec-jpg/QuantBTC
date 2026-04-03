@@ -16,7 +16,9 @@ bool IsPQCActivated(int nHeight);
 
 /**
  * Check if a transaction includes PQC signatures.
- * Looks for witness version 2 (WITNESS_V2_PQC) in the witness stacks.
+ * Detects 4-element witness stacks with Dilithium or SPHINCS+ sized elements
+ * matching the hybrid format produced by sign.cpp:
+ *   [ECDSA sig, pubkey, PQC sig, PQC pubkey]
  * @param[in]   tx              The transaction to check
  * @return true if transaction contains PQC signatures
  */

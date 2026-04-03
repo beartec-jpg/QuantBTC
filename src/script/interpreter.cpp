@@ -1944,6 +1944,11 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 const valtype& pqc_pubkey = SpanPopBack(stack);
                 const valtype& pqc_sig = SpanPopBack(stack);
 
+                // Reject empty PQC witness elements.
+                if (pqc_sig.empty() || pqc_pubkey.empty()) {
+                    return set_error(serror, SCRIPT_ERR_PQC_WITNESS_MALFORMED);
+                }
+
                 // Build the implied P2PKH scriptCode used for the sighash.
                 CScript pqc_scriptCode;
                 pqc_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
@@ -1956,14 +1961,18 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                         return set_error(serror, SCRIPT_ERR_PQC_VERIFY_FAILED);
                     }
                 } else if (pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE &&
-                           !pqc_sig.empty() && pqc_sig.size() <= pqc::SPHINCS::SIGNATURE_SIZE) {
+                           pqc_sig.size() <= pqc::SPHINCS::SIGNATURE_SIZE) {
                     // SPHINCS+ (SLH-DSA-SHA2-128f) verification path.
                     if (!checker.CheckSPHINCSSignature(pqc_sig, pqc_pubkey, stack[0], pqc_scriptCode, SigVersion::WITNESS_V0)) {
                         return set_error(serror, SCRIPT_ERR_PQC_VERIFY_FAILED);
                     }
+                } else if (pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE ||
+                           pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
+                    // Known PQC public key type but signature size doesn't match.
+                    return set_error(serror, SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH);
                 } else {
                     // PQC element sizes do not match any supported algorithm.
-                    return set_error(serror, SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH);
+                    return set_error(serror, SCRIPT_ERR_PQC_ALGO_UNSUPPORTED);
                 }
                 // stack now has 2 elements — proceed with standard ECDSA verification.
             }
