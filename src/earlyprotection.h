@@ -10,9 +10,9 @@
 #include <map>
 #include <mutex>
 #include <string>
-#include <random>
 #include <chrono>
 
+#include <random.h>
 #include <uint256.h>
 
 /**
@@ -102,8 +102,7 @@ public:
         if (m_peer_activation.count(peer_id)) {
             return 0; // already registered
         }
-        std::uniform_int_distribution<int> dist(ACTIVATION_DELAY_MIN_SECS, ACTIVATION_DELAY_MAX_SECS);
-        int delay = dist(m_rng);
+        int delay = ACTIVATION_DELAY_MIN_SECS + m_rng.randrange(ACTIVATION_DELAY_MAX_SECS - ACTIVATION_DELAY_MIN_SECS + 1);
         auto now = std::chrono::steady_clock::now();
         m_peer_activation[peer_id] = now + std::chrono::seconds(delay);
         return delay;
@@ -321,7 +320,7 @@ public:
 
 private:
     std::mutex m_mutex;
-    std::mt19937 m_rng{std::random_device{}()};
+    FastRandomContext m_rng{};
 
     /** Peer ID -> activation time point (after which full weight applies). */
     std::map<int64_t, std::chrono::steady_clock::time_point> m_peer_activation;

@@ -2,8 +2,10 @@
 #define BITCOIN_CRYPTO_PQC_FALCON_H
 
 // ============================================================================
+// NOT PRODUCTION — STUB ONLY
 // WARNING: THIS ALGORITHM IS NOT IMPLEMENTED
 // All methods return false. Do NOT use until a real implementation is integrated.
+// Do NOT deploy this file in production builds.
 // See TODO.md for implementation status.
 // ============================================================================
 

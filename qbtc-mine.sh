@@ -13,7 +13,6 @@ set -euo pipefail
 COUNT="${1:-1}"
 CHAIN="${2:-qbtctestnet}"
 CLI="./src/bitcoin-cli -${CHAIN}"
-DESC="raw(51)#8lvh9jxk"
 
 status() {
     $CLI getblockchaininfo | python3 -c "
@@ -30,8 +29,10 @@ if [ "$COUNT" = "status" ]; then
 fi
 
 echo "Mining $COUNT block(s) on $CHAIN..."
+ADDR=$($CLI getnewaddress "" "bech32")
+echo "  Mining to address: $ADDR"
 for i in $(seq 1 "$COUNT"); do
-    RESULT=$($CLI generateblock "$DESC" '[]' 2>&1)
+    RESULT=$($CLI generateblock "$ADDR" '[]' 2>&1)
     HASH=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'][:16])" 2>/dev/null)
     HEIGHT=$($CLI getblockcount)
     echo "  [$i/$COUNT] height=$HEIGHT  hash=${HASH}..."

@@ -303,8 +303,9 @@ std::vector<uint256> ComputeVirtualSelectedParentChain(
 {
     GhostdagManager mgr(k);
     GhostdagData vd = mgr.ComputeVirtual(tips, provider);
-    return mgr.SelectBestParent(tips, provider) != uint256{}
-        ? std::vector<uint256>({mgr.SelectBestParent(tips, provider)})
+    uint256 best = mgr.SelectBestParent(tips, provider);
+    return best != uint256{}
+        ? std::vector<uint256>({best})
         : std::vector<uint256>{};
 }
 
