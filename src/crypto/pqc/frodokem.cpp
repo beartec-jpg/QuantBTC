@@ -6,7 +6,6 @@
 #include "../random.h"
 #include <string.h>
 #include <memory>
-#include <vector>
 
 namespace pqc {
 
@@ -73,25 +72,6 @@ static void sample_error_deterministic(uint16_t *e, size_t n, const unsigned cha
  */
 static void build_matrix_A(uint16_t *A, const unsigned char *seed)
 {
-/** Read a little-endian uint16_t from a byte buffer without strict-aliasing UB. */
-static inline uint16_t load_le16(const unsigned char *src) {
-    uint16_t val;
-    memcpy(&val, src, sizeof(val));
-    return val;
-}
-
-bool FrodoKEM::KeyGen(unsigned char *pk, unsigned char *sk) {
-    // Heap-allocate the large matrix A (~1.9 MB) to avoid stack overflow.
-    std::vector<uint16_t> A(FRODO_N * FRODO_N);
-    uint16_t S[FRODO_N * FRODO_NBAR];
-    uint16_t E[FRODO_N * FRODO_NBAR];
-    uint16_t B[FRODO_N * FRODO_NBAR];
-    unsigned char seed[32];
-    
-    // Generate random seed for matrix A
-    GetStrongRandBytes(seed);
-    
-    // Generate matrix A pseudorandomly
     CSHA256 sha256;
     for(size_t i = 0; i < FRODO_N; i++) {
         for(size_t j = 0; j < FRODO_N; j++) {
@@ -101,7 +81,9 @@ bool FrodoKEM::KeyGen(unsigned char *pk, unsigned char *sk) {
             sha256.Write((unsigned char*)&i, sizeof(i));
             sha256.Write((unsigned char*)&j, sizeof(j));
             sha256.Finalize(tmp);
-            A[i * FRODO_N + j] = load_le16(tmp) % FRODO_Q;
+            uint16_t val;
+            memcpy(&val, tmp, sizeof(val));
+            A[i * FRODO_N + j] = val % FRODO_Q;
         }
     }
 }
@@ -190,28 +172,6 @@ bool FrodoKEM::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char 
     std::unique_ptr<uint16_t[]> A(new uint16_t[FRODO_N * FRODO_N]);
     build_matrix_A(A.get(), pk);
 
-    
-    // Sample error matrices
-    sample_error(Sp, FRODO_MBAR * FRODO_N);
-    sample_error(Ep, FRODO_MBAR * FRODO_N);
-    sample_error(Epp, FRODO_MBAR * FRODO_NBAR);
-    
-    // Reconstruct A from seed (heap-allocated to avoid stack overflow)
-    std::vector<uint16_t> A(FRODO_N * FRODO_N);
-    const unsigned char *seed = pk;
-    CSHA256 sha256;
-    for(size_t i = 0; i < FRODO_N; i++) {
-        for(size_t j = 0; j < FRODO_N; j++) {
-            unsigned char tmp[32];
-            sha256.Reset();
-            sha256.Write(seed, 32);
-            sha256.Write((unsigned char*)&i, sizeof(i));
-            sha256.Write((unsigned char*)&j, sizeof(j));
-            sha256.Finalize(tmp);
-            A[i * FRODO_N + j] = load_le16(tmp) % FRODO_Q;
-        }
-    }
-    
     // Unpack B from public key
     uint16_t B[FRODO_N * FRODO_NBAR];
     unpack(B, pk + 32, FRODO_N * FRODO_NBAR);

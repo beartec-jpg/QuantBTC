@@ -34,24 +34,6 @@ static void poly_mul(int16_t *c, const int16_t *a, const int16_t *b) {
     }
 }
 
-static void poly_invert(int16_t *out, const int16_t *in) {
-    // Extended Euclidean algorithm in polynomial ring
-    int16_t v[NTRU_N] = {0};
-    int16_t r[NTRU_N];
-    int16_t aux[NTRU_N] = {0};
-    
-    // Initialize
-    memcpy(r, in, NTRU_N * sizeof(int16_t));
-    v[0] = 1;
-    
-    // Main loop
-    for(int i = 0; i < 100; i++) {  // Maximum iterations
-        int16_t quotient = r[NTRU_N-1] / NTRU_P;
-        
-        // r = r - q * p
-        for(int j = 0; j < NTRU_N; j++) {
-            r[j] = (r[j] - quotient * NTRU_P) % NTRU_Q;
-            if(r[j] < 0) r[j] += NTRU_Q;
 /**
  * Compute the inverse of polynomial 'in' modulo (X^N - 1) over Z/qZ
  * using the "almost inverse" algorithm (based on NTRU standard).
@@ -219,8 +201,6 @@ bool NTRU::KeyGen(unsigned char *pk, unsigned char *sk) {
     
     // Compute f^-1
     int16_t f_inv[NTRU_N];
-    memset(f_inv, 0, sizeof(f_inv));
-    poly_invert(f_inv, f);
     if (!poly_invert(f_inv, f)) {
         // f is not invertible; retry key generation would be needed in practice.
         return false;
