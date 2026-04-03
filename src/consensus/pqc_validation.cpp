@@ -2,16 +2,31 @@
 #include <consensus/validation.h>
 #include <crypto/pqc/pqc_config.h>
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/sphincs.h>
 
 namespace Consensus {
+
+/** Return true if the 4-element witness has PQC-sized sig+pubkey elements. */
+static bool IsPQCWitness(const std::vector<unsigned char>& sig_elem,
+                         const std::vector<unsigned char>& pk_elem)
+{
+    // Dilithium (ML-DSA-44): sig=2420, pk=1312
+    if (sig_elem.size() == pqc::Dilithium::SIGNATURE_SIZE &&
+        pk_elem.size() == pqc::Dilithium::PUBLIC_KEY_SIZE)
+        return true;
+    // SPHINCS+ (SLH-DSA-SHA2-128f): sig<=17088, pk=32
+    if (sig_elem.size() <= pqc::SPHINCS::SIGNATURE_SIZE &&
+        sig_elem.size() > pqc::Dilithium::SIGNATURE_SIZE &&
+        pk_elem.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE)
+        return true;
+    return false;
+}
 
 bool HasPQCSignatures(const CTransaction& tx) {
     for (const auto& input : tx.vin) {
         const auto& stack = input.scriptWitness.stack;
-        if (stack.size() == 4 &&
-            stack[2].size() == pqc::Dilithium::SIGNATURE_SIZE &&
-            stack[3].size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
-                return true;
+        if (stack.size() == 4 && IsPQCWitness(stack[2], stack[3])) {
+            return true;
         }
     }
     return false;
@@ -31,9 +46,9 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidat
         }
 
         if (witness_stack.size() == 4) {
-            pqc_found = true;
-            if (witness_stack[2].size() != pqc::Dilithium::SIGNATURE_SIZE ||
-                witness_stack[3].size() != pqc::Dilithium::PUBLIC_KEY_SIZE) {
+            if (IsPQCWitness(witness_stack[2], witness_stack[3])) {
+                pqc_found = true;
+            } else {
                 return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                                      "bad-pqc-witness",
                                      "Invalid PQC witness element sizes");

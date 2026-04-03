@@ -1,18 +1,10 @@
 #include "sphincs.h"
 #include <logging.h>
-#include <random.h>
-#include <span.h>
-#include <support/cleanse.h>
 
-/* Provide the randombytes() function required by the SPHINCS+ reference
- * implementation using Bitcoin Core's cryptographically secure RNG. */
-extern "C" {
-void randombytes(unsigned char* x, unsigned long long xlen) {
-    GetRandBytes(Span<unsigned char>(x, static_cast<size_t>(xlen)));
-}
-} // extern "C"
+/* randombytes() is provided by the canonical definition in
+ * crypto/pqc/ml-dsa/randombytes.cpp with GetStrongRandBytes.  */
 
-/* Include the SPHINCS+ (SLH-DSA-SHA2-128f) reference implementation API. */
+/* Include the vendored SPHINCS+ (SLH-DSA-SHA2-128f) reference implementation. */
 extern "C" {
 #include "sphincsplus/api.h"
 } // extern "C"
@@ -24,36 +16,17 @@ static_assert(pqc::SPHINCS::PRIVATE_KEY_SIZE == CRYPTO_SECRETKEYBYTES,
 static_assert(pqc::SPHINCS::SIGNATURE_SIZE   == CRYPTO_BYTES,
               "SPHINCS SIGNATURE_SIZE mismatch with reference params");
 
-#include <oqs/oqs.h>
-
-/**
- * SPHINCS+ / SLH-DSA-SHA2-128f — real NIST FIPS 205 implementation via liboqs.
- *
- * Hash-based stateless signature scheme. Security relies only on the
- * collision resistance of SHA-256, making it the most conservative
- * post-quantum signature scheme available.
- */
-
 namespace pqc {
 
 SPHINCS::SPHINCS() {}
 SPHINCS::~SPHINCS() {}
 
 bool SPHINCS::GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key) {
-    OQS_SIG* sig = OQS_SIG_new(OQS_SIG_alg_sphincs_sha2_128f_simple);
-    if (!sig) {
-        LogPrintf("SPHINCS::GenerateKeyPair: OQS_SIG_new failed\n");
-        return false;
-    }
+    public_key.resize(PUBLIC_KEY_SIZE);
+    private_key.resize(PRIVATE_KEY_SIZE);
 
-    public_key.resize(sig->length_public_key);
-    private_key.resize(sig->length_secret_key);
-
-    OQS_STATUS rc = OQS_SIG_keypair(sig, public_key.data(), private_key.data());
-    OQS_SIG_free(sig);
-
-    if (rc != OQS_SUCCESS) {
-        LogPrintf("SPHINCS::GenerateKeyPair: OQS_SIG_keypair failed\n");
+    if (crypto_sign_keypair(public_key.data(), private_key.data()) != 0) {
+        LogPrintf("SPHINCS::GenerateKeyPair: crypto_sign_keypair failed\n");
         public_key.clear();
         private_key.clear();
         return false;
@@ -67,23 +40,13 @@ bool SPHINCS::Sign(const std::vector<uint8_t>& message, const std::vector<uint8_
         return false;
     }
 
-    OQS_SIG* sig = OQS_SIG_new(OQS_SIG_alg_sphincs_sha2_128f_simple);
-    if (!sig) {
-        LogPrintf("SPHINCS::Sign: OQS_SIG_new failed\n");
-        return false;
-    }
-
-    signature.resize(sig->length_signature);
+    signature.resize(SIGNATURE_SIZE);
     size_t sig_len = 0;
 
-    OQS_STATUS rc = OQS_SIG_sign(sig,
-                                  signature.data(), &sig_len,
-                                  message.data(), message.size(),
-                                  private_key.data());
-    OQS_SIG_free(sig);
-
-    if (rc != OQS_SUCCESS) {
-        LogPrintf("SPHINCS::Sign: OQS_SIG_sign failed\n");
+    if (crypto_sign_signature(signature.data(), &sig_len,
+                              message.data(), message.size(),
+                              private_key.data()) != 0) {
+        LogPrintf("SPHINCS::Sign: crypto_sign_signature failed\n");
         signature.clear();
         return false;
     }
@@ -97,19 +60,9 @@ bool SPHINCS::Verify(const std::vector<uint8_t>& message, const std::vector<uint
         return false;
     }
 
-    OQS_SIG* sig = OQS_SIG_new(OQS_SIG_alg_sphincs_sha2_128f_simple);
-    if (!sig) {
-        LogPrintf("SPHINCS::Verify: OQS_SIG_new failed\n");
-        return false;
-    }
-
-    OQS_STATUS rc = OQS_SIG_verify(sig,
-                                    message.data(), message.size(),
-                                    signature.data(), signature.size(),
-                                    public_key.data());
-    OQS_SIG_free(sig);
-
-    return (rc == OQS_SUCCESS);
+    return crypto_sign_verify(signature.data(), signature.size(),
+                              message.data(), message.size(),
+                              public_key.data()) == 0;
 }
 
 } // namespace pqc

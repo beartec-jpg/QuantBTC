@@ -13,6 +13,19 @@
 #define CRYPTO_BYTES SPX_BYTES
 #define CRYPTO_SEEDBYTES 3*SPX_N
 
+/* Namespace the public API to avoid symbol clashes with other vendored
+ * PQC reference implementations (e.g. Dilithium/ML-DSA). */
+#define crypto_sign_secretkeybytes SPX_NAMESPACE(crypto_sign_secretkeybytes)
+#define crypto_sign_publickeybytes SPX_NAMESPACE(crypto_sign_publickeybytes)
+#define crypto_sign_bytes          SPX_NAMESPACE(crypto_sign_bytes)
+#define crypto_sign_seedbytes      SPX_NAMESPACE(crypto_sign_seedbytes)
+#define crypto_sign_seed_keypair   SPX_NAMESPACE(crypto_sign_seed_keypair)
+#define crypto_sign_keypair        SPX_NAMESPACE(crypto_sign_keypair)
+#define crypto_sign_signature      SPX_NAMESPACE(crypto_sign_signature)
+#define crypto_sign_verify         SPX_NAMESPACE(crypto_sign_verify)
+#define crypto_sign                SPX_NAMESPACE(crypto_sign)
+#define crypto_sign_open           SPX_NAMESPACE(crypto_sign_open)
+
 /*
  * Returns the length of a secret key, in bytes
  */
