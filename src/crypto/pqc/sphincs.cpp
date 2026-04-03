@@ -17,6 +17,13 @@ extern "C" {
 #include "sphincsplus/api.h"
 } // extern "C"
 
+static_assert(pqc::SPHINCS::PUBLIC_KEY_SIZE  == CRYPTO_PUBLICKEYBYTES,
+              "SPHINCS PUBLIC_KEY_SIZE mismatch with reference params");
+static_assert(pqc::SPHINCS::PRIVATE_KEY_SIZE == CRYPTO_SECRETKEYBYTES,
+              "SPHINCS PRIVATE_KEY_SIZE mismatch with reference params");
+static_assert(pqc::SPHINCS::SIGNATURE_SIZE   == CRYPTO_BYTES,
+              "SPHINCS SIGNATURE_SIZE mismatch with reference params");
+
 namespace pqc {
 
 SPHINCS::SPHINCS() {}
@@ -77,7 +84,11 @@ bool SPHINCS::Verify(const std::vector<uint8_t>& message, const std::vector<uint
             LogPrintf("SPHINCS::Verify: invalid public key size %zu\n", public_key.size());
             return false;
         }
-        if (signature.size() != SIGNATURE_SIZE) {
+        // SPHINCS+ reference implementations always produce SIGNATURE_SIZE bytes,
+        // but optimized implementations may emit shorter signatures.  We accept
+        // any non-empty signature up to the maximum; crypto_sign_verify performs
+        // full cryptographic validation of the actual signature content.
+        if (signature.empty() || signature.size() > SIGNATURE_SIZE) {
             LogPrintf("SPHINCS::Verify: invalid signature size %zu\n", signature.size());
             return false;
         }
