@@ -3,6 +3,8 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <core_io.h>
+#include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/sphincs.h>
 #include <key_io.h>
 #include <policy/rbf.h>
 #include <rpc/util.h>
@@ -735,6 +737,7 @@ RPCHelpMan gettransaction()
                             }},
                         }},
                         {RPCResult::Type::STR_HEX, "hex", "Raw data for transaction"},
+                        {RPCResult::Type::BOOL, "pqc_signed", /*optional=*/true, "Whether any input in the transaction contains a PQC (Dilithium/SPHINCS+) witness signature."},
                         {RPCResult::Type::OBJ, "decoded", /*optional=*/true, "The decoded transaction (only present when `verbose` is passed)",
                         {
                             {RPCResult::Type::ELISION, "", "Equivalent to the RPC decoderawtransaction method, or the RPC getrawtransaction method when `verbose` is passed."},
@@ -792,6 +795,29 @@ RPCHelpMan gettransaction()
     entry.pushKV("details", std::move(details));
 
     entry.pushKV("hex", EncodeHexTx(*wtx.tx));
+
+    // Detect PQC witness signatures in transaction inputs
+    // PQC hybrid witness: [ECDSA sig, pubkey, PQC sig, PQC pubkey]
+    bool has_pqc_witness = false;
+    for (const auto& txin : wtx.tx->vin) {
+        if (!txin.scriptWitness.IsNull() && txin.scriptWitness.stack.size() == 4) {
+            const auto& element2 = txin.scriptWitness.stack[2];
+            const auto& element3 = txin.scriptWitness.stack[3];
+            // Dilithium: sig=2420, pubkey=1312
+            if (element2.size() == pqc::Dilithium::SIGNATURE_SIZE &&
+                element3.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                has_pqc_witness = true;
+                break;
+            }
+            // SPHINCS+: sig=17088, pubkey=32
+            if (element2.size() == pqc::SPHINCS::SIGNATURE_SIZE &&
+                element3.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
+                has_pqc_witness = true;
+                break;
+            }
+        }
+    }
+    entry.pushKV("pqc_signed", has_pqc_witness);
 
     if (verbose) {
         UniValue decoded(UniValue::VOBJ);

@@ -5,6 +5,10 @@
 #include <config/bitcoin-config.h> // IWYU pragma: keep
 
 #include <core_io.h>
+#include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/hybrid_key.h>
+#include <crypto/pqc/pqc_config.h>
+#include <crypto/pqc/sphincs.h>
 #include <key_io.h>
 #include <rpc/util.h>
 #include <script/script.h>
@@ -565,6 +569,10 @@ RPCHelpMan getaddressinfo()
                         {
                             {RPCResult::Type::STR, "label name", "Label name (defaults to \"\")."},
                         }},
+                        {RPCResult::Type::BOOL, "pqc_enabled", /*optional=*/true, "Whether PQC hybrid signing is enabled globally."},
+                        {RPCResult::Type::BOOL, "has_pqc_key", /*optional=*/true, "Whether this address has an associated PQC (Dilithium) public key."},
+                        {RPCResult::Type::STR, "pqc_algorithm", /*optional=*/true, "The PQC signature algorithm associated with this key (e.g. \"dilithium\")."},
+                        {RPCResult::Type::STR_HEX, "pqc_pubkey", /*optional=*/true, "The hex-encoded PQC public key for this address."},
                     }
                 },
                 RPCExamples{
@@ -657,6 +665,36 @@ RPCHelpMan getaddressinfo()
         labels.push_back(address_book_entry->GetLabel());
     }
     ret.pushKV("labels", std::move(labels));
+
+    // PQC status fields
+    const auto& pqc_cfg = pqc::PQCConfig::GetInstance();
+    ret.pushKV("pqc_enabled", pqc_cfg.enable_hybrid_signatures);
+
+    if (provider) {
+        CKeyID keyid = GetKeyForDestination(*provider, dest);
+        if (!keyid.IsNull()) {
+            pqc::HybridKey hybrid_key;
+            if (provider->GetHybridKey(keyid, hybrid_key) && hybrid_key.IsValid()) {
+                ret.pushKV("has_pqc_key", true);
+                const auto& pqc_pub = hybrid_key.GetPQCPublicKey();
+                // Determine algorithm from PQC public key size
+                if (pqc_pub.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                    ret.pushKV("pqc_algorithm", "dilithium");
+                } else if (pqc_pub.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
+                    ret.pushKV("pqc_algorithm", "sphincs+");
+                } else {
+                    ret.pushKV("pqc_algorithm", "unknown");
+                }
+                if (!pqc_pub.empty()) {
+                    ret.pushKV("pqc_pubkey", HexStr(pqc_pub));
+                }
+            } else {
+                ret.pushKV("has_pqc_key", false);
+            }
+        } else {
+            ret.pushKV("has_pqc_key", false);
+        }
+    }
 
     return ret;
 },

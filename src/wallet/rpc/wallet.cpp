@@ -6,9 +6,12 @@
 #include <config/bitcoin-config.h> // IWYU pragma: keep
 
 #include <core_io.h>
+#include <crypto/pqc/pqc_config.h>
+#include <crypto/pqc/hybrid_key.h>
 #include <key_io.h>
 #include <rpc/server.h>
 #include <rpc/util.h>
+#include <script/signingprovider.h>
 #include <util/translation.h>
 #include <wallet/context.h>
 #include <wallet/receive.h>
@@ -140,6 +143,94 @@ static RPCHelpMan getwalletinfo()
     }
 
     AppendLastProcessedBlock(obj, *pwallet);
+    return obj;
+},
+    };
+}
+
+static RPCHelpMan getpqcinfo()
+{
+    return RPCHelpMan{"getpqcinfo",
+                "\nReturns information about the post-quantum cryptography (PQC) configuration and key material status for the wallet.\n",
+                {},
+                RPCResult{
+                    RPCResult::Type::OBJ, "", "",
+                    {
+                        {RPCResult::Type::BOOL, "pqc_enabled", "Whether PQC is enabled globally."},
+                        {RPCResult::Type::BOOL, "hybrid_keys_enabled", "Whether hybrid key generation is enabled."},
+                        {RPCResult::Type::BOOL, "hybrid_signatures_enabled", "Whether hybrid (ECDSA + PQC) signing is enabled."},
+                        {RPCResult::Type::STR, "pqc_mode", "The current PQC mode: \"hybrid\", \"classical\", or \"pure\"."},
+                        {RPCResult::Type::ARR, "enabled_kems", "List of enabled KEM algorithms.",
+                        {
+                            {RPCResult::Type::STR, "algorithm", "KEM algorithm name."},
+                        }},
+                        {RPCResult::Type::ARR, "enabled_signatures", "List of enabled signature algorithms.",
+                        {
+                            {RPCResult::Type::STR, "algorithm", "Signature algorithm name."},
+                        }},
+                        {RPCResult::Type::NUM, "wallet_pqc_key_count", "Number of PQC hybrid keys stored in the wallet."},
+                    }
+                },
+                RPCExamples{
+                    HelpExampleCli("getpqcinfo", "")
+            + HelpExampleRpc("getpqcinfo", "")
+                },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    const std::shared_ptr<const CWallet> pwallet = GetWalletForJSONRPCRequest(request);
+    if (!pwallet) return UniValue::VNULL;
+
+    LOCK(pwallet->cs_wallet);
+
+    const auto& pqc_cfg = pqc::PQCConfig::GetInstance();
+
+    UniValue obj(UniValue::VOBJ);
+    obj.pushKV("pqc_enabled", pqc_cfg.enable_pqc);
+    obj.pushKV("hybrid_keys_enabled", pqc_cfg.enable_hybrid_keys);
+    obj.pushKV("hybrid_signatures_enabled", pqc_cfg.enable_hybrid_signatures);
+
+    switch (pqc_cfg.pqc_mode) {
+        case pqc::PQCMode::HYBRID:    obj.pushKV("pqc_mode", "hybrid"); break;
+        case pqc::PQCMode::CLASSICAL: obj.pushKV("pqc_mode", "classical"); break;
+        case pqc::PQCMode::PURE:      obj.pushKV("pqc_mode", "pure"); break;
+    }
+
+    UniValue kems(UniValue::VARR);
+    for (const auto& algo : pqc_cfg.enabled_kems) {
+        switch (algo) {
+            case pqc::PQCAlgorithm::KYBER:    kems.push_back("kyber"); break;
+            case pqc::PQCAlgorithm::FRODOKEM: kems.push_back("frodokem"); break;
+            case pqc::PQCAlgorithm::NTRU:     kems.push_back("ntru"); break;
+            default: break;
+        }
+    }
+    obj.pushKV("enabled_kems", std::move(kems));
+
+    UniValue sigs(UniValue::VARR);
+    for (const auto& sig : pqc_cfg.enabled_signatures) {
+        switch (sig) {
+            case pqc::PQCSignatureScheme::DILITHIUM:   sigs.push_back("dilithium"); break;
+            case pqc::PQCSignatureScheme::FALCON:      sigs.push_back("falcon"); break;
+            case pqc::PQCSignatureScheme::SPHINCS_PLUS: sigs.push_back("sphincs+"); break;
+        }
+    }
+    obj.pushKV("enabled_signatures", std::move(sigs));
+
+    // Count hybrid keys in the wallet
+    int pqc_key_count = 0;
+    for (const auto& spk_man : pwallet->GetAllScriptPubKeyMans()) {
+        if (auto* filling = dynamic_cast<FillableSigningProvider*>(spk_man)) {
+            LOCK(filling->cs_KeyStore);
+            for (const auto& keyid : filling->GetKeys()) {
+                pqc::HybridKey hybrid_key;
+                if (filling->GetHybridKey(keyid, hybrid_key) && hybrid_key.IsValid()) {
+                    ++pqc_key_count;
+                }
+            }
+        }
+    }
+    obj.pushKV("wallet_pqc_key_count", pqc_key_count);
+
     return obj;
 },
     };
@@ -1119,6 +1210,7 @@ Span<const CRPCCommand> GetWalletRPCCommands()
         {"wallet", &getbalance},
         {"wallet", &gethdkeys},
         {"wallet", &getnewaddress},
+        {"wallet", &getpqcinfo},
         {"wallet", &getrawchangeaddress},
         {"wallet", &getreceivedbyaddress},
         {"wallet", &getreceivedbylabel},
