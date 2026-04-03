@@ -150,3 +150,8 @@ dist/
 
 /ci/scratch/
 src/stewqtCQ
+.tmp/
+confdefs.h
+conftest.cpp
+conftest.err
+confi*/

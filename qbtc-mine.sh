@@ -12,16 +12,41 @@ set -euo pipefail
 
 COUNT="${1:-1}"
 CHAIN="${2:-qbtctestnet}"
-CLI="./src/bitcoin-cli -${CHAIN}"
+DATADIR="${DATADIR:-}"
+WALLET_NAME="${WALLET_NAME:-miner}"
+RPCUSER="${RPCUSER:-}"
+RPCPASSWORD="${RPCPASSWORD:-}"
 
-get_mining_descriptor() {
+CLI=("./src/bitcoin-cli" "-${CHAIN}")
+if [ -n "$DATADIR" ]; then
+    CLI+=("-datadir=$DATADIR")
+fi
+if [ -n "$RPCUSER" ]; then
+    CLI+=("-rpcuser=$RPCUSER")
+fi
+if [ -n "$RPCPASSWORD" ]; then
+    CLI+=("-rpcpassword=$RPCPASSWORD")
+fi
+
+cli() {
+    "${CLI[@]}" "$@"
+}
+
+ensure_wallet() {
+    if ! cli -rpcwallet="$WALLET_NAME" getwalletinfo >/dev/null 2>&1; then
+        cli createwallet "$WALLET_NAME" >/dev/null 2>&1 || true
+    fi
+}
+
+get_mining_address() {
     local addr
-    addr=$($CLI getnewaddress "" "bech32")
-    $CLI getaddressinfo "$addr" | python3 -c 'import json,sys; print(json.load(sys.stdin)["desc"])'
+    ensure_wallet
+    addr=$(cli -rpcwallet="$WALLET_NAME" getnewaddress "" "bech32")
+    printf '%s\n' "$addr"
 }
 
 status() {
-    $CLI getblockchaininfo | python3 -c "
+    cli getblockchaininfo | python3 -c "
 import sys, json
 d = json.load(sys.stdin)
 print(f\"  chain={d['chain']}  blocks={d['blocks']}  tips={d['dag_tips']}  \")
@@ -35,11 +60,11 @@ if [ "$COUNT" = "status" ]; then
 fi
 
 echo "Mining $COUNT block(s) on $CHAIN..."
-DESC="$(get_mining_descriptor)"
+ADDR="$(get_mining_address)"
 for i in $(seq 1 "$COUNT"); do
-    RESULT=$($CLI generateblock "$ADDR" '[]' 2>&1)
-    HASH=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)['hash'][:16])" 2>/dev/null)
-    HEIGHT=$($CLI getblockcount)
+    RESULT=$(cli generatetoaddress 1 "$ADDR")
+    HASH=$(echo "$RESULT" | python3 -c "import sys,json; print(json.load(sys.stdin)[0][:16])" 2>/dev/null)
+    HEIGHT=$(cli getblockcount)
     echo "  [$i/$COUNT] height=$HEIGHT  hash=${HASH}..."
     [ "$i" -lt "$COUNT" ] && sleep 1
 done
