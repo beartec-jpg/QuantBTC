@@ -15,6 +15,7 @@ enum class ChainType {
     REGTEST,
     TESTNET4,
     QBTCTESTNET,
+    QBTCMAIN,
 };
 
 std::string ChainTypeToString(ChainType chain);

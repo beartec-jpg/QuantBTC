@@ -23,6 +23,8 @@ std::string ChainTypeToString(ChainType chain)
         return "regtest";
     case ChainType::QBTCTESTNET:
         return "qbtctestnet";
+    case ChainType::QBTCMAIN:
+        return "qbtcmain";
     }
     assert(false);
 }
@@ -41,6 +43,8 @@ std::optional<ChainType> ChainTypeFromString(std::string_view chain)
         return ChainType::REGTEST;
     } else if (chain == "qbtctestnet") {
         return ChainType::QBTCTESTNET;
+    } else if (chain == "qbtcmain") {
+        return ChainType::QBTCMAIN;
     } else {
         return std::nullopt;
     }
