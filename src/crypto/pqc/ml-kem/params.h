@@ -17,8 +17,12 @@
 #error "KYBER_K must be in {2,3,4}"
 #endif
 
+#ifndef KYBER_N
 #define KYBER_N 256
+#endif
+#ifndef KYBER_Q
 #define KYBER_Q 3329
+#endif
 
 #define KYBER_SYMBYTES 32   /* size in bytes of hashes, and seeds */
 #define KYBER_SSBYTES  32   /* size in bytes of shared key */

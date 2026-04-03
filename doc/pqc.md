@@ -11,7 +11,10 @@ protection against potential quantum computer attacks.
 ## Supported Algorithms
 
 ### Key Encapsulation Mechanisms (KEMs)
-- **Kyber-768**: A lattice-based KEM providing 128-bit post-quantum security
+- **Kyber-768** (ML-KEM-768): A lattice-based KEM providing 128-bit post-quantum security
+  - Implements the full IND-CCA2-secure scheme via the Fujisaki-Okamoto transform
+  - Public key: 1184 bytes, secret key: 2400 bytes, ciphertext: 1088 bytes, shared secret: 32 bytes
+  - Implemented using the pq-crystals/kyber reference C implementation (Kyber-768 ref/)
 - **FrodoKEM-976**: A conservative KEM based on the learning with errors problem
 - **NTRU-HPS-4096-821**: A lattice-based cryptosystem with long-standing security analysis
 
