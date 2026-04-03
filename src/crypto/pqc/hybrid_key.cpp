@@ -56,6 +56,16 @@ bool HybridKey::SetPQCKey(const std::vector<unsigned char>& public_key,
     return true;
 }
 
+bool HybridKey::SetPQCPublicKey(const std::vector<unsigned char>& public_key) {
+    if (public_key.size() != Dilithium::PUBLIC_KEY_SIZE) {
+        return false;
+    }
+    m_pqc_public_key = public_key;
+    // Mark valid for verification-only use even without a classical key.
+    m_is_valid = true;
+    return true;
+}
+
 bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature) const {
     if (!m_is_valid) {
         return false;
@@ -99,6 +109,13 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
 bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& signature) const {
     if (!m_is_valid) {
         return false;
+    }
+
+    // PQC-only verification mode: classical key was never set (e.g. via SetPQCPublicKey).
+    if (!m_classical_key.IsValid() && !m_pqc_public_key.empty()) {
+        std::vector<unsigned char> msg_bytes(hash.begin(), hash.end());
+        PQCManager& manager = PQCManager::GetInstance();
+        return manager.Verify(PQCAlgorithm::DILITHIUM, msg_bytes, signature, m_pqc_public_key);
     }
 
     if (!PQCConfig::GetInstance().enable_hybrid_signatures || m_pqc_public_key.empty()) {

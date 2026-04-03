@@ -82,6 +82,9 @@ typedef enum ScriptError_t
     SCRIPT_ERR_OP_CODESEPARATOR,
     SCRIPT_ERR_SIG_FINDANDDELETE,
 
+    /* Post-quantum cryptography */
+    SCRIPT_ERR_PQC_VERIFY_FAILED,
+
     SCRIPT_ERR_ERROR_COUNT
 } ScriptError;
 
