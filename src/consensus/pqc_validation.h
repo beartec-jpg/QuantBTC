@@ -25,7 +25,7 @@ bool HasPQCSignatures(const CTransaction& tx);
  * @param[out]  state          Validation state
  * @return true if all PQC signatures are valid
  */
-bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, ValidationState& state);
+bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, TxValidationState& state);
 
 /**
  * Check if block height requires PQC signatures

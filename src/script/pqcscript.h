@@ -12,8 +12,7 @@
 
 // Post-quantum cryptography specific script types and functions
 
-// PQC-specific script verification flags
-static const unsigned int SCRIPT_VERIFY_PQC = (1U << 31); // Enable PQC verification
+// PQC-specific script verification flags are defined in consensus/pqc_validation.h
 
 // PQC-specific output types
 enum class PQCTxoutType {
