@@ -625,6 +625,12 @@ public:
         consensus.nMaxDagParents = 64;         // match increased K, better DAG connectivity
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB
 
+        // Transaction-load-aware difficulty: same thresholds as mainnet.
+        // Testnet uses fPowAllowMinDifficultyBlocks, so the load adjustment is
+        // effectively only applied during sustained high-traffic periods.
+        consensus.nLoadDiffBaseline     = 200;
+        consensus.nLoadDiffMaxMultiplier = 4;
+
         // QuantumBTC: Early protection ON
         consensus.fEarlyProtection = true;
 
@@ -717,6 +723,13 @@ public:
         consensus.nDagTargetSpacingMs = 1000;  // 1-second blocks
         consensus.nMaxDagParents = 32;
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB
+
+        // Transaction-load-aware difficulty: activate multiplier above 200 tx/block
+        // (200 TPS = a comfortably busy network at 1-second block targets).
+        // Difficulty scales up to 4× harder at 800+ tx/block, making 51% attacks
+        // most expensive precisely when the network carries the most economic value.
+        consensus.nLoadDiffBaseline     = 200;
+        consensus.nLoadDiffMaxMultiplier = 4;
 
         // QuantumBTC: Early protection ON
         consensus.fEarlyProtection = true;

@@ -6,6 +6,7 @@
 
 #include <pow.h>
 
+#include <algorithm>
 #include <arith_uint256.h>
 #include <chain.h>
 #include <common/args.h>
@@ -78,6 +79,44 @@ unsigned int GetNextWorkRequiredDAG(const CBlockIndex* pindexLast, const CBlockH
     bnNew.SetCompact(pindexLast->nBits);
     bnNew *= nActualTimespan;
     bnNew /= nTargetTimespan;
+
+    // Transaction-load-aware difficulty adjustment.
+    //
+    // After the time-based retarget, scale the target down (harder PoW)
+    // proportionally to how busy the network has been over the same window.
+    // This makes a 51% attack most expensive exactly when the network carries
+    // the most economic value, while keeping difficulty low during quiet periods
+    // so that household miners stay competitive.
+    //
+    // Multiplier formula (linear ramp, integer arithmetic):
+    //   avg_tx      = transactions per block over the 4031-block window
+    //   excess      = clamp(avg_tx − baseline, 0, (max_mult−1) × baseline)
+    //   load_num    = baseline + excess          ∈ [baseline, max_mult×baseline]
+    //   new_target  = time_target × baseline / load_num
+    //                 (smaller target = higher difficulty)
+    if (params.nLoadDiffBaseline > 0 && params.nLoadDiffMaxMultiplier > 1) {
+        const uint64_t tx_last  = pindexLast->m_chain_tx_count;
+        const uint64_t tx_first = pindexFirst->m_chain_tx_count;
+        if (tx_last > tx_first) {
+            // 4031 blocks between pindexFirst+1 and pindexLast inclusive.
+            const int64_t kWindow = 4031;
+            // Divide in uint64_t first, then cast — result fits in int64_t since
+            // even at uint64_t max the quotient is only ~4.5×10^15 < INT64_MAX.
+            const int64_t avg_tx  = static_cast<int64_t>((tx_last - tx_first) / static_cast<uint64_t>(kWindow));
+            const int64_t baseline  = params.nLoadDiffBaseline;
+            const int64_t max_mult  = params.nLoadDiffMaxMultiplier;
+
+            if (avg_tx > baseline) {
+                const int64_t max_excess = (max_mult - 1) * baseline;
+                const int64_t excess     = std::min(avg_tx - baseline, max_excess);
+                const int64_t load_num   = baseline + excess;
+
+                // Reduce target proportionally (load_num > baseline ⟹ target shrinks)
+                bnNew = bnNew * arith_uint256(static_cast<uint64_t>(baseline))
+                             / arith_uint256(static_cast<uint64_t>(load_num));
+            }
+        }
+    }
 
     if (bnNew > bnPowLimit) bnNew = bnPowLimit;
 
