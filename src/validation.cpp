@@ -3244,6 +3244,20 @@ bool Chainstate::ConnectTip(BlockValidationState& state, CBlockIndex* pindexNew,
     // so that ALL accepted blocks (including fork blocks not on the active
     // chain) participate in the DAG.  See AcceptBlock() below.
 
+    // QuantumBTC: prune dagData mergeset vectors for deeply buried blocks.
+    // Once a block is buried beyond reorg depth, its mergeset_blues/reds
+    // are never needed again.  Free the heap memory.
+    static constexpr int DAG_MERGESET_PRUNE_DEPTH = 1000;
+    if (pindexNew->nHeight > DAG_MERGESET_PRUNE_DEPTH) {
+        CBlockIndex* pPrune = pindexNew->GetAncestor(pindexNew->nHeight - DAG_MERGESET_PRUNE_DEPTH);
+        if (pPrune && !pPrune->dagData.mergeset_blues.empty()) {
+            pPrune->dagData.mergeset_blues.clear();
+            pPrune->dagData.mergeset_blues.shrink_to_fit();
+            pPrune->dagData.mergeset_reds.clear();
+            pPrune->dagData.mergeset_reds.shrink_to_fit();
+        }
+    }
+
     const auto time_6{SteadyClock::now()};
     m_chainman.time_post_connect += time_6 - time_5;
     m_chainman.time_total += time_6 - time_1;
@@ -4657,17 +4671,11 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
 
             pindex->nEarlyProtectionWeight = weight;
 
-            if (weight < 1.0) {
-                arith_uint256 full_proof = GetBlockProof(*pindex);
-                uint64_t bp = static_cast<uint64_t>(weight * 10000);
-                if (bp < 1) bp = 1;
-                arith_uint256 scaled_proof = full_proof * bp / 10000;
-                if (scaled_proof == 0) scaled_proof = 1;
-                arith_uint256 parent_work = pindex->pprev ? pindex->pprev->nChainWork : arith_uint256(0);
-                pindex->nChainWork = parent_work + scaled_proof;
-                LogPrintf("AcceptBlock: EarlyProtection scaled nChainWork=%s\n",
-                          pindex->nChainWork.ToString());
-            }
+            // CONSENSUS FIX: Do NOT modify nChainWork with per-node ephemeral
+            // data.  nChainWork must be deterministic across all nodes to avoid
+            // consensus splits.  Early protection weight is stored in
+            // nEarlyProtectionWeight for informational / rate-limiting purposes
+            // only.  Chain selection uses the unmodified nChainWork.
 
             LogPrint(BCLog::VALIDATION,
                      "QuantumBTC EarlyProtection: block %s height=%d "

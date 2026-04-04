@@ -27,6 +27,10 @@ namespace dag {
 /** Maximum number of parent hashes a block header may contain. */
 static constexpr uint32_t MAX_BLOCK_PARENTS = 32;
 
+/** Entries in m_known_scores older than this many blue_score units behind the
+ *  best tip are pruned.  Reorgs deeper than this are practically impossible. */
+static constexpr uint64_t KNOWN_SCORES_PRUNE_DEPTH = 1000;
+
 /**
  * Maintains the set of current DAG tips, ordered by blue_score descending.
  *
@@ -91,6 +95,9 @@ private:
 
     void RemoveTip(const uint256& hash);
     void InsertTip(const uint256& hash, uint64_t blue_score);
+
+    /** Remove entries from m_known_scores that are far behind the best tip. */
+    void PruneKnownScores(uint64_t best_score);
 };
 
 } // namespace dag

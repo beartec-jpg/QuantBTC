@@ -878,9 +878,17 @@ void CTxMemPool::PrioritiseTransaction(const uint256& hash, const CAmount& nFeeD
 {
     {
         LOCK(cs);
+        // Bound mapDeltas: reject new entries for txids not in the mempool
+        // if we already have too many orphaned deltas.
+        static constexpr size_t MAX_MAP_DELTAS = 100000;
+        txiter it = mapTx.find(hash);
+        if (it == mapTx.end() && mapDeltas.count(hash) == 0 && mapDeltas.size() >= MAX_MAP_DELTAS) {
+            LogPrintf("PrioritiseTransaction: mapDeltas at capacity (%zu), rejecting delta for %s\n",
+                      mapDeltas.size(), hash.ToString());
+            return;
+        }
         CAmount &delta = mapDeltas[hash];
         delta = SaturatingAdd(delta, nFeeDelta);
-        txiter it = mapTx.find(hash);
         if (it != mapTx.end()) {
             mapTx.modify(it, [&nFeeDelta](CTxMemPoolEntry& e) { e.UpdateModifiedFee(nFeeDelta); });
             // Now update all ancestors' modified fees with descendants

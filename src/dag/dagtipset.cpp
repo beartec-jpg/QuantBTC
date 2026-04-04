@@ -36,6 +36,10 @@ void DagTipSet::BlockConnected(const uint256& block_hash, uint64_t blue_score,
     }
     // Add the new block as a tip
     InsertTip(block_hash, blue_score);
+
+    // Prune m_known_scores to prevent unbounded growth.
+    PruneKnownScores(blue_score);
+
     LogPrint(BCLog::VALIDATION,
              "DagTipSet::BlockConnected %s score=%u parents=%u tips: %u -> %u\n",
              block_hash.ToString().substr(0, 16), blue_score,
@@ -90,6 +94,19 @@ void DagTipSet::Clear()
     m_score_to_hash.clear();
     m_hash_to_score.clear();
     m_known_scores.clear();
+}
+
+void DagTipSet::PruneKnownScores(uint64_t best_score)
+{
+    if (best_score <= KNOWN_SCORES_PRUNE_DEPTH) return;
+    uint64_t cutoff = best_score - KNOWN_SCORES_PRUNE_DEPTH;
+    for (auto it = m_known_scores.begin(); it != m_known_scores.end(); ) {
+        if (it->second < cutoff && m_hash_to_score.find(it->first) == m_hash_to_score.end()) {
+            it = m_known_scores.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 } // namespace dag

@@ -38,20 +38,28 @@ uint256 GhostdagManager::SelectBestParent(
 
 // ---------------------------------------------------------------------------
 // GhostdagManager::SelectedParentChain
+//
+// Walk the selected parent chain from `block` back toward genesis.
+// To avoid O(chain_height) allocation on every call, limit the walk to
+// a depth of 2*K+1 blocks.  Blocks deeper than 2*K on the selected parent
+// chain are necessarily in the past of all mergeset candidates and thus
+// cannot appear in any anti-cone — they have no effect on blue/red
+// classification in ClassifyMergeset.
 // ---------------------------------------------------------------------------
 std::vector<uint256> GhostdagManager::SelectedParentChain(
     const uint256& block,
     const IGhostdagBlockProvider& provider) const
 {
     std::vector<uint256> chain;
+    const size_t max_depth = 2 * static_cast<size_t>(m_k) + 1;
     uint256 cur = block;
-    while (!cur.IsNull()) {
+    while (!cur.IsNull() && chain.size() < max_depth) {
         chain.push_back(cur);
         const GhostdagData* d = provider.GetGhostdagData(cur);
         if (!d || d->selected_parent.IsNull()) break;
         cur = d->selected_parent;
     }
-    return chain; // tip → genesis order
+    return chain; // tip → depth-limited order
 }
 
 // ---------------------------------------------------------------------------

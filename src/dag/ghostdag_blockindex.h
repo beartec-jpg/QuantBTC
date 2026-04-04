@@ -74,7 +74,12 @@ private:
     /**
      * Check whether pAncestor is reachable from pBlock by following parent pointers.
      * Uses pprev (selected parent chain) and vDagParents (DAG parents).
-     * BFS-based with depth limit to avoid unbounded traversal.
+     *
+     * The BFS is bounded by height: we only enqueue blocks whose height is
+     * strictly above pAncestor->nHeight (blocks at or below cannot be on a
+     * path from pBlock to pAncestor unless they ARE pAncestor, which is
+     * checked explicitly).  This guarantees termination proportional to the
+     * DAG width × height difference, and never returns a wrong answer.
      */
     static bool IsBlockAncestor(const CBlockIndex* pAncestor, const CBlockIndex* pBlock)
     {
@@ -88,27 +93,35 @@ private:
         }
         if (walk == pAncestor) return true;
 
-        // Slow path for DAG: BFS through vDagParents
+        // Slow path for DAG: BFS through vDagParents.
+        // Height-bounded: only enqueue nodes above pAncestor's height.
+        // At each node we check direct pointer equality before pruning.
         std::vector<const CBlockIndex*> queue;
         std::unordered_set<const CBlockIndex*> visited;
-        static constexpr size_t MAX_BFS_VISITS = 100000;
         queue.push_back(pBlock);
         visited.insert(pBlock);
 
         size_t front = 0;
         while (front < queue.size()) {
-            if (visited.size() > MAX_BFS_VISITS) return false;
             const CBlockIndex* cur = queue[front++];
-            if (cur == pAncestor) return true;
-            if (cur->nHeight <= pAncestor->nHeight) continue;
 
-            if (cur->pprev && visited.insert(cur->pprev).second) {
-                queue.push_back(cur->pprev);
-            }
-            for (const CBlockIndex* p : cur->vDagParents) {
-                if (p && visited.insert(p).second) {
+            auto enqueue = [&](const CBlockIndex* p) {
+                if (!p || !visited.insert(p).second) return;
+                if (p == pAncestor) return; // found — will be caught below
+                if (p->nHeight > pAncestor->nHeight) {
                     queue.push_back(p);
                 }
+            };
+
+            // Check pprev
+            if (cur->pprev) {
+                if (cur->pprev == pAncestor) return true;
+                enqueue(cur->pprev);
+            }
+            // Check DAG parents
+            for (const CBlockIndex* p : cur->vDagParents) {
+                if (p == pAncestor) return true;
+                enqueue(p);
             }
         }
         return false;

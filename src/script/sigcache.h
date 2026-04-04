@@ -38,9 +38,10 @@ static_assert(DEFAULT_VALIDATION_CACHE_BYTES == DEFAULT_SIGNATURE_CACHE_BYTES + 
 class SignatureCache
 {
 private:
-    //! Entries are SHA256(nonce || 'E' or 'S' || 31 zero bytes || signature hash || public key || signature):
+    //! Entries are SHA256(nonce || 'E' or 'S' or 'D' || 31 zero bytes || signature hash || public key || signature):
     CSHA256 m_salted_hasher_ecdsa;
     CSHA256 m_salted_hasher_schnorr;
+    CSHA256 m_salted_hasher_dilithium;
     typedef CuckooCache::cache<uint256, SignatureCacheHasher> map_type;
     map_type setValid;
     std::shared_mutex cs_sigcache;
@@ -52,8 +53,9 @@ public:
     SignatureCache& operator=(const SignatureCache&) = delete;
 
     void ComputeEntryECDSA(uint256& entry, const uint256 &hash, const std::vector<unsigned char>& vchSig, const CPubKey& pubkey) const;
-
     void ComputeEntrySchnorr(uint256& entry, const uint256 &hash, Span<const unsigned char> sig, const XOnlyPubKey& pubkey) const;
+    void ComputeEntryDilithium(uint256& entry, const uint256 &hash, Span<const unsigned char> sig, Span<const unsigned char> pubkey) const;
+    void ComputeEntryDilithiumRaw(uint256& entry, Span<const unsigned char> pqc_sig, Span<const unsigned char> pqc_pubkey, Span<const unsigned char> ecdsa_sig, Span<const unsigned char> scriptCode, unsigned char sigversion) const;
 
     bool Get(const uint256& entry, const bool erase);
 
@@ -71,6 +73,7 @@ public:
 
     bool VerifyECDSASignature(const std::vector<unsigned char>& vchSig, const CPubKey& vchPubKey, const uint256& sighash) const override;
     bool VerifySchnorrSignature(Span<const unsigned char> sig, const XOnlyPubKey& pubkey, const uint256& sighash) const override;
+    bool CheckDilithiumSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig, const CScript& scriptCode, SigVersion sigversion) const override;
 };
 
 #endif // BITCOIN_SCRIPT_SIGCACHE_H

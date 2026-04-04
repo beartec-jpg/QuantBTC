@@ -22,14 +22,17 @@ SignatureCache::SignatureCache(const size_t max_size_bytes)
     uint256 nonce = GetRandHash();
     // We want the nonce to be 64 bytes long to force the hasher to process
     // this chunk, which makes later hash computations more efficient. We
-    // just write our 32-byte entropy, and then pad with 'E' for ECDSA and
-    // 'S' for Schnorr (followed by 0 bytes).
+    // just write our 32-byte entropy, and then pad with 'E' for ECDSA,
+    // 'S' for Schnorr, and 'D' for Dilithium (followed by 0 bytes).
     static constexpr unsigned char PADDING_ECDSA[32] = {'E'};
     static constexpr unsigned char PADDING_SCHNORR[32] = {'S'};
+    static constexpr unsigned char PADDING_DILITHIUM[32] = {'D'};
     m_salted_hasher_ecdsa.Write(nonce.begin(), 32);
     m_salted_hasher_ecdsa.Write(PADDING_ECDSA, 32);
     m_salted_hasher_schnorr.Write(nonce.begin(), 32);
     m_salted_hasher_schnorr.Write(PADDING_SCHNORR, 32);
+    m_salted_hasher_dilithium.Write(nonce.begin(), 32);
+    m_salted_hasher_dilithium.Write(PADDING_DILITHIUM, 32);
 
     const auto [num_elems, approx_size_bytes] = setValid.setup_bytes(max_size_bytes);
     LogPrintf("Using %zu MiB out of %zu MiB requested for signature cache, able to store %zu elements\n",
@@ -46,6 +49,23 @@ void SignatureCache::ComputeEntrySchnorr(uint256& entry, const uint256& hash, Sp
 {
     CSHA256 hasher = m_salted_hasher_schnorr;
     hasher.Write(hash.begin(), 32).Write(pubkey.data(), pubkey.size()).Write(sig.data(), sig.size()).Finalize(entry.begin());
+}
+
+void SignatureCache::ComputeEntryDilithium(uint256& entry, const uint256& hash, Span<const unsigned char> sig, Span<const unsigned char> pubkey) const
+{
+    CSHA256 hasher = m_salted_hasher_dilithium;
+    hasher.Write(hash.begin(), 32).Write(pubkey.data(), pubkey.size()).Write(sig.data(), sig.size()).Finalize(entry.begin());
+}
+
+void SignatureCache::ComputeEntryDilithiumRaw(uint256& entry, Span<const unsigned char> pqc_sig, Span<const unsigned char> pqc_pubkey, Span<const unsigned char> ecdsa_sig, Span<const unsigned char> scriptCode, unsigned char sigversion) const
+{
+    CSHA256 hasher = m_salted_hasher_dilithium;
+    hasher.Write(pqc_sig.data(), pqc_sig.size());
+    hasher.Write(pqc_pubkey.data(), pqc_pubkey.size());
+    hasher.Write(ecdsa_sig.data(), ecdsa_sig.size());
+    hasher.Write(scriptCode.data(), scriptCode.size());
+    hasher.Write(&sigversion, 1);
+    hasher.Finalize(entry.begin());
 }
 
 bool SignatureCache::Get(const uint256& entry, const bool erase)
@@ -79,6 +99,24 @@ bool CachingTransactionSignatureChecker::VerifySchnorrSignature(Span<const unsig
     m_signature_cache.ComputeEntrySchnorr(entry, sighash, sig, pubkey);
     if (m_signature_cache.Get(entry, !store)) return true;
     if (!TransactionSignatureChecker::VerifySchnorrSignature(sig, pubkey, sighash)) return false;
+    if (store) m_signature_cache.Set(entry);
+    return true;
+}
+
+bool CachingTransactionSignatureChecker::CheckDilithiumSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig, const CScript& scriptCode, SigVersion sigversion) const
+{
+    uint256 entry;
+    m_signature_cache.ComputeEntryDilithiumRaw(entry,
+        Span<const unsigned char>(pqc_sig),
+        Span<const unsigned char>(pqc_pubkey),
+        Span<const unsigned char>(ecdsa_sig),
+        Span<const unsigned char>(scriptCode.data(), scriptCode.size()),
+        static_cast<unsigned char>(sigversion));
+    if (m_signature_cache.Get(entry, !store)) return true;
+
+    if (!TransactionSignatureChecker::CheckDilithiumSignature(pqc_sig, pqc_pubkey, ecdsa_sig, scriptCode, sigversion))
+        return false;
+
     if (store) m_signature_cache.Set(entry);
     return true;
 }
