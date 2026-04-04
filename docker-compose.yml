@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   qbtc-node:
     # Build locally from the repo root, or use a pre-built image:
