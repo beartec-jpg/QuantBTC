@@ -394,6 +394,9 @@ class CDiskBlockIndex : public CBlockIndex
 public:
     uint256 hashPrev;
 
+    //! QuantumBTC BlockDAG: persisted extra parent hashes.
+    std::vector<uint256> hashDagParents;
+
     CDiskBlockIndex()
     {
         hashPrev = uint256();
@@ -402,6 +405,9 @@ public:
     explicit CDiskBlockIndex(const CBlockIndex* pindex) : CBlockIndex(*pindex)
     {
         hashPrev = (pprev ? pprev->GetBlockHash() : uint256());
+        for (const CBlockIndex* p : vDagParents) {
+            if (p) hashDagParents.push_back(p->GetBlockHash());
+        }
     }
 
     SERIALIZE_METHODS(CDiskBlockIndex, obj)
@@ -424,6 +430,11 @@ public:
         READWRITE(obj.nTime);
         READWRITE(obj.nBits);
         READWRITE(obj.nNonce);
+
+        // QuantumBTC BlockDAG: persist extra parent hashes
+        if (obj.nVersion & BLOCK_VERSION_DAGMODE) {
+            READWRITE(obj.hashDagParents);
+        }
     }
 
     uint256 ConstructBlockHash() const

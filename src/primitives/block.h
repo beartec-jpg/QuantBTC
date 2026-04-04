@@ -49,7 +49,8 @@ public:
      *
      * NOTE: hashParents is serialized AFTER the standard PoW header, so
      * SHA-256 mining hardware covers the 80-byte base header as usual.
-     * The GetHash() function hashes the entire header including parents.
+     * GetHash() hashes ONLY the 80-byte base header (for PoW & block id).
+     * hashParents are committed via network serialization & DAG validation.
      */
     std::vector<uint256> hashParents;
 
@@ -60,9 +61,9 @@ public:
 
     /**
      * Serialization: standard 80-byte fields first, then optional DAG parents.
-     * The PoW target hash is computed over the FULL serialized header
-     * (including hashParents when present), committing miners to the
-     * specific set of parents they reference.
+     * The PoW hash (GetHash()) covers only the first 80 bytes.
+     * hashParents are included in serialization for P2P relay and
+     * persistent storage, but not in the block-identity hash.
      */
     SERIALIZE_METHODS(CBlockHeader, obj)
     {

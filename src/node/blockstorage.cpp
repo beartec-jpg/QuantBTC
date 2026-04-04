@@ -131,6 +131,14 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
+                // QuantumBTC BlockDAG: restore extra parent pointers
+                for (const uint256& par_hash : diskindex.hashDagParents) {
+                    CBlockIndex* pParent = insertBlockIndex(par_hash);
+                    if (pParent) {
+                        pindexNew->vDagParents.push_back(pParent);
+                    }
+                }
+
                 // QuantumBTC: In DAG mode with fPowAllowMinDifficultyBlocks,
                 // difficulty can legitimately drop to near-zero during mining
                 // stalls.  The compact nBits encoding round-trip may produce

@@ -10,7 +10,16 @@
 
 uint256 CBlockHeader::GetHash() const
 {
-    return (HashWriter{} << *this).GetHash();
+    // Hash only the standard 80-byte base header.
+    // DAG parent hashes (hashParents) are serialized over the wire and
+    // validated by consensus, but are NOT part of the PoW / block-id hash.
+    // This keeps block identification stable across restarts (where
+    // CDiskBlockIndex may not yet have resolved parent pointers) and
+    // matches standard SHA-256 mining hardware expectations.
+    HashWriter hasher{};
+    hasher << nVersion << hashPrevBlock << hashMerkleRoot
+           << nTime << nBits << nNonce;
+    return hasher.GetHash();
 }
 
 std::string CBlock::ToString() const
