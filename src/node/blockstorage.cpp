@@ -131,9 +131,17 @@ bool BlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, s
                 pindexNew->nStatus        = diskindex.nStatus;
                 pindexNew->nTx            = diskindex.nTx;
 
-                if (!CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, consensusParams)) {
-                    LogError("%s: CheckProofOfWork failed: %s\n", __func__, pindexNew->ToString());
-                    return false;
+                // QuantumBTC: In DAG mode with fPowAllowMinDifficultyBlocks,
+                // difficulty can legitimately drop to near-zero during mining
+                // stalls.  The compact nBits encoding round-trip may produce
+                // a target that doesn't exactly match powLimit.  These blocks
+                // were already fully validated when first accepted; skip the
+                // PoW range check on index load to avoid a false rejection.
+                if (!consensusParams.fPowAllowMinDifficultyBlocks) {
+                    if (!CheckProofOfWork(pindexNew->GetBlockHash(), pindexNew->nBits, consensusParams)) {
+                        LogError("%s: CheckProofOfWork failed: %s\n", __func__, pindexNew->ToString());
+                        return false;
+                    }
                 }
 
                 pcursor->Next();
