@@ -178,6 +178,33 @@ struct Params {
     uint32_t nMaxBlockWeightPQC{4 * 4000000};
 
     // -------------------------------------------------------------------------
+    // QuantumBTC Transaction-Load-Aware Difficulty (DAG mode only)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Average transactions per block above which the load-based difficulty
+     * multiplier activates.  At exactly this rate the multiplier is 1× (no
+     * change).  It grows linearly up to nLoadDiffMaxMultiplier× as the
+     * average rate reaches nLoadDiffMaxMultiplier * nLoadDiffBaseline tx/block.
+     *
+     * Rationale: raises the PoW attack cost proportionally to economic
+     * activity — the network is hardest to attack precisely when it carries
+     * the most value.  During quiet periods the baseline stays low so that
+     * household miners remain competitive.
+     *
+     * 0 = feature disabled (default for chains that do not set this).
+     */
+    int64_t nLoadDiffBaseline{0};
+
+    /**
+     * Maximum load-based difficulty multiplier (cap).
+     * E.g., 4 means difficulty can be at most 4× harder than the pure
+     * time-based retarget result when the network is at sustained peak load.
+     * Must be ≥ 1; values < 2 effectively disable the feature.
+     */
+    int64_t nLoadDiffMaxMultiplier{4};
+
+    // -------------------------------------------------------------------------
     // QuantumBTC Early Protection (anti-monopolization for bootstrap period)
     // -------------------------------------------------------------------------
 
