@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  qbtc-node:
+    # Build locally from the repo root, or use a pre-built image:
+    build: .
+    # image: ghcr.io/beartec-jpg/quantbtc:testnet
+    ports:
+      - "28333:28333"   # P2P
+      - "28332:28332"   # RPC (bind to 127.0.0.1 in production)
+    volumes:
+      - qbtc-data:/data
+    environment:
+      # Replace with the IP:port of a known seed node, e.g.:
+      # SEEDNODE: "1.2.3.4:28333"
+      SEEDNODE: ""
+    restart: unless-stopped
+
+volumes:
+  qbtc-data:

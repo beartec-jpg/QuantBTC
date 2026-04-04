@@ -236,6 +236,82 @@ qBTC adds several RPC fields beyond standard Bitcoin Core:
 
 ---
 
+## Running with Docker
+
+Docker is the easiest way to spin up a qBTC testnet node — no compiler or build tools needed.
+
+### Build the Docker image locally
+
+```bash
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+docker build -t qbtc .
+```
+
+### Run with docker-compose (recommended)
+
+```bash
+# Edit docker-compose.yml and set SEEDNODE to a known peer, then:
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop the node
+docker-compose down
+```
+
+### Run with `docker run` (one-liner)
+
+```bash
+docker run -d \
+  --name qbtc-node \
+  --restart unless-stopped \
+  -p 28333:28333 \
+  -p 28332:28332 \
+  -v qbtc-data:/data \
+  -e SEEDNODE=<seed-ip>:28333 \
+  ghcr.io/beartec-jpg/quantbtc:testnet
+```
+
+### Connecting to a seed node
+
+Pass the seed node address via the `SEEDNODE` environment variable:
+
+```bash
+docker run -d --name qbtc-node \
+  -p 28333:28333 -v qbtc-data:/data \
+  -e SEEDNODE=1.2.3.4:28333 \
+  ghcr.io/beartec-jpg/quantbtc:testnet
+```
+
+### Check node status
+
+```bash
+# Chain info
+docker exec qbtc-node bitcoin-cli -qbtctestnet -datadir=/data getblockchaininfo
+
+# Peer count
+docker exec qbtc-node bitcoin-cli -qbtctestnet -datadir=/data getconnectioncount
+
+# Peer details
+docker exec qbtc-node bitcoin-cli -qbtctestnet -datadir=/data getpeerinfo
+```
+
+---
+
+## One-Line Install
+
+Installs a qBTC testnet node on Ubuntu/Debian Linux. Uses Docker if available; otherwise builds from source and installs a systemd service.
+
+```bash
+curl -sSL https://raw.githubusercontent.com/beartec-jpg/QuantBTC/main/install-qbtc-node.sh | bash
+```
+
+> **Requirements:** Linux (x86_64 or aarch64). Docker (optional but recommended) or `apt`-based package manager for native builds.
+
+---
+
 ## Testing
 
 ### Unit Tests

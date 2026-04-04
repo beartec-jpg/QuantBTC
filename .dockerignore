@@ -1,0 +1,13 @@
+.git
+*.o
+*.a
+*.lo
+src/bitcoind
+src/bitcoin-cli
+src/bitcoin-tx
+src/bitcoin-wallet
+src/test_bitcoin
+build_msvc/
+*.pyc
+__pycache__
+.github/
