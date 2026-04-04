@@ -150,9 +150,8 @@ Brought up a standalone QuantumBTC testnet network:
 
 | Item | Status | Notes |
 |------|--------|-------|
-| DNS seed nodes | ❌ | No public seed nodes — bootstrap via `-seednode=<ip>:28333` |
+| DNS seed nodes | ❌ | No public DNS seeds — bootstrap via `-seednode=<ip>:28333` |
 | Pool mining | ❌ | No stratum integration; solo mining only |
-| Block explorer | ❌ | No public explorer — use RPC to inspect blocks/txs |
 | SPHINCS+ wallet signing | ❌ | Only crypto primitive tested; wallet uses Dilithium only |
 | Falcon/SQIsign | ❌ | Stubs only — not wired to real implementations |
 | KEMs in protocol | ❌ | Kyber/FrodoKEM/NTRU not used for node communication yet |
@@ -163,14 +162,34 @@ Brought up a standalone QuantumBTC testnet network:
 
 ## Roadmap: What's Next
 
-### Phase 8: Public Testnet (Planned)
+### Phase 8: Public Testnet (Deployed)
 
-- [ ] Deploy 3+ seed nodes with static IPs
+**Status: ✅ Complete**
+
+Brought up a live multi-node testnet with public services:
+
+- [x] Deploy 2 seed nodes with static IPs (46.62.156.169, 37.27.47.236)
+- [x] Continuous solo mining (~1 block/second)
+- [x] Web faucet for distributing testnet QBTC (beartec.uk/qbtc-faucet)
+- [x] Web block explorer / search (beartec.uk/qbtc-scan)
+- [x] Stress tested with 10 parallel transaction streams (~2.8 tx/sec)
 - [ ] Add DNS seeds to `CQbtcTestNetParams::vSeeds`
-- [ ] Set up a public block explorer
-- [ ] Create Docker images for easy node deployment
-- [ ] Write operator documentation (systemd service files, monitoring)
-- [ ] Faucet for distributing testnet QBTC
+- [ ] Docker images for easy node deployment
+- [ ] Operator documentation (systemd service files, monitoring)
+
+### Phase 8.5: Memory & Consensus Hardening
+
+**Status: ✅ Complete**
+
+Proactive fixes identified via chain audit at ~30,000 blocks to prevent resource exhaustion and consensus divergence at scale:
+
+- [x] **IsBlockAncestor BFS** — replaced `MAX_BFS_VISITS=100000` silent wrong-answer with height-bounded BFS. The old code could return `false` for a genuine ancestor, producing non-deterministic mergesets across nodes. New code guarantees correct answers proportional to DAG width × height difference.
+- [x] **EarlyProtection nChainWork** — removed per-node ephemeral data (peer activation times, ramp counts, IP windows) from `nChainWork` scaling. Different nodes seeing different peer events would compute different chain weights, causing inconsistent chain selection.
+- [x] **m_known_scores pruning** — `DagTipSet::m_known_scores` was never pruned, growing ~82 MB/day at 1-second blocks. Now evicts entries more than 1,000 blue_score behind the best tip that aren't current tips.
+- [x] **SelectedParentChain depth limit** — `GhostdagManager::SelectedParentChain()` walked to genesis on every block call. Limited to `2*K+1` (37 blocks for K=18), reducing O(height) to O(K).
+- [x] **Mergeset pruning** — `dagData.mergeset_blues` / `mergeset_reds` vectors were never freed. Now cleared for blocks buried more than 1,000 blocks deep during `ConnectTip()`.
+- [x] **PQC signature cache** — `CachingTransactionSignatureChecker` now overrides `CheckDilithiumSignature` to cache verification results in the CuckooCache, avoiding redundant 2,420-byte Dilithium checks during block relay and mempool re-acceptance.
+- [x] **mapDeltas bounding** — `PrioritiseTransaction` entries capped at 100,000 to prevent unbounded growth from orphaned delta entries.
 
 ### Phase 9: Mining Infrastructure (Planned)
 
@@ -186,6 +205,7 @@ Brought up a standalone QuantumBTC testnet network:
 - [ ] Integrate ML-KEM (Kyber) for encrypted P2P communication
 - [ ] Formal security audit of PQC consensus rules
 - [ ] BIP specification for QBTC hybrid witness format
+- [ ] Add SPHINCS+ signature cache entries alongside Dilithium
 
 ### Phase 11: Mainnet Preparation (Planned)
 

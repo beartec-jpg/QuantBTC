@@ -61,6 +61,18 @@ Hardened the consensus layer for real cryptographic verification:
 - **Dedicated error codes**: `SCRIPT_ERR_PQC_VERIFY_FAILED`, `SCRIPT_ERR_PQC_WITNESS_MALFORMED`, `SCRIPT_ERR_PQC_ALGO_UNSUPPORTED`, `SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH`
 - **Unique chain identity** — distinct magic bytes, ports, and genesis block hashes per chain
 
+### Memory & Performance Hardening
+
+Proactive fixes to prevent unbounded resource growth as the chain scales:
+
+- **IsBlockAncestor BFS** — replaced a silent wrong-answer limit (`MAX_BFS_VISITS=100000`) with a height-bounded BFS that never returns incorrect results. Prevents non-deterministic mergesets across nodes.
+- **EarlyProtection nChainWork** — removed per-node ephemeral data (peer activation times, ramp counts, IP windows) from `nChainWork` calculation, preventing inconsistent chain selection between nodes.
+- **m_known_scores pruning** — DAG tip-set scores are now pruned when more than 1,000 blue_score behind the best tip, capping memory at ~82 KB instead of growing ~82 MB/day.
+- **SelectedParentChain depth limit** — chain walk limited to `2K+1` blocks (37 for K=18) instead of walking to genesis on every block, reducing O(height) to O(K).
+- **Mergeset pruning** — `mergeset_blues` / `mergeset_reds` vectors are cleared for blocks buried more than 1,000 deep, preventing permanent RAM growth.
+- **PQC signature cache** — Dilithium verification results are now cached in the CuckooCache alongside ECDSA and Schnorr entries, avoiding redundant 2,420-byte signature checks during block relay.
+- **mapDeltas bounding** — `PrioritiseTransaction` entries are capped at 100,000 to prevent unbounded growth from orphaned priorities.
+
 ### PQC-Aware Fee Estimation
 
 Fixed a critical bug where the wallet calculated fees based on ECDSA-only virtual size (~141 vB) while PQC hybrid transactions are ~7.6x larger (~1,075 vB):

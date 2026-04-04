@@ -2,19 +2,27 @@
 
 ## Supported Versions
 
-See our website for versions of Bitcoin Core that are currently supported with
-security updates: https://bitcoincore.org/en/lifecycle/#schedule
+QuantumBTC (QBTC) is currently in testnet. The `main` branch at [beartec-jpg/QuantBTC](https://github.com/beartec-jpg/QuantBTC) is the only supported version.
 
 ## Reporting a Vulnerability
 
-To report security issues send an email to security@bitcoincore.org (not for support).
+To report security issues, please open a **private** security advisory on GitHub:
 
-The following keys may be used to communicate sensitive information to developers:
+1. Go to [github.com/beartec-jpg/QuantBTC/security/advisories](https://github.com/beartec-jpg/QuantBTC/security/advisories)
+2. Click **New draft security advisory**
+3. Describe the vulnerability with steps to reproduce
 
-| Name | Fingerprint |
-|------|-------------|
-| Pieter Wuille | 133E AC17 9436 F14A 5CF1  B794 860F EB80 4E66 9320 |
-| Michael Ford | E777 299F C265 DD04 7930  70EB 944D 35F9 AC3D B76A |
-| Ava Chow | 1528 1230 0785 C964 44D3  334D 1756 5732 E08E 5E41 |
+Do **not** open public issues for security vulnerabilities.
 
-You can import a key by running the following command with that individual’s fingerprint: `gpg --keyserver hkps://keys.openpgp.org --recv-keys "<fingerprint>"` Ensure that you put quotes around fingerprints containing spaces.
+## Scope
+
+QBTC-specific areas of particular interest:
+
+- **PQC consensus** — ML-DSA-44 (Dilithium2) signature verification in the script interpreter
+- **GHOSTDAG consensus** — blue/red classification, mergeset computation, selected parent chain
+- **Hybrid witness format** — 4-element P2WPKH witness (ECDSA + Dilithium)
+- **DAG tip-set management** — tip tracking, score pruning, parent selection
+- **Early protection system** — activation delay, ramp weight, IP throttling
+- **Signature cache** — ECDSA, Schnorr, and Dilithium cache entry computation
+
+For vulnerabilities in upstream Bitcoin Core code, please report to the Bitcoin Core security team at security@bitcoincore.org.
