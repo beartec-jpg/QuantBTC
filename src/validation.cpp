@@ -4391,9 +4391,15 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
                 }
                 BlockMap::iterator mi2 = m_blockman.m_block_index.find(parent_hash);
                 if (mi2 == m_blockman.m_block_index.end()) {
-                    // Unknown parent – treat as orphan (same as unknown prev block)
-                    return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV, "dag-parent-not-found",
-                        strprintf("DAG parent %s not found", parent_hash.ToString()));
+                    // During P2P header sync, DAG parents on other branches
+                    // may not have arrived yet.  Skip validation here;
+                    // vDagParents will be fully resolved in AcceptBlock()
+                    // when all headers are available.
+                    LogPrint(BCLog::VALIDATION,
+                             "AcceptBlockHeader: DAG parent %s not yet known, "
+                             "deferring validation\n",
+                             parent_hash.ToString());
+                    continue;
                 }
                 if (mi2->second.nStatus & BLOCK_FAILED_MASK) {
                     return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV, "bad-dag-parent",
@@ -4615,6 +4621,33 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
     if (gArgs.GetBoolArg("-dag", GetConsensus().fDagMode) && pindex) {
         dag::BlockIndexGhostdagProvider provider(m_blockman);
         dag::GhostdagManager ghostdag_mgr(GetConsensus().ghostdag_k);
+
+        // Re-resolve vDagParents from the raw block header.  During P2P
+        // header sync some DAG parents may not have been in the block
+        // index yet, so vDagParents could be incomplete.  By the time
+        // AcceptBlock runs all headers are available.
+        if (block.IsDagBlock() && pindex->vDagParents.size() < block.hashParents.size()) {
+            pindex->vDagParents.clear();
+            for (const uint256& par_hash : block.hashParents) {
+                BlockMap::iterator miPar = m_blockman.m_block_index.find(par_hash);
+                if (miPar != m_blockman.m_block_index.end()) {
+                    if (miPar->second.nStatus & BLOCK_FAILED_MASK) {
+                        LogError("AcceptBlock: DAG parent %s is invalid for block %s\n",
+                                 par_hash.ToString(), block.GetHash().ToString());
+                        return state.Invalid(BlockValidationResult::BLOCK_INVALID_PREV,
+                                             "bad-dag-parent",
+                                             strprintf("DAG parent %s is invalid", par_hash.ToString()));
+                    }
+                    pindex->vDagParents.push_back(&miPar->second);
+                } else {
+                    LogError("AcceptBlock: DAG parent %s still not found for block %s\n",
+                             par_hash.ToString(), block.GetHash().ToString());
+                    return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV,
+                                         "dag-parent-not-found",
+                                         strprintf("DAG parent %s not found", par_hash.ToString()));
+                }
+            }
+        }
 
         std::vector<uint256> all_parents;
         if (pindex->pprev) all_parents.push_back(pindex->pprev->GetBlockHash());
