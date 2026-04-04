@@ -488,7 +488,13 @@ bool BlockManager::LoadBlockIndex(const std::optional<uint256>& snapshot_blockha
             pindex->nStatus |= BLOCK_FAILED_CHILD;
             m_dirty_blockindex.insert(pindex);
         }
-        if (pindex->pprev) {
+        // QuantumBTC: Only build skip pointers when the pprev chain is
+        // intact.  A "stub" parent (created by InsertBlockIndex for a hash
+        // reference but never loaded from LevelDB) has nBits==0 and
+        // nHeight inconsistent with this block.  Walking its pprev chain
+        // hits a null pointer and triggers an assertion in GetAncestor.
+        if (pindex->pprev &&
+            pindex->pprev->nHeight == pindex->nHeight - 1) {
             pindex->BuildSkip();
         }
     }
