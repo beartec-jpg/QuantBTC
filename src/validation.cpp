@@ -1926,16 +1926,25 @@ PackageMempoolAcceptResult ProcessNewPackage(Chainstate& active_chainstate, CTxM
     return result;
 }
 
-CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
+CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, bool fHasUserTransactions)
 {
     int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
     // Force block reward to zero when right shift is undefined.
     if (halvings >= 64)
         return 0;
 
-    CAmount nSubsidy = 50 * COIN;
-    // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
+    // DAG chains use a scaled-down reward (50 COIN / 600 ≈ 8333333 satoshis) to preserve
+    // Bitcoin's ~21M total supply with 1-second blocks and 126M-block halving intervals.
+    CAmount nSubsidy = consensusParams.fDagMode ? CAmount{8333333} : 50 * COIN;
+    // Subsidy is cut in half every halving interval (~4 years).
     nSubsidy >>= halvings;
+
+    // DAG Phase 2+ (after first halving): empty blocks earn no subsidy.
+    // Miners only collect the block reward when they include at least one user transaction.
+    // Empty blocks remain valid (chain never stalls), they just earn fees only.
+    if (consensusParams.fDagMode && halvings >= 1 && !fHasUserTransactions)
+        return 0;
+
     return nSubsidy;
 }
 
@@ -2701,7 +2710,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
              Ticks<SecondsDouble>(m_chainman.time_connect),
              Ticks<MillisecondsDouble>(m_chainman.time_connect) / m_chainman.num_blocks_total);
 
-    CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, params.GetConsensus());
+    CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, params.GetConsensus(), block.vtx.size() > 1);
     if (block.vtx[0]->GetValueOut() > blockReward) {
         LogPrintf("ERROR: ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)\n", block.vtx[0]->GetValueOut(), blockReward);
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-amount");

@@ -190,7 +190,8 @@ Brought up a standalone QuantumBTC testnet network:
 ### Phase 11: Mainnet Preparation (Planned)
 
 - [ ] Set realistic mainnet difficulty (not trivial)
-- [ ] Finalize block reward schedule and halving parameters
+- [x] Finalize block reward schedule and halving parameters (scaled to 126M-block interval and 8,333,333 sat reward for 1-second DAG blocks)
+- [x] Distribution Phase / Operational Phase emission model implemented
 - [ ] EXT_PUBLIC_KEY / EXT_SECRET_KEY prefix finalization
 - [ ] Genesis block with real mining (not nonce=0)
 - [ ] Checkpoint infrastructure
@@ -246,9 +247,9 @@ Brought up a standalone QuantumBTC testnet network:
 | GHOSTDAG K | 32 | 18 |
 | Block target | 1 second | 1 second |
 | Max block weight | 16 MB | 16 MB |
-| Block reward | 50 QBTC | 50 QBTC |
-| Supply cap | 21,000,000 QBTC | 21,000,000 QBTC |
-| Halving interval | 210,000 blocks | 210,000 blocks |
+| Block reward | 0.08333333 QBTC | 0.08333333 QBTC |
+| Supply cap | ~21,000,000 QBTC | ~21,000,000 QBTC |
+| Halving interval | 126,000,000 blocks (~4 years) | 126,000,000 blocks (~4 years) |
 | PQC deployment | Always active | Always active |
 | DAG mode | Enabled | Enabled |
 

@@ -75,7 +75,7 @@ Fixed a critical bug where the wallet calculated fees based on ECDSA-only virtua
 - **qBTC Mainnet** (reserved): magic `e3b5d7a9`, P2P port 58333, RPC port 58332, bech32 prefix `qbtc`
 - PQC is **always active** on qBTC chains — no manual `-pqc=1` flag needed
 - GHOSTDAG K=32 (testnet) / K=18 (mainnet)
-- 50 QBTC block reward, 210,000 block halving interval, 21M supply cap
+- 0.08333333 QBTC block reward (8,333,333 satoshis), 126,000,000 block halving interval (~4 years), ~21M supply cap
 - Launch script and config template at `contrib/qbtc-testnet/`
 
 ### PQC Transaction Anatomy
@@ -219,10 +219,38 @@ A configuration template is available at `contrib/qbtc-testnet/qbtc-testnet.conf
 | GHOSTDAG K | 32 | 18 |
 | Block target | 1 second | 1 second |
 | Max block weight | 16 MB | 16 MB |
-| Block reward | 50 QBTC | 50 QBTC |
-| Supply cap | 21,000,000 QBTC | 21,000,000 QBTC |
+| Block reward | 0.08333333 QBTC | 0.08333333 QBTC |
+| Halving interval | 126,000,000 blocks (~4 years) | 126,000,000 blocks (~4 years) |
+| Supply cap | ~21,000,000 QBTC | ~21,000,000 QBTC |
 | PQC deployment | Always active | Always active |
 | DAG mode | Enabled | Enabled |
+
+### Tokenomics
+
+QBTC uses 1-second DAG blocks, so its emission parameters are scaled to match Bitcoin's ~4-year halving cadence and ~21M total supply:
+
+| Parameter | Bitcoin | QBTC |
+|-----------|---------|------|
+| Block interval | 600 s | 1 s |
+| Halving interval | 210,000 blocks (~4 years) | 126,000,000 blocks (~4 years) |
+| Initial block reward | 50 BTC | 0.08333333 QBTC (8,333,333 satoshis) |
+| Total supply | ~21,000,000 BTC | ~21,000,000 QBTC |
+
+#### Two-Phase Emission Model
+
+**Phase 1 — Distribution (blocks 0 to 125,999,999 / ~4 years)**
+
+- Empty blocks (coinbase-only) are valid and earn the full block reward.
+- Anyone can mine and collect QBTC — no transaction activity is required.
+- ~10,500,000 QBTC (50% of total supply) is distributed during this phase.
+- This is a fair-launch distribution: hash power is the only requirement.
+
+**Phase 2+ — Operational (block 126,000,000 onward, forever)**
+
+- Empty blocks remain technically valid so the chain never stalls during quiet periods.
+- However, empty blocks earn **zero subsidy** (fees only).
+- Blocks that include at least one user transaction earn the normal halved subsidy plus fees.
+- This naturally transitions the network to transaction-driven mining.
 
 ### RPC Extensions
 

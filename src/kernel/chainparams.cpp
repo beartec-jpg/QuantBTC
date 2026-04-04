@@ -582,7 +582,7 @@ public:
         m_chain_type = ChainType::QBTCTESTNET;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.nSubsidyHalvingInterval = 126000000; // 210000 * 600 — preserves ~4-year halving cadence at 1-second blocks
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256();
         consensus.BIP65Height = 1;
@@ -681,7 +681,7 @@ public:
         m_chain_type = ChainType::QBTCMAIN;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 210000;
+        consensus.nSubsidyHalvingInterval = 126000000; // 210000 * 600 — preserves ~4-year halving cadence at 1-second blocks
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256();
         consensus.BIP65Height = 1;
