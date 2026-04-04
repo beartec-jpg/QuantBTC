@@ -109,7 +109,7 @@ const CBlockIndex* CBlockIndex::GetAncestor(int height) const
             pindexWalk = pindexWalk->pskip;
             heightWalk = heightSkip;
         } else {
-            assert(pindexWalk->pprev);
+            if (!pindexWalk->pprev) return nullptr; // broken chain (stub from unclean shutdown)
             pindexWalk = pindexWalk->pprev;
             heightWalk--;
         }
@@ -124,8 +124,10 @@ CBlockIndex* CBlockIndex::GetAncestor(int height)
 
 void CBlockIndex::BuildSkip()
 {
-    if (pprev)
-        pskip = pprev->GetAncestor(GetSkipHeight(nHeight));
+    if (pprev) {
+        CBlockIndex* ancestor = pprev->GetAncestor(GetSkipHeight(nHeight));
+        if (ancestor) pskip = ancestor;
+    }
 }
 
 arith_uint256 GetBlockProof(const CBlockIndex& block)
