@@ -69,35 +69,38 @@ BOOST_AUTO_TEST_CASE(subsidy_limit_test)
 BOOST_AUTO_TEST_CASE(qbtc_block_subsidy_test)
 {
     // QBTC uses 1-second DAG blocks, so the halving interval is scaled to 126,000,000
-    // (210,000 × 600) and the block reward is reduced to 8,333,333 satoshis (50 COIN / 600)
-    // to preserve Bitcoin's ~21M total supply and ~4-year halving cadence.
+    // (210,000 × 600) and the block reward is reduced to 8,333,333 satoshis
+    // (integer-truncated from 50 COIN / 600) to preserve Bitcoin's ~21M total supply
+    // and ~4-year halving cadence.
     Consensus::Params dagParams;
     dagParams.fDagMode = true;
     dagParams.nSubsidyHalvingInterval = 126000000;
 
+    static constexpr CAmount kDagReward{8333333}; // 50 COIN / 600, truncated
+    // Maximum halving number whose epoch start fits within int32 range:
+    // 17 * 126,000,000 = 2,142,000,000 < INT_MAX (2,147,483,647)
+    static constexpr int kMaxSafeHalving{17};
+
     // Phase 1 (Distribution): blocks 0 to 125,999,999 — all blocks earn the reward.
-    // Block 0: first epoch, has user txs
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(0, dagParams, true), CAmount{8333333});
-    // Block 0: first epoch, empty block still earns reward during Distribution Phase
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(0, dagParams, false), CAmount{8333333});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(0, dagParams, true), kDagReward);
+    // Empty blocks in Phase 1 still earn the reward (fair Distribution Phase)
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(0, dagParams, false), kDagReward);
     // Mid-distribution phase, with and without user transactions
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(63000000, dagParams, true), CAmount{8333333});
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(63000000, dagParams, false), CAmount{8333333});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(63000000, dagParams, true), kDagReward);
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(63000000, dagParams, false), kDagReward);
     // Last block of Distribution Phase
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(125999999, dagParams, false), CAmount{8333333});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(125999999, dagParams, false), kDagReward);
 
     // Phase 2+ (Operational): block 126,000,000 onward.
     // Blocks with user transactions earn the halved subsidy.
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(126000000, dagParams, true), CAmount{8333333 >> 1});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(126000000, dagParams, true), kDagReward >> 1);
     // Empty blocks in Phase 2+ earn no subsidy (fees only).
     BOOST_CHECK_EQUAL(GetBlockSubsidy(126000000, dagParams, false), CAmount{0});
     BOOST_CHECK_EQUAL(GetBlockSubsidy(126000001, dagParams, false), CAmount{0});
 
-    // After enough halvings (>23) the reward falls to zero due to bit-shift exhaustion.
-    // Use halving interval 17 (max within int range: 17 * 126,000,000 = 2,142,000,000 < INT_MAX)
-    // to show the subsidy is deep in its decay curve.
-    int height17 = 17 * dagParams.nSubsidyHalvingInterval;
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(height17, dagParams, true), CAmount{8333333 >> 17});
+    // Verify decay curve within int32-safe range (halving 17).
+    int heightAt17 = kMaxSafeHalving * dagParams.nSubsidyHalvingInterval;
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(heightAt17, dagParams, true), kDagReward >> kMaxSafeHalving);
 }
 
 BOOST_AUTO_TEST_CASE(qbtc_subsidy_total_supply_test)
@@ -109,8 +112,10 @@ BOOST_AUTO_TEST_CASE(qbtc_subsidy_total_supply_test)
     dagParams.fDagMode = true;
     dagParams.nSubsidyHalvingInterval = 126000000;
 
+    static constexpr int kMaxSafeHalving{17};
+
     CAmount nSum = 0;
-    for (int nHalving = 0; nHalving <= 17; ++nHalving) {
+    for (int nHalving = 0; nHalving <= kMaxSafeHalving; ++nHalving) {
         int nHeight = nHalving * dagParams.nSubsidyHalvingInterval;
         CAmount nSubsidy = GetBlockSubsidy(nHeight, dagParams, true);
         if (nSubsidy == 0) break;
