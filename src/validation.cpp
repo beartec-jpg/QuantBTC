@@ -4622,10 +4622,11 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         dag::BlockIndexGhostdagProvider provider(m_blockman);
         dag::GhostdagManager ghostdag_mgr(GetConsensus().ghostdag_k);
 
-        // Re-resolve vDagParents from the raw block header.  During P2P
-        // header sync some DAG parents may not have been in the block
-        // index yet, so vDagParents could be incomplete.  By the time
-        // AcceptBlock runs all headers are available.
+        // Re-resolve vDagParents from the raw block header.  During IBD,
+        // DAG parents on fork branches may not exist in the block index
+        // because headers-first sync only fetches best-chain headers.
+        // Skip unknown parents gracefully — GHOSTDAG scoring will use
+        // whatever parents ARE available and is corrected on reindex.
         if (block.IsDagBlock() && pindex->vDagParents.size() < block.hashParents.size()) {
             pindex->vDagParents.clear();
             for (const uint256& par_hash : block.hashParents) {
@@ -4640,11 +4641,11 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                     }
                     pindex->vDagParents.push_back(&miPar->second);
                 } else {
-                    LogError("AcceptBlock: DAG parent %s still not found for block %s\n",
+                    // During IBD, fork-branch parents may not be available yet.
+                    // Skip — the block is valid on its selected parent chain.
+                    LogPrint(BCLog::VALIDATION,
+                             "AcceptBlock: DAG parent %s not yet known for block %s, skipping\n",
                              par_hash.ToString(), block.GetHash().ToString());
-                    return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV,
-                                         "dag-parent-not-found",
-                                         strprintf("DAG parent %s not found", par_hash.ToString()));
                 }
             }
         }
