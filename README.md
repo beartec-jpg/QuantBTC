@@ -1,13 +1,318 @@
-# **QuantumBTC — beartec's Fork**
+# **qBTC (QuantumBTC)**
 
-> **⚠️ All changes in this repository are [beartec's](https://github.com/beartec-jpg) version of QuantumBTC.**
-> This is an independent fork maintained by beartec. The stress test results below represent the first comprehensive multi-node validation of this build.
+> A quantum-resistant, high-throughput blockchain built on Bitcoin Core v28.0.0.
+>
+> qBTC is an independent fork maintained by [beartec](https://github.com/beartec-jpg), derived from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin). It combines **post-quantum cryptographic signatures** with **BlockDAG consensus (GHOSTDAG)** to create a network that is secure against both classical and quantum adversaries — not as a future upgrade, but as a consensus requirement from genesis.
 
 ---
 
-## 🧪 First Stress Test Results — 10-Node PQC Network
+## What is qBTC?
 
-**Test date:** April 2026 &nbsp;|&nbsp; **Status: ✅ PASSED — 10,000/10,000 transactions**
+qBTC (QuantumBTC) transforms Bitcoin Core into a quantum-safe, high-throughput blockchain while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW). Every transaction carries a **hybrid witness**: a classical ECDSA signature paired with a lattice-based ML-DSA-44 (Dilithium2) signature, providing dual-layer cryptographic protection.
+
+### Key Capabilities
+
+| Capability | Status |
+|------------|--------|
+| PQC hybrid transactions (ECDSA + ML-DSA-44) | ✅ |
+| BlockDAG parallel block production (GHOSTDAG) | ✅ |
+| Solo mining via `generatetoaddress` | ✅ |
+| P2P node sync with PQC transactions | ✅ |
+| Wallet operations (send, receive, encrypt) | ✅ |
+| PQC-aware fee estimation | ✅ |
+| RBF and CPFP support | ✅ |
+| DAG-aware block validation and reorg handling | ✅ |
+| Unique bech32 addresses (`qbtct1...` / `qbtc1...`) | ✅ |
+
+---
+
+## What Changed from pqcBitcoin
+
+qBTC is forked from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin), which provided the initial PQC algorithm stubs, `HybridKey` class, `PQCConfig` system, wallet PQC key storage, and script interpreter hooks. qBTC builds significantly on top of that foundation with the following changes:
+
+### BlockDAG Consensus (GHOSTDAG)
+
+Replaced Bitcoin's linear chain with parallel block production via the GHOSTDAG protocol:
+
+- **`GhostdagManager`** — computes blue scores, merge sets, and the selected parent chain
+- **`DagTipSet`** — tracks concurrent DAG tips and provides mining parents
+- **Multi-parent block headers** — `hashParents` field with `BLOCK_VERSION_DAGMODE` flag
+- **DAG-aware validation** — parent existence checks, duplicate detection, max parents limit
+- **DAG difficulty adjustment** — `GetNextWorkRequiredDAG()` for variable block spacing
+- **1-second block target** with 16 MB max block weight
+- **RPC fields**: `dagparents`, `dagblock`, `dagmode`, `ghostdag_k`, `dag_tips`
+
+### Real Cryptography (ML-DSA-44)
+
+Replaced the upstream HMAC-based placeholder stubs with production NIST reference implementations:
+
+- **Vendored ML-DSA-44 (Dilithium2)** — NIST FIPS 204, real sign/verify wired into the script interpreter, wallet signing, and consensus (`src/crypto/pqc/ml-dsa/`)
+- **Vendored SPHINCS+** (SLH-DSA-SHA2-128f) — stateless hash-based signatures (`src/crypto/pqc/sphincsplus/`)
+- **Vendored ML-KEM (Kyber-768)** — lattice-based KEM (`src/crypto/pqc/ml-kem/`)
+- **Single `randombytes()` implementation** using Bitcoin Core's `GetStrongRandBytes` with proper memory cleansing
+- **Fixed `#define N 256` macro leakage** from Dilithium `params.h` that conflicted with Bitcoin Core symbols
+
+### Consensus Verification
+
+Hardened the consensus layer for real cryptographic verification:
+
+- **`CheckPQCSignature()`** in the script interpreter performs real Dilithium verification
+- **4-element PQC witness format** validated at consensus: `[ECDSA sig, EC pubkey, Dilithium sig (2420B), Dilithium pubkey (1312B)]`
+- **Dedicated error codes**: `SCRIPT_ERR_PQC_VERIFY_FAILED`, `SCRIPT_ERR_PQC_WITNESS_MALFORMED`, `SCRIPT_ERR_PQC_ALGO_UNSUPPORTED`, `SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH`
+- **Unique chain identity** — distinct magic bytes, ports, and genesis block hashes per chain
+
+### PQC-Aware Fee Estimation
+
+Fixed a critical bug where the wallet calculated fees based on ECDSA-only virtual size (~141 vB) while PQC hybrid transactions are ~7.6x larger (~1,075 vB):
+
+- `WPKHDescriptor::MaxSatSize()` returns correct PQC witness sizes when hybrid signatures are active
+- `DummySignatureCreator::CreatePQCSig()` produces dummy 2420B sig + 1312B pubkey for accurate size estimation
+- Coin selection now correctly accounts for PQC witness weight
+
+### Standalone Testnet & Mainnet Parameters
+
+- **qBTC Testnet**: magic `d1a5c3b7`, P2P port 28333, RPC port 28332, bech32 prefix `qbtct`
+- **qBTC Mainnet** (reserved): magic `e3b5d7a9`, P2P port 58333, RPC port 58332, bech32 prefix `qbtc`
+- PQC is **always active** on qBTC chains — no manual `-pqc=1` flag needed
+- GHOSTDAG K=32 (testnet) / K=18 (mainnet)
+- 50 QBTC block reward, 210,000 block halving interval, 21M supply cap
+- Launch script and config template at `contrib/qbtc-testnet/`
+
+### PQC Transaction Anatomy
+
+```
+P2WPKH Input Witness (4 elements):
+  [0] ECDSA signature        ~71 bytes   (secp256k1)
+  [1] EC public key            33 bytes   (compressed)
+  [2] Dilithium signature   2,420 bytes   (ML-DSA-44)
+  [3] Dilithium public key  1,312 bytes   (ML-DSA-44)
+
+Total witness per input:    ~3,836 bytes
+Virtual size (1-in/2-out):  ~1,075 vB
+Weight (1-in/2-out):        ~4,299 WU
+Classical equivalent:         ~141 vB (7.6x smaller)
+```
+
+---
+
+## PQC Algorithms
+
+### Digital Signature Algorithms
+- **CRYSTALS-Dilithium (ML-DSA-44)** — lattice-based, NIST FIPS 204. **Primary signature algorithm used in consensus.**
+- **SPHINCS+ (SLH-DSA-SHA2-128f)** — stateless hash-based signatures. Crypto primitives implemented; not yet wired to wallet signing.
+- **Falcon** — stub only, not wired to a real implementation.
+- **SQIsign** — stub only, not wired to a real implementation.
+
+### Key Encapsulation Mechanisms (KEM)
+- **Kyber (ML-KEM-768)** — lattice-based KEM with vendored reference implementation.
+- **FrodoKEM** — LWE-based KEM.
+- **NTRU** — lattice-based cryptosystem using `GetStrongRandBytes()` for key generation.
+
+For detailed PQC documentation, see [doc/pqc.md](doc/pqc.md).
+
+### Configuration Options
+
+PQC is enabled by default on qBTC chains. For manual configuration:
+
+```bash
+./src/bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqcsig=sphincs,dilithium -pqchybridsig=1
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-pqc=0\|1` | Enable/disable PQC features | `1` |
+| `-pqchybridkeys=0\|1` | Enable/disable hybrid key generation | `1` |
+| `-pqchybridsig=0\|1` | Enable/disable hybrid signatures | `1` |
+| `-pqcalgo=algo1,algo2,...` | KEM algorithms | `kyber,frodo,ntru` |
+| `-pqcsig=sig1,sig2,...` | Signature schemes | `sphincs,dilithium` |
+
+---
+
+## Building qBTC
+
+### Requirements
+
+- GCC 7+ or Clang 8+
+- Autotools (autoconf, automake, libtool)
+- pkg-config
+- Python 3 (for tests)
+- Standard Bitcoin Core dependencies (libevent, Boost, SQLite, etc.)
+
+### Install Dependencies (Ubuntu/Debian)
+
+```bash
+sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils python3
+sudo apt-get install libevent-dev libboost-dev libboost-system-dev libboost-filesystem-dev
+sudo apt-get install libsqlite3-dev libminiupnpc-dev libnatpmp-dev libzmq3-dev
+```
+
+### Build
+
+```bash
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+./autogen.sh
+./configure --with-incompatible-bdb --with-gui=no
+make -j$(nproc)
+```
+
+> **Note:** The Qt GUI (`--with-gui=qt5`) currently fails to build due to Falcon/Kyber liboqs link errors. Use `--with-gui=no` for the daemon and CLI builds.
+
+---
+
+## Running qBTC
+
+### Quick Start (Testnet)
+
+```bash
+# Start the qBTC testnet daemon
+./src/bitcoind -qbtctestnet -daemon -fallbackfee=0.0001 -txindex=1
+
+# Interact via CLI
+./src/bitcoin-cli -qbtctestnet getblockchaininfo
+./src/bitcoin-cli -qbtctestnet createwallet "mywallet"
+./src/bitcoin-cli -qbtctestnet -rpcwallet=mywallet getnewaddress
+
+# Mine blocks (regtest/testnet with trivial difficulty)
+./src/bitcoin-cli -qbtctestnet -rpcwallet=mywallet generatetoaddress 10 $(./src/bitcoin-cli -qbtctestnet -rpcwallet=mywallet getnewaddress)
+
+# Stop the daemon
+./src/bitcoin-cli -qbtctestnet stop
+```
+
+### Using the Helper Script
+
+```bash
+./contrib/qbtc-testnet/qbtc-testnet.sh start     # Launch daemon
+./contrib/qbtc-testnet/qbtc-testnet.sh mine 10    # Mine 10 blocks
+./contrib/qbtc-testnet/qbtc-testnet.sh status     # Show blockchain info
+./contrib/qbtc-testnet/qbtc-testnet.sh address    # Generate new address
+./contrib/qbtc-testnet/qbtc-testnet.sh send <addr> <amount>  # Send QBTC
+./contrib/qbtc-testnet/qbtc-testnet.sh stop       # Graceful shutdown
+```
+
+### Configuration
+
+Place in `~/.bitcoin/bitcoin.conf`:
+
+```ini
+[qbtctestnet]
+chain=qbtctestnet
+server=1
+listen=1
+fallbackfee=0.0001
+txindex=1
+# seednode=<ip>:28333
+```
+
+A configuration template is available at `contrib/qbtc-testnet/qbtc-testnet.conf`.
+
+### Network Parameters
+
+| Parameter | Testnet | Mainnet (reserved) |
+|-----------|---------|-------------------|
+| CLI flag | `-qbtctestnet` | `-qbtcmain` |
+| Magic bytes | `d1 a5 c3 b7` | `e3 b5 d7 a9` |
+| P2P port | 28333 | 58333 |
+| RPC port | 28332 | 58332 |
+| Bech32 prefix | `qbtct` | `qbtc` |
+| GHOSTDAG K | 32 | 18 |
+| Block target | 1 second | 1 second |
+| Max block weight | 16 MB | 16 MB |
+| Block reward | 50 QBTC | 50 QBTC |
+| Supply cap | 21,000,000 QBTC | 21,000,000 QBTC |
+| PQC deployment | Always active | Always active |
+| DAG mode | Enabled | Enabled |
+
+### RPC Extensions
+
+qBTC adds several RPC fields beyond standard Bitcoin Core:
+
+- `getblockchaininfo` — reports `pqc: true` on qBTC chains
+- `getaddressinfo` — includes `pqc_enabled`, `has_pqc_key`, `pqc_algorithm`, `pqc_pubkey`
+- `getpqcinfo` — returns PQC configuration status
+- `gettransaction` — includes `pqc_signed` field for PQC witness detection
+- Block RPCs — `dagparents`, `dagblock`, `dagmode`, `ghostdag_k`, `dag_tips`
+
+---
+
+## Testing
+
+### Unit Tests
+
+Run all unit tests (including 45+ PQC-specific test cases):
+
+```bash
+make check
+```
+
+PQC unit tests cover:
+
+| Test Suite | Cases | Coverage |
+|------------|-------|----------|
+| `pqc_dilithium_tests` | 9 | Keygen, sign/verify, tampered message/sig, wrong pubkey, deterministic derivation |
+| `pqc_witness_tests` | 4 | Valid PQC witness, wrong Dilithium sig, wrong-size sig, wrong-size pubkey |
+| `pqc_fee_tests` | 2 | MaxSatisfactionWeight with/without PQC, DummySignatureCreator witness structure |
+| `pqc_kyber_tests` | 5 | Encaps/decaps roundtrip, tampered ciphertext, cross-key mismatch |
+| `pqc_sphincs_tests` | 8 | Keygen, sign/verify, tampered message/sig |
+| `pqc_frodo_fo_tests` | 6 | Roundtrip, implicit rejection |
+| `pqc_ntru_fo_tests` | 5 | Roundtrip, implicit rejection |
+| `pqc_signature_tests` | 4 | All signature schemes |
+| `dag_tests` | — | DAG topology, GHOSTDAG ordering |
+
+### Integration Tests
+
+The integration test suite validates 61 assertions across 30 test groups:
+
+```bash
+./run_full_test.sh
+```
+
+Integration tests cover:
+- Node identity and wallet PQC provisioning
+- PQC hybrid transaction creation and signature verification
+- Batch transactions and mempool behavior
+- DAG parallel blocks and GHOSTDAG ordering
+- Multi-hop PQC, wallet reload, multi-input transactions
+- Corrupt and wrong-size witness rejection
+- Sig mutation and replay protection
+- Fee estimation accuracy, RBF, and CPFP
+- Two-node propagation and cross-wallet verification
+- Wallet encryption with PQC signing
+
+### DAG-Specific Tests
+
+```bash
+python3 test_ghostdag.py          # GHOSTDAG block ordering
+python3 test_parallel_dag.py      # Parallel block production
+python3 test_dag_fork.py          # DAG reorganization
+python3 test_dag_wallet.py        # Wallet PQC in DAG mode
+python3 test_dag_testnet.py       # Testnet-specific scenarios
+```
+
+### Fuzz Testing
+
+Fuzz targets for PQC primitives:
+
+```bash
+# Build with fuzzing support, then run:
+# crypto_pqc_dilithium, crypto_pqc_sphincs, crypto_pqc_kyber,
+# crypto_pqc_ntru, crypto_pqc_frodokem, pqc_witness
+```
+
+### Functional Tests (Bitcoin Core)
+
+The standard Bitcoin Core functional test suite:
+
+```bash
+test/functional/test_runner.py
+```
+
+---
+
+## Stress Test Results — 10-Node PQC Network
+
+**Test date:** April 2026 | **Status: PASSED — 10,000/10,000 transactions**
 
 <details open>
 <summary><strong>Test Configuration</strong></summary>
@@ -61,7 +366,7 @@
 | P95 | 4,892 ms |
 | Max | 5,632 ms |
 
-**Block Relay (miner → 9 peers)**
+**Block Relay (miner to 9 peers)**
 
 | Stat | Value |
 |------|-------|
@@ -87,7 +392,7 @@
 | Max vsize | 8,060 vB |
 | Total tx data | 55.7 MB |
 | 4-element PQC witness | 10,061 (100%) |
-| PQC overhead vs P2WPKH | 34.9× |
+| PQC overhead vs P2WPKH | 34.9x |
 
 </details>
 
@@ -123,7 +428,7 @@
 
 ```
 ========================================================================
-  QuantumBTC 10-Node Stress Test
+  qBTC 10-Node Stress Test
   10 nodes | 30 wallets | 10,000 transactions
 ========================================================================
 [1/8] Starting 10 nodes...
@@ -138,7 +443,7 @@
   Node 8: pid=76606, p2p=29133, rpc=29132
   Node 9: pid=76607, p2p=29233, rpc=29232
   Waiting for nodes to start...
-  All 10 nodes started ✓
+  All 10 nodes started
 
 [2/8] Establishing mesh connectivity...
   Node 0: 18 peers
@@ -148,7 +453,7 @@
   Average peers/node: 18.0
 
 [3/8] Creating 30 wallets (3/node)...
-  Created 30 wallets across 10 nodes ✓
+  Created 30 wallets across 10 nodes
 
 [4/8] Mining initial blocks & funding wallets...
   Mining 350 blocks on node 0...
@@ -177,34 +482,34 @@
 ========================================================================
   MULTI-NODE 10K STRESS TEST REPORT
 ========================================================================
-── Network Topology ─────────────────────────────────────────
+-- Network Topology --
   Nodes: 10
   Wallets: 30 (3/node)
   All nodes: height=531, peers=18, mempool=26
 
-── Transaction Summary ──────────────────────────────────────
+-- Transaction Summary --
   Attempted: 10,000
   Succeeded: 10,000 (100.0%)
   Confirmed on-chain: 10,061
   PQC hybrid txs: 10,061 | Classical: 0
 
-── Timing ──────────────────────────────────────────────────
+-- Timing --
   Total wall time: 880s (14.7m)
   TX phase time: 746s (12.4m)
   Effective TPS: 13.4 tx/s
-  Submit latency — Mean: 58.8ms, Median: 44.8ms, P95: 146.4ms
+  Submit latency -- Mean: 58.8ms, Median: 44.8ms, P95: 146.4ms
 
-── P2P Propagation ─────────────────────────────────────────
+-- P2P Propagation --
   Mean: 2818ms | Median: 3126ms | P95: 4892ms
 
-── Block Relay ─────────────────────────────────────────────
+-- Block Relay --
   Mean: 289ms | Median: 298ms | P95: 368ms
 
-── Witness Analysis ────────────────────────────────────────
+-- Witness Analysis --
   4-element (PQC): 10,061 (100.0%)
   PQC overhead: 34.9x vs classical P2WPKH
 
-── Cross-Node Activity ─────────────────────────────────────
+-- Cross-Node Activity --
   Cross-node txs: 9,320 (93.2%)
   Same-node txs: 680 (6.8%)
 
@@ -218,164 +523,58 @@
 
 ---
 
-## **About this fork**
+## Architecture
 
-QuantumBTC is a fork-in-progress of pqcBitcoin focused on combining post-quantum transaction security with high-throughput BlockDAG consensus while preserving Bitcoin-style economics.
-
-This fork is being adapted with these goals:
-
-- **Quantum-safe signatures** via the existing PQC integration from pqcBitcoin.
-- **SHA-256 Proof of Work** retained for compatibility with established Bitcoin mining hardware assumptions.
-- **BlockDAG / GHOSTDAG-style consensus** to support fast parallel block production, sub-second confirmation targets, and materially higher throughput than linear-chain Bitcoin.
-- **Bitcoin-like monetary policy** including the 21 million supply cap and halving-based issuance model.
-
-Current work in this fork includes introducing DAG-specific data structures, multi-parent block support, DAG-oriented mining hooks, and consensus parameter extensions needed to bring up a usable regtest-first QuantumBTC node.
-
-This repository is the result of a collaborative effort between [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsCode), working together to build a future-proof version of Bitcoin Core that can withstand the potential threats posed by quantum computers. The integration of Post-Quantum Cryptography (PQC) algorithms into Bitcoin Core is a key initiative in ensuring that Bitcoin remains secure in the advent of quantum computing.
-
-Quantum computing represents a breakthrough in computational capabilities, but it also poses a significant risk to current cryptographic techniques, including the elliptic curve cryptography (ECC) widely used in Bitcoin today. These classical encryption methods could potentially be broken by powerful quantum computers, leading to vulnerabilities in blockchain technologies. To mitigate this, the integration of quantum-resistant algorithms into Bitcoin Core is imperative.
-
-## **Overview**
-
-Quantum computers poses a potential threat to current cryptographic methods, including those used in Bitcoin, like elliptic curve cryptography (ECC). This project investigates incorporating post-quantum cryptographic algorithms to secure Bitcoin transactions and wallets in the event of future quantum attacks.
-
-The goal is to make Bitcoin Core quantum-resistant by adopting algorithms that remain secure even in a world with powerful quantum computers.
-
-## **Features**
-
-- **Integration of PQC Algorithms**: Implements quantum-safe cryptographic algorithms alongside existing Bitcoin protocols.
-- **Quantum-Resistant Wallets**: Modify Bitcoin Core's wallet functionality to utilize PQC keys for enhanced security.
-- **Backward Compatibility**: Maintain compatibility with Bitcoin's current cryptographic algorithms for users not yet ready to switch to PQC.
-
-## **Current PQC Algorithms Implemented**
-
-### Group 1: Digital Signature Algorithms
-- **SPHINCS+**: A stateless hash-based signature scheme with minimal security assumptions.
-- **CRYSTALS-Dilithium**: A lattice-based digital signature scheme.
-- **FALCON**: A fast lattice-based digital signature scheme optimized for small signatures.
-- **SQIsign**: An isogeny-based signature scheme.
-
-### Group 2: Key Encapsulation Mechanisms (KEM)
-- **Kyber**: A lattice-based key encapsulation mechanism (KEM) for public-key encryption.
-- **FrodoKEM**: A key encapsulation mechanism based on the hardness of the learning with errors (LWE) problem.
-- **NTRU**: A lattice-based public-key cryptosystem designed to be secure against quantum computers.
-
-These algorithms are integrated into the Bitcoin codebase in a way that ensures both backward and forward compatibility with existing Bitcoin infrastructure. Group 1 algorithms handle digital signatures for transaction signing, while Group 2 algorithms provide secure key exchange mechanisms for encrypted communications between nodes and wallets.
-
-## **Post-Quantum Cryptography Support**
-
-This fork of Bitcoin Core implements post-quantum cryptography (PQC) to provide protection against quantum computer attacks while maintaining backward compatibility with the existing Bitcoin network.
-
-### **Implemented PQC Features**
-
-#### Key Management System
-- HybridKey class for managing both classical and PQC keys
-- Integration with Bitcoin's existing key management system
-- Support for hybrid key generation and signing
-
-#### Supported PQC Algorithms
-##### Digital Signatures (Group 1)
-- **SPHINCS+**: Stateless hash-based signatures
-- **CRYSTALS-Dilithium**: Lattice-based signatures
-- **FALCON**: Fast lattice-based signatures
-- **SQIsign**: Isogeny-based signatures
-
-##### Key Encapsulation (Group 2)
-- **Kyber**: Lattice-based KEM
-- **FrodoKEM**: LWE-based KEM
-- **NTRU**: Lattice-based cryptosystem
-
-#### Configuration Options
-Enable PQC features using command-line arguments:
-```bash
-bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqcsig=sphincs,dilithium -pqchybridsig=1
+```
++-----------------------------------------------------------+
+|                      qBTC Node                            |
++--------------+--------------+-----------------------------+
+|   Wallet     |   Mempool    |   Block Validation          |
+|  +--------+  |              |  +---------------------+    |
+|  |Hybrid  |  |  fee-rate    |  | VerifyScript()      |    |
+|  |Key Mgmt|  |  estimation  |  |  +- CheckSig(ECDSA) |    |
+|  |ECDSA + |  |  (PQC-aware) |  |  +- CheckPQCSig()   |    |
+|  |ML-DSA  |  |              |  |      (ML-DSA-44)    |    |
+|  +--------+  |              |  +---------------------+    |
++--------------+--------------+-----------------------------+
+|              GHOSTDAG Consensus Engine                     |
+|  +----------+  +----------+  +--------------------+       |
+|  | Blue     |  | Merge    |  | Selected Parent    |       |
+|  | Score    |  | Set      |  | Chain              |       |
+|  | Compute  |  | Ordering |  | (virtual backbone) |       |
+|  +----------+  +----------+  +--------------------+       |
++-----------------------------------------------------------+
+|              Network Layer (P2P)                           |
+|  Testnet: Magic d1a5c3b7 | Port 28333 | HRP qbtct         |
+|  Mainnet: Magic e3b5d7a9 | Port 58333 | HRP qbtc          |
++-----------------------------------------------------------+
 ```
 
-Available options:
-- `-pqc=0|1`: Enable/disable all PQC features (default: 1)
-- `-pqchybridkeys=0|1`: Enable/disable hybrid key generation (default: 1)
-- `-pqchybridsig=0|1`: Enable/disable hybrid signatures (default: 1)
-- `-pqcalgo=algo1,algo2,...`: Specify enabled KEM algorithms (default: kyber,frodo,ntru)
-- `-pqcsig=sig1,sig2,...`: Specify enabled signature schemes (default: sphincs,dilithium,falcon,sqisign)
+---
 
-For detailed documentation on PQC features, see [doc/pqc.md](doc/pqc.md).
+## Roadmap
 
-## **Installation**
+See [ROADMAP.md](ROADMAP.md) for the full development history and planned phases, including:
 
-To build and test the PQC-enabled Bitcoin Core:
+- **Phase 8** — Public testnet with seed nodes, DNS seeds, and block explorer
+- **Phase 9** — Mining infrastructure (Stratum v2, pool protocol)
+- **Phase 10** — Protocol hardening (SPHINCS+ wallet signing, ML-KEM for P2P, security audit)
+- **Phase 11** — Mainnet preparation (genesis block, release binaries)
 
-### Build Requirements
+---
 
-* GCC 7+ or Clang 8+
-* CMake 3.13+
-* OpenSSL 1.1+
-* Boost 1.70+
-* Additional PQC-specific requirements:
-  - PQCRYPTO-NIST library (for Kyber and NTRU)
-  - FrodoKEM reference implementation
+## Contributing
 
-### Build Steps
+We welcome contributions to qBTC. Feel free to fork this repository and submit pull requests.
 
-1. Install dependencies:
-```bash
-# Ubuntu/Debian
-sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils python3
-sudo apt-get install libevent-dev libboost-dev libboost-system-dev libboost-filesystem-dev
-sudo apt-get install libsqlite3-dev libminiupnpc-dev libnatpmp-dev libzmq3-dev
-sudo apt-get install libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev qttools5-dev-tools
+For discussions and issues, please open an issue on the [GitHub repository](https://github.com/beartec-jpg/QuantBTC/issues).
 
-# Install PQC dependencies
-git clone https://github.com/PQClean/PQClean.git
-cd PQClean && make
-sudo make install
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
-2. Clone and build:
-```bash
-git clone https://github.com/QBlockQ/pqc-bitcoin.git
-cd pqc-bitcoin
-./autogen.sh
-./configure --with-pqc
-make
-make check  # Run tests
-```
-
-3. Run with PQC features:
-```bash
-./src/bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqchybridsig=1
-```
-
-## Run PQC Bitcoin Core
-
-After building Bitcoin Core, you can run the PQC-enabled Bitcoin Core in regtest mode for testing
-```bash
-./src/bitcoind -regtest
-```
-
-## Testing PQC Bitcoin
-
-The test framework ensures that the PQC algorithms integrate smoothly with Bitcoin Core’s existing features.
-For detailed testing instructions, refer to the Bitcoin Test Suite.
-
-## To run tests:
-```bash
-make check
-```
-
-## Validate PQC Key Generation: 
-
-Test key generation using PQC algorithms
-
-```bash
-./src/bitcoin-cli pqc-keygen
-```
-
-## Contributions
-
-We welcome contributions to make Bitcoin Core quantum-resistant. Feel free to fork this repository and submit pull requests.
-
-For discussions and issues, please open an issue on the GitHub repository.
+---
 
 ## License
 
-This project is licensed under the MIT License. **Made with love by [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsCode))** 💖
+This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+
+qBTC is forked from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin), originally created by [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsCode), which is itself based on [Bitcoin Core](https://github.com/bitcoin/bitcoin).
