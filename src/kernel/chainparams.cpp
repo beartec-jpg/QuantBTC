@@ -619,11 +619,37 @@ public:
         consensus.defaultAssumeValid = uint256{};
 
         // QuantumBTC BlockDAG: enabled
+        // ─────────────────────────────────────────────────────────────────────
+        // GHOSTDAG K=32, 1-second target, up to 64 parent references.
+        //
+        // K=32 is intentionally higher than Kaspa's K=18 to maximise blue-
+        // block inclusivity: with fast (1 s) blocks, many miners solve
+        // concurrently and a larger K ensures their blocks are classified
+        // "blue" rather than orphaned.  This is the core "People's Chain"
+        // design — small/home miners earn rewards alongside pools.
+        //
+        // Trade-offs:
+        //   • Security: GHOSTDAG's honest-majority guarantee weakens as K
+        //     grows; K=32 remains safe under the standard 50 % assumption
+        //     when anticone sizes stay well below K.  Monitor via
+        //     getblock/getblockheader verbosity ≥ 2 and getdagstatus.
+        //   • Bandwidth/storage: more parent references per block means
+        //     slightly larger headers.  nMaxDagParents=64 provides
+        //     headroom beyond K=32 for burst conditions.
+        //   • PQC overhead: every block's transactions carry ~3.7 kB PQC
+        //     witness data per input; the signature cache
+        //     (getpqcsigcachestats RPC) amortises the ~35× verification
+        //     cost.  Monitor dilithium_hit_rate under sustained load.
+        //
+        // GetHash() hashes ONLY the 80-byte base header (not DAG parents).
+        // See doc/ghostdag.md for the design rationale and the restart-
+        // instability bug that motivated this decision (commit 74ab011).
+        // ─────────────────────────────────────────────────────────────────────
         consensus.fDagMode = true;
-        consensus.ghostdag_k = 32;             // allow more concurrent blue blocks — more small miners rewarded
-        consensus.nDagTargetSpacingMs = 1000;  // 1-second blocks — faster block finding for small miners
-        consensus.nMaxDagParents = 64;         // match increased K, better DAG connectivity
-        consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB
+        consensus.ghostdag_k = 32;             // max anticone size for blue classification
+        consensus.nDagTargetSpacingMs = 1000;  // 1-second blocks
+        consensus.nMaxDagParents = 64;         // max parent refs per block (≥ K for burst headroom)
+        consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MW — accommodates PQC witness overhead
 
         // Transaction-load-aware difficulty: same thresholds as mainnet.
         // Testnet uses fPowAllowMinDifficultyBlocks, so the load adjustment is
