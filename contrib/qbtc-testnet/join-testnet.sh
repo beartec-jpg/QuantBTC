@@ -55,7 +55,7 @@ install_deps() {
         sudo apt-get update -qq
         sudo apt-get install -y -qq \
             build-essential libtool autotools-dev automake pkg-config \
-            bsdmainutils python3 libevent-dev libboost-dev \
+            bsdmainutils python3 libssl-dev libevent-dev libboost-dev \
             libboost-system-dev libboost-filesystem-dev \
             libsqlite3-dev libminiupnpc-dev libnatpmp-dev libzmq3-dev \
             git
@@ -126,6 +126,14 @@ build() {
     BINDIR="$REPO_DIR/src"
     log "Building QuantBTC (this may take 10-30 minutes)..."
 
+    # Ensure stub Makefiles exist (required by AC_CONFIG_LINKS in configure.ac)
+    for f in src/qt/Makefile src/qt/test/Makefile src/test/Makefile; do
+        if [[ ! -f "$f" ]]; then
+            mkdir -p "$(dirname "$f")"
+            echo "# Placeholder file required by AC_CONFIG_LINKS during autoreconf." > "$f"
+        fi
+    done
+
     if [[ ! -f "configure" ]]; then
         log "Running autogen.sh..."
         ./autogen.sh
@@ -133,7 +141,7 @@ build() {
 
     if [[ ! -f "Makefile" ]]; then
         log "Running configure..."
-        ./configure --with-incompatible-bdb --with-gui=no
+        ./configure --with-incompatible-bdb --with-gui=no --disable-tests --disable-bench
     fi
 
     log "Compiling with $JOBS parallel jobs..."
