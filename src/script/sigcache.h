@@ -14,6 +14,7 @@
 #include <uint256.h>
 #include <util/hasher.h>
 
+#include <atomic>
 #include <cstddef>
 #include <shared_mutex>
 #include <vector>
@@ -60,6 +61,14 @@ public:
     bool Get(const uint256& entry, const bool erase);
 
     void Set(const uint256& entry);
+
+    // ── Per-algorithm cache hit / miss counters (lock-free) ──────────
+    mutable std::atomic<uint64_t> m_ecdsa_hits{0};
+    mutable std::atomic<uint64_t> m_ecdsa_misses{0};
+    mutable std::atomic<uint64_t> m_schnorr_hits{0};
+    mutable std::atomic<uint64_t> m_schnorr_misses{0};
+    mutable std::atomic<uint64_t> m_dilithium_hits{0};
+    mutable std::atomic<uint64_t> m_dilithium_misses{0};
 };
 
 class CachingTransactionSignatureChecker : public TransactionSignatureChecker

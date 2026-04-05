@@ -84,8 +84,11 @@ bool CachingTransactionSignatureChecker::VerifyECDSASignature(const std::vector<
 {
     uint256 entry;
     m_signature_cache.ComputeEntryECDSA(entry, sighash, vchSig, pubkey);
-    if (m_signature_cache.Get(entry, !store))
+    if (m_signature_cache.Get(entry, !store)) {
+        ++m_signature_cache.m_ecdsa_hits;
         return true;
+    }
+    ++m_signature_cache.m_ecdsa_misses;
     if (!TransactionSignatureChecker::VerifyECDSASignature(vchSig, pubkey, sighash))
         return false;
     if (store)
@@ -97,7 +100,11 @@ bool CachingTransactionSignatureChecker::VerifySchnorrSignature(Span<const unsig
 {
     uint256 entry;
     m_signature_cache.ComputeEntrySchnorr(entry, sighash, sig, pubkey);
-    if (m_signature_cache.Get(entry, !store)) return true;
+    if (m_signature_cache.Get(entry, !store)) {
+        ++m_signature_cache.m_schnorr_hits;
+        return true;
+    }
+    ++m_signature_cache.m_schnorr_misses;
     if (!TransactionSignatureChecker::VerifySchnorrSignature(sig, pubkey, sighash)) return false;
     if (store) m_signature_cache.Set(entry);
     return true;
@@ -112,7 +119,11 @@ bool CachingTransactionSignatureChecker::CheckDilithiumSignature(const std::vect
         Span<const unsigned char>(ecdsa_sig),
         Span<const unsigned char>(scriptCode.data(), scriptCode.size()),
         static_cast<unsigned char>(sigversion));
-    if (m_signature_cache.Get(entry, !store)) return true;
+    if (m_signature_cache.Get(entry, !store)) {
+        ++m_signature_cache.m_dilithium_hits;
+        return true;
+    }
+    ++m_signature_cache.m_dilithium_misses;
 
     if (!TransactionSignatureChecker::CheckDilithiumSignature(pqc_sig, pqc_pubkey, ecdsa_sig, scriptCode, sigversion))
         return false;

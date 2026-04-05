@@ -38,6 +38,7 @@
 #include <rpc/server_util.h>
 #include <rpc/util.h>
 #include <script/descriptor.h>
+#include <script/sigcache.h>
 #include <serialize.h>
 #include <streams.h>
 #include <sync.h>
@@ -3036,6 +3037,63 @@ return RPCHelpMan{
     };
 }
 
+static RPCHelpMan getpqcsigcachestats()
+{
+    return RPCHelpMan{"getpqcsigcachestats",
+        "Returns signature-cache hit/miss counters for each algorithm.\n"
+        "Useful for monitoring PQC (Dilithium) verification cache effectiveness.\n",
+        {},
+        RPCResult{RPCResult::Type::OBJ, "", "",
+        {
+            {RPCResult::Type::NUM, "ecdsa_hits", "ECDSA signature cache hits"},
+            {RPCResult::Type::NUM, "ecdsa_misses", "ECDSA signature cache misses"},
+            {RPCResult::Type::NUM, "ecdsa_hit_rate", "ECDSA hit rate (0.0–1.0)"},
+            {RPCResult::Type::NUM, "schnorr_hits", "Schnorr signature cache hits"},
+            {RPCResult::Type::NUM, "schnorr_misses", "Schnorr signature cache misses"},
+            {RPCResult::Type::NUM, "schnorr_hit_rate", "Schnorr hit rate (0.0–1.0)"},
+            {RPCResult::Type::NUM, "dilithium_hits", "Dilithium (ML-DSA-44) signature cache hits"},
+            {RPCResult::Type::NUM, "dilithium_misses", "Dilithium (ML-DSA-44) signature cache misses"},
+            {RPCResult::Type::NUM, "dilithium_hit_rate", "Dilithium hit rate (0.0–1.0)"},
+        }},
+        RPCExamples{
+            HelpExampleCli("getpqcsigcachestats", "")
+            + HelpExampleRpc("getpqcsigcachestats", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            ChainstateManager& chainman = EnsureAnyChainman(request.context);
+            const SignatureCache& sc = chainman.m_validation_cache.m_signature_cache;
+
+            UniValue obj(UniValue::VOBJ);
+
+            auto hit_rate = [](uint64_t hits, uint64_t misses) -> double {
+                uint64_t total = hits + misses;
+                return total > 0 ? static_cast<double>(hits) / static_cast<double>(total) : 0.0;
+            };
+
+            uint64_t eh = sc.m_ecdsa_hits.load(std::memory_order_relaxed);
+            uint64_t em = sc.m_ecdsa_misses.load(std::memory_order_relaxed);
+            obj.pushKV("ecdsa_hits", eh);
+            obj.pushKV("ecdsa_misses", em);
+            obj.pushKV("ecdsa_hit_rate", hit_rate(eh, em));
+
+            uint64_t sh = sc.m_schnorr_hits.load(std::memory_order_relaxed);
+            uint64_t sm = sc.m_schnorr_misses.load(std::memory_order_relaxed);
+            obj.pushKV("schnorr_hits", sh);
+            obj.pushKV("schnorr_misses", sm);
+            obj.pushKV("schnorr_hit_rate", hit_rate(sh, sm));
+
+            uint64_t dh = sc.m_dilithium_hits.load(std::memory_order_relaxed);
+            uint64_t dm = sc.m_dilithium_misses.load(std::memory_order_relaxed);
+            obj.pushKV("dilithium_hits", dh);
+            obj.pushKV("dilithium_misses", dm);
+            obj.pushKV("dilithium_hit_rate", hit_rate(dh, dm));
+
+            return obj;
+        },
+    };
+}
+
 
 void RegisterBlockchainRPCCommands(CRPCTable& t)
 {
@@ -3063,6 +3121,7 @@ void RegisterBlockchainRPCCommands(CRPCTable& t)
         {"blockchain", &dumptxoutset},
         {"blockchain", &loadtxoutset},
         {"blockchain", &getchainstates},
+        {"blockchain", &getpqcsigcachestats},
         {"hidden", &invalidateblock},
         {"hidden", &reconsiderblock},
         {"hidden", &waitfornewblock},

@@ -196,7 +196,12 @@ public:
     // -------------------------------------------------------------------------
 
     //! Additional parent block indices (beyond pprev = selected parent).
-    //! Memory only – not serialized to disk (reconstructed from block data).
+    //! Persisted on disk as hashDagParents in CDiskBlockIndex, restored by
+    //! LoadBlockIndexGuts.  These are AUXILIARY data used solely by the
+    //! GHOSTDAG ordering algorithm — they are NOT part of the block identity
+    //! hash (GetHash() hashes only the 80-byte base header).  Do not include
+    //! parent hashes in the PoW hash or block-identity hash; doing so caused
+    //! hash-identity drift across restarts (see commit 74ab011).
     std::vector<CBlockIndex*> vDagParents{};
 
     //! GHOSTDAG data for this block (blue score, selected parent, mergeset).
@@ -395,6 +400,13 @@ public:
     uint256 hashPrev;
 
     //! QuantumBTC BlockDAG: persisted extra parent hashes.
+    //!
+    //! IMPORTANT: these are AUXILIARY data for GHOSTDAG ordering only.
+    //! They are NOT part of the block-identity hash (GetHash() covers the
+    //! 80-byte base header exclusively).  CDiskBlockIndex serializes them
+    //! so that vDagParents can be reconstructed on restart without re-
+    //! downloading full blocks.  Never fold these into ConstructBlockHash()
+    //! — that was the root cause of the hash-identity drift bug (74ab011).
     std::vector<uint256> hashDagParents;
 
     CDiskBlockIndex()
