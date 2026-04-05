@@ -2,6 +2,7 @@
 #define BITCOIN_CRYPTO_PQC_DILITHIUM_H
 
 #include <stdint.h>
+#include <cstddef>
 #include <vector>
 
 namespace pqc {
