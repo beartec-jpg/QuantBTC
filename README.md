@@ -176,6 +176,25 @@ make -j$(nproc)
 
 ### Quick Start (Testnet)
 
+**One-command join** (installs deps, builds, configures, starts syncing):
+
+```bash
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+./contrib/qbtc-testnet/join-testnet.sh
+```
+
+Or with **Docker**:
+
+```bash
+docker build -t qbtc-testnet -f contrib/qbtc-testnet/Dockerfile .
+docker run -d --name qbtc -p 28333:28333 -p 28332:28332 -v qbtc-data:/home/qbtc/.bitcoin qbtc-testnet
+```
+
+See [doc/join-testnet.md](doc/join-testnet.md) for full details.
+
+### Manual Start (Testnet)
+
 ```bash
 # Start the qBTC testnet daemon
 ./src/bitcoind -qbtctestnet -daemon -fallbackfee=0.0001 -txindex=1
@@ -618,6 +637,25 @@ Three automated stability test scripts validate crash recovery, restart integrit
 | `test_kill9_recovery.sh` | 10 | **10/10 PASS** | SIGKILL crash recovery with `-reindex`, double-crash, post-crash mining |
 | `test_restart_10k.sh` | 9 | **9/9 PASS** | Mine 10k blocks, graceful stop, restart, verify chain/tip/hash identity |
 | `test_ibd_genesis.sh` | 14 | **14/14 PASS** | Two-node IBD sync (2000 blocks), chain identity, spot-check 5 random blocks |
+
+### Home Mining
+
+At current testnet difficulty, any hardware can mine via `generatetoaddress` RPC. No GPU or ASIC miners are supported yet (solo CPU only).
+
+```bash
+# Throttled mining — one block every 10 seconds (~30 QBTC/hour)
+CLI="./src/bitcoin-cli -qbtctestnet"
+ADDR=$($CLI -rpcwallet=miner getnewaddress)
+while true; do $CLI generatetoaddress 1 "$ADDR" 999999999; sleep 10; done
+```
+
+| Block reward | 0.08333333 QBTC |
+|---|---|
+| Blocks/hour (sleep 1) | ~3,600 (~300 QBTC/hr) |
+| Blocks/hour (sleep 10) | ~360 (~30 QBTC/hr) |
+| Halving interval | 126M blocks (~4 years) |
+
+See [doc/join-testnet.md](doc/join-testnet.md#home-mining-guide) for detailed mining performance tables.
 
 ---
 

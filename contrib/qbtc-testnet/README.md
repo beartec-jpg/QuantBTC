@@ -19,6 +19,32 @@
 
 ## Quick Start
 
+### One-Command Join
+
+The fastest way to join the testnet:
+
+```bash
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+./contrib/qbtc-testnet/join-testnet.sh
+```
+
+This installs dependencies, builds from source, configures seed nodes,
+starts the daemon, and creates a wallet with a mining address.
+
+### Docker
+
+```bash
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+docker build -t qbtc-testnet -f contrib/qbtc-testnet/Dockerfile .
+docker run -d --name qbtc -p 28333:28333 -p 28332:28332 -v qbtc-data:/home/qbtc/.bitcoin qbtc-testnet
+```
+
+See [doc/join-testnet.md](../../doc/join-testnet.md) for full Docker Compose setup.
+
+### Manual Build
+
 ### 1. Build
 
 ```bash

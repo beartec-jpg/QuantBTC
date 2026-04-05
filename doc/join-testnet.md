@@ -15,6 +15,10 @@ Anyone can join, sync, mine, and send transactions.
 | GHOSTDAG K | 32 |
 | PQC algorithm | ML-DSA-44 (Dilithium) hybrid |
 | Ticker | QBTC |
+| Chain height | 96,600+ blocks (and growing) |
+| Chain size | ~1.3 GB |
+| Explorer | [beartec.uk/qbtc-scan](https://beartec.uk/qbtc-scan) |
+| Faucet | [beartec.uk/qbtc-faucet](https://beartec.uk/qbtc-faucet) |
 
 ## Seed Nodes
 
@@ -24,19 +28,100 @@ Anyone can join, sync, mine, and send transactions.
 | S2 | 37.27.47.236 | 28333 |
 | S3 | 89.167.109.241 | 28333 |
 
-## Quick Start
+---
+
+## Option A: One-Command Join (Recommended)
+
+The fastest way to get a node running — installs dependencies, builds from
+source, configures seed nodes, starts the daemon, and creates a wallet:
+
+```bash
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+./contrib/qbtc-testnet/join-testnet.sh
+```
+
+The script is idempotent — if binaries are already built or the node is
+already running, it skips those steps.
+
+**Environment overrides:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `QBTC_DATADIR` | `~/.bitcoin` | Custom data directory |
+| `QBTC_WALLET` | `miner` | Wallet name |
+| `QBTC_JOBS` | `$(nproc)` | Parallel compile jobs |
+| `QBTC_SKIP_DEPS` | `0` | Set to `1` to skip `apt-get install` |
+
+---
+
+## Option B: Docker
+
+Build and run a testnet node in Docker:
+
+```bash
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+
+# Build the image (~15 min first time)
+docker build -t qbtc-testnet -f contrib/qbtc-testnet/Dockerfile .
+
+# Run with persistent data
+docker run -d --name qbtc \
+  -p 28333:28333 -p 28332:28332 \
+  -v qbtc-data:/home/qbtc/.bitcoin \
+  qbtc-testnet
+
+# Check sync progress
+docker exec qbtc bitcoin-cli -qbtctestnet getblockchaininfo
+
+# Create wallet and start mining
+docker exec qbtc bitcoin-cli -qbtctestnet createwallet miner
+docker exec qbtc bash -c 'bitcoin-cli -qbtctestnet -rpcwallet=miner generatetoaddress 1 $(bitcoin-cli -qbtctestnet -rpcwallet=miner getnewaddress)'
+
+# View logs
+docker logs -f qbtc
+```
+
+**Docker Compose** (save as `docker-compose.yml`):
+
+```yaml
+services:
+  qbtc:
+    build:
+      context: .
+      dockerfile: contrib/qbtc-testnet/Dockerfile
+    ports:
+      - "28333:28333"
+      - "28332:28332"
+    volumes:
+      - qbtc-data:/home/qbtc/.bitcoin
+    restart: unless-stopped
+
+volumes:
+  qbtc-data:
+```
+
+```bash
+docker compose up -d
+```
+
+---
+
+## Option C: Manual Build
 
 ### 1. Build from Source
 
 ```bash
-git clone https://github.com/QBlockQ/pqc-bitcoin.git
-cd pqc-bitcoin
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+
+sudo apt-get install -y build-essential libtool autotools-dev automake pkg-config \
+    bsdmainutils python3 libevent-dev libboost-dev libboost-system-dev \
+    libboost-filesystem-dev libsqlite3-dev libminiupnpc-dev libnatpmp-dev libzmq3-dev
 
 ./autogen.sh
-./configure --disable-wallet --without-gui
-# Or with wallet support (requires BDB 4.8):
-# ./configure --with-incompatible-bdb
-
+./configure --with-incompatible-bdb --with-gui=no
 make -j$(nproc)
 ```
 
@@ -45,8 +130,8 @@ make -j$(nproc)
 Create `~/.bitcoin/bitcoin.conf`:
 
 ```ini
-# Network selection
-qbtctestnet=1
+[qbtctestnet]
+chain=qbtctestnet
 
 # RPC
 server=1
@@ -54,22 +139,14 @@ rpcuser=<choose_a_username>
 rpcpassword=<choose_a_strong_password>
 rpcallowip=127.0.0.1
 
-# PQC
-pqc=1
-pqcmode=hybrid
-
-# DAG
-dag=1
+# Transaction settings
+fallbackfee=0.0001
 txindex=1
 
 # Seed nodes
-addnode=46.62.156.169:28333
-addnode=37.27.47.236:28333
-addnode=89.167.109.241:28333
-
-[qbtctestnet]
-port=28333
-rpcport=28332
+seednode=46.62.156.169:28333
+seednode=37.27.47.236:28333
+seednode=89.167.109.241:28333
 ```
 
 ### 3. Start the Node
@@ -166,6 +243,113 @@ $CLI getblockheader "$HASH"
 
 ## Links
 
-- Repository: https://github.com/QBlockQ/pqc-bitcoin
+- Repository: https://github.com/beartec-jpg/QuantBTC
+- Block Explorer: https://beartec.uk/qbtc-scan
+- Testnet Faucet: https://beartec.uk/qbtc-faucet
 - GHOSTDAG design: [doc/ghostdag.md](ghostdag.md)
-- PQC documentation: [doc/pqc.md](pqc.md)
+
+---
+
+## Home Mining Guide
+
+The qBTC testnet uses SHA-256 Proof of Work with very low difficulty,
+making it easy to mine on consumer hardware. Every mined block earns
+the block reward in QBTC and contributes to DAG tip diversity.
+
+### Mining with the Helper Script
+
+The simplest way to mine:
+
+```bash
+# Mine 10 blocks
+./contrib/qbtc-testnet/qbtc-testnet.sh mine 10
+
+# Or use the join script's output — it prints a mining command
+```
+
+### Continuous CPU Mining
+
+```bash
+CLI="./src/bitcoin-cli -qbtctestnet"
+ADDR=$($CLI -rpcwallet=miner getnewaddress)
+
+# Mine one block per second with a 1-second pause
+while true; do
+    $CLI generatetoaddress 1 "$ADDR" 999999999 2>/dev/null
+    sleep 1
+done
+```
+
+**Why `sleep 1`?** Without a pause, mining consumes 100% CPU and floods
+the network with blocks faster than they can propagate. A 1-second pause
+matches the block target and keeps CPU usage manageable (~10-30%).
+
+### Mining Performance by Hardware
+
+All numbers are for solo `generatetoaddress` mining at testnet difficulty:
+
+| Hardware | Hash Rate (approx) | Blocks/hour | CPU Usage | Notes |
+|---|---|---|---|---|
+| 1-core VPS (2 GHz) | 1-5 MH/s | ~3,600 | ~100% without sleep | Use `sleep 1` |
+| 4-core desktop (3 GHz) | 5-20 MH/s | ~3,600 | ~25% with sleep | Comfortable 24/7 |
+| Raspberry Pi 4 | 0.5-1 MH/s | ~3,600 | ~100% without sleep | Works fine with sleep |
+| GPU (any) | N/A | ~3,600 | — | No GPU miner yet; `generatetoaddress` is CPU-only |
+| ASIC (any SHA-256) | N/A | ~3,600 | — | No Stratum support yet |
+
+> At current testnet difficulty, any hardware can mine ~1 block/second.
+> The block rate is limited by `sleep`, not by hash power. When difficulty
+> rises (more miners join), faster hardware will win blocks more often.
+
+### Mining Throttling (Recommended)
+
+To keep your node as a good network citizen:
+
+```bash
+# Throttled mining — 1 block, then sleep 10 seconds
+while true; do
+    $CLI generatetoaddress 1 "$ADDR" 999999999 2>/dev/null
+    sleep 10
+done
+```
+
+This mines ~360 blocks/hour and uses minimal CPU. The other seed nodes
+use this pattern.
+
+### What You Earn
+
+| Parameter | Value |
+|---|---|
+| Block reward | 0.08333333 QBTC (8,333,333 satoshis) |
+| Blocks per hour (sleep 1) | ~3,600 |
+| QBTC per hour (sleep 1) | ~300 QBTC |
+| Blocks per hour (sleep 10) | ~360 |
+| QBTC per hour (sleep 10) | ~30 QBTC |
+| Halving interval | 126,000,000 blocks (~4 years) |
+
+### Mining + Transaction Traffic
+
+To also generate transactions while mining (useful for testing):
+
+```bash
+# Background miner
+nohup bash -c 'while true; do
+    ./src/bitcoin-cli -qbtctestnet -rpcwallet=miner \
+        generatetoaddress 1 $(./src/bitcoin-cli -qbtctestnet -rpcwallet=miner getnewaddress) \
+        999999999 2>/dev/null
+    sleep 10
+done' &>/tmp/miner.log &
+
+# Transaction generator — send 0.01 QBTC every 2 seconds
+nohup bash -c 'while true; do
+    ./src/bitcoin-cli -qbtctestnet -rpcwallet=miner \
+        sendtoaddress $(./src/bitcoin-cli -qbtctestnet -rpcwallet=miner getnewaddress) \
+        0.01 2>/dev/null
+    sleep 2
+done' &>/tmp/txgen.log &
+```
+
+### Future: Pool Mining & GPU/ASIC Support
+
+Pool mining (Stratum v2) and GPU/ASIC compatibility are planned for
+Phase 9. Currently only solo CPU mining via `generatetoaddress` RPC is
+supported. See [ROADMAP.md](../ROADMAP.md) for details.
