@@ -176,7 +176,7 @@ make -j$(nproc)
 
 ### Quick Start (Testnet)
 
-**One-command join** (installs deps, builds, configures, starts syncing):
+**One-command join** (Linux, macOS, Chromebook, WSL):
 
 ```bash
 git clone https://github.com/beartec-jpg/QuantBTC.git
@@ -184,7 +184,10 @@ cd QuantBTC
 ./contrib/qbtc-testnet/join-testnet.sh
 ```
 
-Or with **Docker**:
+**Windows?** Install WSL first (`wsl --install` in PowerShell as Admin, restart),
+then open the Ubuntu app and run the same commands above.
+
+Or with **Docker** (any OS):
 
 ```bash
 docker build -t qbtc-testnet -f contrib/qbtc-testnet/Dockerfile .

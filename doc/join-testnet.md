@@ -108,6 +108,67 @@ docker compose up -d
 
 ---
 
+## Windows (via WSL)
+
+Windows users can run QuantumBTC through Windows Subsystem for Linux (WSL).
+This gives you a full Ubuntu environment inside Windows — the join script
+works exactly the same as on native Linux.
+
+### 1. Install WSL (one-time)
+
+Open **PowerShell as Administrator** and run:
+
+```powershell
+wsl --install
+```
+
+Restart your computer when prompted. On first launch, create a Unix
+username and password.
+
+### 2. Join the Testnet
+
+Open the **Ubuntu** app from the Start Menu (or type `wsl` in PowerShell),
+then run:
+
+```bash
+sudo apt-get update && sudo apt-get install -y git
+git clone https://github.com/beartec-jpg/QuantBTC.git
+cd QuantBTC
+./contrib/qbtc-testnet/join-testnet.sh
+```
+
+That's it — same 4 commands as Linux.
+
+### WSL Tips
+
+- **Low RAM?** WSL defaults to half your system RAM. If build OOMs, use
+  `QBTC_JOBS=1 ./contrib/qbtc-testnet/join-testnet.sh`
+- **Disk location:** Your WSL files are at `\\wsl$\Ubuntu\home\<user>\` in
+  Windows Explorer
+- **Port forwarding:** WSL2 automatically forwards ports — your node's P2P
+  port (28333) is reachable from the network without extra config
+- **Persist across reboots:** The node stops when you close WSL. To restart:
+  ```bash
+  cd ~/QuantBTC
+  ./src/bitcoind -qbtctestnet -daemon -datadir=$HOME/.bitcoin
+  ```
+
+### Alternative: Docker Desktop for Windows
+
+If you prefer Docker:
+
+1. Install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/)
+   (enable WSL2 backend during install)
+2. Open PowerShell:
+   ```powershell
+   git clone https://github.com/beartec-jpg/QuantBTC.git
+   cd QuantBTC
+   docker build -t qbtc -f contrib/qbtc-testnet/Dockerfile .
+   docker run -d --name qbtc -p 28333:28333 -p 28332:28332 qbtc
+   ```
+
+---
+
 ## Option C: Manual Build
 
 ### 1. Build from Source
