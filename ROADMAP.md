@@ -166,22 +166,36 @@ Brought up a standalone QuantumBTC testnet network:
 
 **Status: ✅ Complete**
 
-Brought up a live multi-node testnet with public services:
+Brought up a live 3-node testnet with public services:
 
-- [x] Deploy 2 seed nodes with static IPs (46.62.156.169, 37.27.47.236)
-- [x] Continuous solo mining (~1 block/second)
-- [x] Web faucet for distributing testnet QBTC (beartec.uk/qbtc-faucet)
-- [x] Web block explorer / search (beartec.uk/qbtc-scan)
-- [x] Stress tested with 10 parallel transaction streams (~2.8 tx/sec)
+- [x] Deploy 3 seed nodes with static IPs (46.62.156.169, 37.27.47.236, 89.167.109.241)
+- [x] Continuous solo mining (~1 block/second) on all 3 nodes
+- [x] Web faucet for distributing testnet QBTC (beartec.uk/qbtc-faucet — 0.5 QBTC per claim, 1-hour rate limit)
+- [x] Web block explorer / search (beartec.uk/qbtc-scan — live dashboard with blocks, txs, DAG tips, PQC status)
+- [x] Stress tested with 10 parallel transaction streams (~7.2 tx/s sustained)
+- [x] UTXO consolidation across all 3 nodes (25k+ UTXOs → ~10 each)
+- [x] Stability tests passing: `test_kill9_recovery.sh` (10/10), `test_restart_10k.sh` (9/9), `test_ibd_genesis.sh` (14/14)
 - [ ] Add DNS seeds to `CQbtcTestNetParams::vSeeds`
 - [ ] Docker images for easy node deployment
 - [ ] Operator documentation (systemd service files, monitoring)
+
+**Live Network Stats (April 5, 2026):**
+
+| Metric | Value |
+|--------|-------|
+| Chain height | ~96,600+ blocks |
+| Total transactions | ~134,900+ |
+| Chain size on disk | ~1.34 GB |
+| Active peers per node | 3–4 |
+| Total mined supply | ~8,050 QBTC |
+| Transaction rate | ~7.2 tx/s |
+| Node uptime | Continuous since deployment |
 
 ### Phase 8.5: Memory & Consensus Hardening
 
 **Status: ✅ Complete**
 
-Proactive fixes identified via chain audit at ~30,000 blocks to prevent resource exhaustion and consensus divergence at scale:
+Proactive fixes identified via chain audit at ~30,000 blocks and validated through continued operation to ~96,600+ blocks:
 
 - [x] **IsBlockAncestor BFS** — replaced `MAX_BFS_VISITS=100000` silent wrong-answer with height-bounded BFS. The old code could return `false` for a genuine ancestor, producing non-deterministic mergesets across nodes. New code guarantees correct answers proportional to DAG width × height difference.
 - [x] **EarlyProtection nChainWork** — removed per-node ephemeral data (peer activation times, ramp counts, IP windows) from `nChainWork` scaling. Different nodes seeing different peer events would compute different chain weights, causing inconsistent chain selection.

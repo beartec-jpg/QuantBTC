@@ -214,7 +214,9 @@ server=1
 listen=1
 fallbackfee=0.0001
 txindex=1
-# seednode=<ip>:28333
+seednode=46.62.156.169:28333
+seednode=37.27.47.236:28333
+seednode=89.167.109.241:28333
 ```
 
 A configuration template is available at `contrib/qbtc-testnet/qbtc-testnet.conf`.
@@ -563,6 +565,62 @@ test/functional/test_runner.py
 
 ---
 
+## Live Testnet Status
+
+> **Snapshot date:** April 5, 2026 — network has been running continuously since initial deployment.
+
+The qBTC testnet is a live, publicly accessible 3-node network producing ~1 block/second with real PQC hybrid transactions.
+
+### Network Overview
+
+| Metric | Value |
+|--------|-------|
+| Chain height | ~96,600+ blocks |
+| Total transactions | ~134,900+ |
+| Chain size on disk | ~1.34 GB |
+| Consensus | GHOSTDAG K=32, DAG mode |
+| PQC status | Active (all transactions carry hybrid ECDSA + ML-DSA-44 witnesses) |
+| Block target | 1 second |
+| Active miners | 3 (solo, `generatetoaddress`) |
+| Transaction traffic | ~7.2 tx/s (automated generators) |
+
+### Seed Nodes
+
+| Node | IP | P2P Port | Role |
+|------|-----|----------|------|
+| Seed 1 | 46.62.156.169 | 28333 | Seed + miner |
+| Seed 2 | 37.27.47.236 | 28333 | Seed + miner |
+| Seed 3 | 89.167.109.241 | 28333 | Verify + miner |
+
+To join the testnet, add to your `bitcoin.conf`:
+
+```ini
+[qbtctestnet]
+chain=qbtctestnet
+seednode=46.62.156.169:28333
+seednode=37.27.47.236:28333
+seednode=89.167.109.241:28333
+```
+
+### Public Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Block Explorer | [beartec.uk/qbtc-scan](https://beartec.uk/qbtc-scan) | Search blocks, transactions, addresses; view DAG tips and PQC status |
+| Testnet Faucet | [beartec.uk/qbtc-faucet](https://beartec.uk/qbtc-faucet) | Claim 0.5 QBTC per hour for testing |
+
+### Stability Tests (Regtest)
+
+Three automated stability test scripts validate crash recovery, restart integrity, and initial block download:
+
+| Script | Tests | Result | Description |
+|--------|-------|--------|-------------|
+| `test_kill9_recovery.sh` | 10 | **10/10 PASS** | SIGKILL crash recovery with `-reindex`, double-crash, post-crash mining |
+| `test_restart_10k.sh` | 9 | **9/9 PASS** | Mine 10k blocks, graceful stop, restart, verify chain/tip/hash identity |
+| `test_ibd_genesis.sh` | 14 | **14/14 PASS** | Two-node IBD sync (2000 blocks), chain identity, spot-check 5 random blocks |
+
+---
+
 ## Architecture
 
 ```
@@ -596,7 +654,8 @@ test/functional/test_runner.py
 
 See [ROADMAP.md](ROADMAP.md) for the full development history and planned phases, including:
 
-- **Phase 8** — Public testnet with seed nodes, DNS seeds, and block explorer
+- **Phase 8** — Public testnet with 3 seed nodes, block explorer, and faucet (✅ deployed)
+- **Phase 8.5** — Memory & consensus hardening at ~30k blocks (✅ complete)
 - **Phase 9** — Mining infrastructure (Stratum v2, pool protocol)
 - **Phase 10** — Protocol hardening (SPHINCS+ wallet signing, ML-KEM for P2P, security audit)
 - **Phase 11** — Mainnet preparation (genesis block, release binaries)

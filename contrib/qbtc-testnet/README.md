@@ -96,22 +96,45 @@ fallbackfee=0.0001
 # seednode=seed1.quantumbtc.org:28333
 ```
 
-## Connecting Peers
+## Connecting to the Live Testnet
 
-Since no DNS seeds are configured yet, use one of these methods:
+Three public seed nodes are running continuously:
+
+| Node | IP | P2P Port |
+|------|-----|----------|
+| Seed 1 | 46.62.156.169 | 28333 |
+| Seed 2 | 37.27.47.236 | 28333 |
+| Seed 3 | 89.167.109.241 | 28333 |
+
+Add to your `bitcoin.conf`:
+
+```ini
+[qbtctestnet]
+seednode=46.62.156.169:28333
+seednode=37.27.47.236:28333
+seednode=89.167.109.241:28333
+```
+
+Or via command line:
 
 ```bash
-# Via command line:
-./src/bitcoind -qbtctestnet -seednode=<ip>:28333 -addnode=<ip>:28333
-
-# Via config:
-[qbtctestnet]
-seednode=<ip>:28333
-addnode=<ip>:28333
-
-# Via RPC (while running):
-./src/bitcoin-cli -qbtctestnet addnode "<ip>:28333" "add"
+./src/bitcoind -qbtctestnet -seednode=46.62.156.169:28333 -seednode=37.27.47.236:28333 -seednode=89.167.109.241:28333
 ```
+
+Or via RPC (while running):
+
+```bash
+./src/bitcoin-cli -qbtctestnet addnode "46.62.156.169:28333" "add"
+./src/bitcoin-cli -qbtctestnet addnode "37.27.47.236:28333" "add"
+./src/bitcoin-cli -qbtctestnet addnode "89.167.109.241:28333" "add"
+```
+
+## Public Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Block Explorer | [beartec.uk/qbtc-scan](https://beartec.uk/qbtc-scan) | Search blocks, txs, addresses; view DAG tips and PQC status |
+| Testnet Faucet | [beartec.uk/qbtc-faucet](https://beartec.uk/qbtc-faucet) | Claim 0.5 QBTC per hour for testing |
 
 ## Data Directory
 

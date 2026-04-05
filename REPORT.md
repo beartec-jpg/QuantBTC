@@ -165,15 +165,16 @@ Key files with PQC/DAG integration points:
 
 ### 6.1 Network Health (as of April 5, 2026)
 
-| Server | IP | Height | Peers | Balance (QBTC) | UTXOs |
-|--------|-----|--------|-------|-----------------|-------|
-| S1 (seed) | 46.62.156.169 | 95,752 | 3 | 1,626.58 | 12 |
-| S2 (seed) | 37.27.47.236 | 95,762 | 4 | 1,964.57 | ~10 |
-| S3 (verify) | 89.167.109.241 | 95,763 | 3 | 1,920.39 | ~10 |
+| Server | IP | Height | Peers | Balance (QBTC) |
+|--------|-----|--------|-------|-----------------|
+| S1 (seed) | 46.62.156.169 | 96,637 | 3 | 1,563.98 |
+| S2 (seed) | 37.27.47.236 | 96,654 | 4 | 1,937.28 |
+| S3 (verify) | 89.167.109.241 | 96,654 | 3 | 1,903.29 |
 
-- **Total supply mined:** ~7,937 QBTC
-- **Total transactions:** ~127,194
-- **Chain size:** ~1,311 MB
+- **Total supply mined:** ~8,050 QBTC
+- **Total transactions:** ~134,900
+- **Chain size on disk:** ~1,341 MB
+- **Transaction rate:** ~7.2 tx/s
 - **Mining:** 3 miners with `sleep 10` between rounds
 - **TX traffic:** Recurring generators (S1: 0.01/0.5s, S2: 0.025/1s, S3: 0.05/2s)
 
