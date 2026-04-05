@@ -134,7 +134,7 @@ build() {
         fi
     done
 
-    if [[ ! -f "configure" ]]; then
+    if [[ ! -f "Makefile.in" ]]; then
         log "Running autogen.sh..."
         ./autogen.sh
     fi
