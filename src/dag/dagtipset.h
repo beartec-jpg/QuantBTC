@@ -24,8 +24,9 @@
 
 namespace dag {
 
-/** Maximum number of parent hashes a block header may contain. */
-static constexpr uint32_t MAX_BLOCK_PARENTS = 32;
+/** Maximum number of parent hashes a block header may contain.
+ *  Must be >= the largest nMaxDagParents across all chain params (currently 64). */
+static constexpr uint32_t MAX_BLOCK_PARENTS = 64;
 
 /** Entries in m_known_scores older than this many blue_score units behind the
  *  best tip are pruned.  Reorgs deeper than this are practically impossible. */
