@@ -96,8 +96,8 @@ pqc=1
 pqcmode=hybrid
 dag=1
 txindex=1
-debug=dag
 debug=net
+debug=validation
 [regtest]
 listen=1
 port=$P2P_PORT_SRC
@@ -105,7 +105,7 @@ rpcport=18568
 fallbackfee=0.0001
 CONF
 
-$BITCOIND -datadir="$DATADIR_SRC" -regtest -daemon 2>&1
+$BITCOIND -datadir="$DATADIR_SRC" -regtest -bind=127.0.0.1:$P2P_PORT_SRC -daemon 2>&1
 if ! wait_for_rpc "$CLI_SRC"; then
     echo "FATAL: source node did not start"; exit 1
 fi
@@ -152,17 +152,17 @@ pqc=1
 pqcmode=hybrid
 dag=1
 txindex=1
-debug=dag
 debug=net
-addnode=127.0.0.1:$P2P_PORT_SRC
+debug=validation
 [regtest]
 listen=1
 port=$P2P_PORT_SYNC
 rpcport=18569
 fallbackfee=0.0001
+addnode=127.0.0.1:$P2P_PORT_SRC
 CONF
 
-$BITCOIND -datadir="$DATADIR_SYNC" -regtest -daemon 2>&1
+$BITCOIND -datadir="$DATADIR_SYNC" -regtest -bind=127.0.0.1:$P2P_PORT_SYNC -daemon 2>&1
 if ! wait_for_rpc "$CLI_SYNC"; then
     echo "FATAL: sync node did not start"; exit 1
 fi
@@ -232,7 +232,7 @@ echo ""
 # PHASE 6: debug.log error scan on both nodes
 # ----------------------------------------------------------
 echo "▸ Phase 6: debug.log error scan"
-SRC_ERRS=$(grep -ci "EXCEPTION\|assert.*fail\|segfault\|abort\|fatal" "$DATADIR_SRC/regtest/debug.log" 2>/dev/null || echo 0)
-SYNC_ERRS=$(grep -ci "EXCEPTION\|assert.*fail\|segfault\|abort\|fatal" "$DATADIR_SYNC/regtest/debug.log" 2>/dev/null || echo 0)
+SRC_ERRS=$(grep -i "EXCEPTION\|assert.*fail\|segfault\|abort\|fatal" "$DATADIR_SRC/regtest/debug.log" 2>/dev/null | wc -l)
+SYNC_ERRS=$(grep -i "EXCEPTION\|assert.*fail\|segfault\|abort\|fatal" "$DATADIR_SYNC/regtest/debug.log" 2>/dev/null | wc -l)
 [[ "$SRC_ERRS" -eq 0 ]] && pass "Source node: no errors" || fail "Source errors" "$SRC_ERRS found"
 [[ "$SYNC_ERRS" -eq 0 ]] && pass "Sync node: no errors" || fail "Sync errors" "$SYNC_ERRS found"
