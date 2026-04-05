@@ -4,8 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include <oqs/oqs.h>
-
 // ML-KEM-768 parameters (NIST FIPS 203, formerly CRYSTALS-Kyber)
 #define KYBER_N 256
 #endif
@@ -14,18 +12,18 @@
 #endif
 #ifndef KYBER_Q
 #define KYBER_Q 3329
-#define KYBER_PUBLIC_KEY_BYTES   OQS_KEM_ml_kem_768_length_public_key     // 1184
-#define KYBER_SECRET_KEY_BYTES   OQS_KEM_ml_kem_768_length_secret_key     // 2400
-#define KYBER_CIPHERTEXT_BYTES   OQS_KEM_ml_kem_768_length_ciphertext     // 1088
-#define KYBER_SHARED_SECRET_BYTES OQS_KEM_ml_kem_768_length_shared_secret // 32
+#define KYBER_PUBLIC_KEY_BYTES   1184  // ML-KEM-768 public key
+#define KYBER_SECRET_KEY_BYTES   2400  // ML-KEM-768 secret key
+#define KYBER_CIPHERTEXT_BYTES   1088  // ML-KEM-768 ciphertext
+#define KYBER_SHARED_SECRET_BYTES 32   // ML-KEM-768 shared secret
 
 namespace pqc {
 
 /**
- * ML-KEM-768 Key Encapsulation Mechanism.
+ * ML-KEM-768 Key Encapsulation Mechanism — STUB.
  *
- * Wraps liboqs OQS_KEM implementation of NIST FIPS 203 (ML-KEM-768).
- * Security level: NIST Level 3 (roughly equivalent to AES-192).
+ * All operations return false until a vendored implementation is added.
+ * The liboqs dependency has been removed.
  */
 class Kyber {
 public:

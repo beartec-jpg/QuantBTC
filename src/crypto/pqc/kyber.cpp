@@ -16,70 +16,30 @@
 #include <logging.h>
 #include <string.h>
 
-#include <oqs/oqs.h>
-
 /**
- * ML-KEM-768 — real NIST FIPS 203 implementation via liboqs.
+ * ML-KEM-768 — STUB implementation.
  *
- * This is the NIST-standardized Module-Lattice Key Encapsulation Mechanism
- * at security level 3. All keygen, encaps, and decaps operations are
- * performed by the liboqs library.
+ * All operations return false. A real implementation will be wired in
+ * when ML-KEM P2P key exchange is enabled (Phase 10).
+ * The previous liboqs dependency has been removed to allow builds
+ * without installing liboqs.
  */
 
 namespace pqc {
 
-bool Kyber::KeyGen(unsigned char *pk, unsigned char *sk) {
-    OQS_KEM* kem = OQS_KEM_new(OQS_KEM_alg_ml_kem_768);
-    if (!kem) {
-        LogPrintf("Kyber::KeyGen: OQS_KEM_new(ML-KEM-768) failed\n");
-        return false;
-    }
-
-    OQS_STATUS rc = OQS_KEM_keypair(kem, pk, sk);
-    OQS_KEM_free(kem);
-
-    if (rc != OQS_SUCCESS) {
-        LogPrintf("Kyber::KeyGen: OQS_KEM_keypair failed\n");
-        return false;
-    }
-
-    return true;
+bool Kyber::KeyGen(unsigned char* /*pk*/, unsigned char* /*sk*/) {
+    LogPrintf("Kyber::KeyGen: STUB — not implemented, returning false\n");
+    return false;
 }
 
-bool Kyber::Encaps(unsigned char *ct, unsigned char *ss, const unsigned char *pk) {
-    OQS_KEM* kem = OQS_KEM_new(OQS_KEM_alg_ml_kem_768);
-    if (!kem) {
-        LogPrintf("Kyber::Encaps: OQS_KEM_new(ML-KEM-768) failed\n");
-        return false;
-    }
-
-    OQS_STATUS rc = OQS_KEM_encaps(kem, ct, ss, pk);
-    OQS_KEM_free(kem);
-
-    if (rc != OQS_SUCCESS) {
-        LogPrintf("Kyber::Encaps: OQS_KEM_encaps failed\n");
-        return false;
-    }
-
-    return true;
+bool Kyber::Encaps(unsigned char* /*ct*/, unsigned char* /*ss*/, const unsigned char* /*pk*/) {
+    LogPrintf("Kyber::Encaps: STUB — not implemented, returning false\n");
+    return false;
 }
 
-bool Kyber::Decaps(unsigned char *ss, const unsigned char *ct, const unsigned char *sk) {
-    OQS_KEM* kem = OQS_KEM_new(OQS_KEM_alg_ml_kem_768);
-    if (!kem) {
-        LogPrintf("Kyber::Decaps: OQS_KEM_new(ML-KEM-768) failed\n");
-        return false;
-    }
-
-    OQS_STATUS rc = OQS_KEM_decaps(kem, ss, ct, sk);
-    OQS_KEM_free(kem);
-
-    if (rc != OQS_SUCCESS) {
-        LogPrintf("Kyber::Decaps: OQS_KEM_decaps failed\n");
-        return false;
-    }
-
-    return true;
+bool Kyber::Decaps(unsigned char* /*ss*/, const unsigned char* /*ct*/, const unsigned char* /*sk*/) {
+    LogPrintf("Kyber::Decaps: STUB — not implemented, returning false\n");
+    return false;
 }
 
 } // namespace pqc

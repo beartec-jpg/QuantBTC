@@ -13,9 +13,10 @@ AM_CXXFLAGS = $(CORE_CXXFLAGS) $(DEBUG_CXXFLAGS) $(HARDENED_CXXFLAGS) $(WARN_CXX
 AM_OBJCXXFLAGS = $(AM_CXXFLAGS)
 AM_CPPFLAGS = $(DEBUG_CPPFLAGS) $(HARDENED_CPPFLAGS) $(CORE_CPPFLAGS)
 
-# liboqs (Open Quantum Safe) for post-quantum cryptography
-LIBOQS_CFLAGS = -I/usr/local/include
-LIBOQS_LIBS = -L/usr/local/lib -loqs
+# liboqs (Open Quantum Safe) — no longer required; Kyber/Falcon stubbed out,
+# ML-DSA-44 is vendored. Keep variables empty for Makefile compatibility.
+LIBOQS_CFLAGS =
+LIBOQS_LIBS =
 AM_LIBTOOLFLAGS = --preserve-dup-deps
 PTHREAD_FLAGS = $(PTHREAD_CFLAGS) $(PTHREAD_LIBS)
 EXTRA_LIBRARIES =
