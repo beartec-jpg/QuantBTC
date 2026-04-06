@@ -1938,9 +1938,10 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, b
     // how fast blocks are produced.  At the reference 10-minute (600-second) spacing the reward
     // equals the standard 50 COIN; at 30-second DAG blocks it is 50 COIN × (30/600) = 2.5 COIN,
     // and so on.  Integer arithmetic is used; any sub-satoshi remainder is truncated (negligible).
+    static constexpr int64_t BITCOIN_BLOCK_SPACING_MS = 10 * 60 * 1000; // reference 10-minute block target in ms
     CAmount nSubsidy;
     if (consensusParams.fDagMode && consensusParams.nDagTargetSpacingMs > 0) {
-        nSubsidy = (50LL * COIN * consensusParams.nDagTargetSpacingMs) / (10 * 60 * 1000);
+        nSubsidy = (50LL * COIN * consensusParams.nDagTargetSpacingMs) / BITCOIN_BLOCK_SPACING_MS;
     } else {
         nSubsidy = 50 * COIN;
     }
