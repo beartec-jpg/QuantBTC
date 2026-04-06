@@ -1926,16 +1926,33 @@ PackageMempoolAcceptResult ProcessNewPackage(Chainstate& active_chainstate, CTxM
     return result;
 }
 
-CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
+CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, bool fHasUserTransactions)
 {
     int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
     // Force block reward to zero when right shift is undefined.
     if (halvings >= 64)
         return 0;
 
-    CAmount nSubsidy = 50 * COIN;
-    // Subsidy is cut in half every 210,000 blocks which will occur approximately every 4 years.
+    // DAG chains scale the per-block reward proportionally to the target block spacing so that
+    // the total supply curve (~21 M coins, ~4-year halving cadence) is preserved regardless of
+    // how fast blocks are produced.  At the reference 10-minute (600-second) spacing the reward
+    // equals the standard 50 COIN; at 30-second DAG blocks it is 50 COIN × (30/600) = 2.5 COIN,
+    // and so on.  Integer arithmetic is used; any sub-satoshi remainder is truncated (negligible).
+    CAmount nSubsidy;
+    if (consensusParams.fDagMode && consensusParams.nDagTargetSpacingMs > 0) {
+        nSubsidy = (50LL * COIN * consensusParams.nDagTargetSpacingMs) / (10 * 60 * 1000);
+    } else {
+        nSubsidy = 50 * COIN;
+    }
+    // Subsidy is cut in half every halving interval (~4 years).
     nSubsidy >>= halvings;
+
+    // DAG Phase 2+ (after first halving): empty blocks earn no subsidy.
+    // Miners only collect the block reward when they include at least one user transaction.
+    // Empty blocks remain valid (chain never stalls), they just earn fees only.
+    if (consensusParams.fDagMode && halvings >= 1 && !fHasUserTransactions)
+        return 0;
+
     return nSubsidy;
 }
 
@@ -2701,7 +2718,7 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
              Ticks<SecondsDouble>(m_chainman.time_connect),
              Ticks<MillisecondsDouble>(m_chainman.time_connect) / m_chainman.num_blocks_total);
 
-    CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, params.GetConsensus());
+    CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, params.GetConsensus(), block.vtx.size() > 1);
     if (block.vtx[0]->GetValueOut() > blockReward) {
         LogPrintf("ERROR: ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)\n", block.vtx[0]->GetValueOut(), blockReward);
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-amount");
