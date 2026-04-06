@@ -18,10 +18,9 @@
  *
  * When DAG mode is enabled (params.fDagMode), we use a per-block DAA
  * (Difficulty Adjustment Algorithm) similar to Kaspa's:
- *   - Target: nDagTargetSpacingMs (default 1000 ms / 1 second)
+ *   - Target: nDagTargetSpacingMs (e.g. 30 000 ms = 30 seconds for mainnet)
  *   - Window: last 4032 blocks
- *     (Bitcoin uses 2016 × 10-min = ~2 weeks; with 1-second blocks we use
- *      4032 × 1-second ≈ ~67 minutes, keeping the window long enough to
+ *     (at 30-second spacing: 4032 × 30 s ≈ 33.6 hours — long enough to
  *      smooth variance while adapting quickly to hashrate changes)
  *   - Adjustment: clamp ratio to [1/4, 4] per window
  *
@@ -41,15 +40,12 @@ unsigned int GetNextWorkRequiredDAG(const CBlockIndex* pindexLast, const CBlockH
         return nProofOfWorkLimit;
     }
 
-    // DAG difficulty window: use last 4032 blocks
-    // With 1-second block targets, 4032 blocks ≈ ~67 minutes — long enough
-    // to smooth variance while still adapting quickly to hashrate changes.
-    // 4032 was chosen as double Bitcoin's 2016-block window: at 1 s/block the
-    // original 2016-block window covers only ~34 minutes, which is too short
-    // to measure real-world latency and variance; doubling it restores a
-    // reasonable measurement period without over-smoothing adjustments.
-    // (Bitcoin's 2016-block window was designed for 10-minute blocks; keeping
-    // the same window count would be far too short at 1-second spacing.)
+    // DAG difficulty window: use last 4032 blocks.
+    // The window length in real time scales with nDagTargetSpacingMs:
+    //   at 30 s/block:  4032 × 30 s  ≈ 33.6 hours
+    //   at  5 s/block:  4032 ×  5 s  ≈  5.6 hours
+    // This gives enough history to smooth variance while still adapting
+    // to hashrate changes within a few hours.
     const int64_t nTargetSpacing = params.nDagTargetSpacingMs / 1000;
     if (nTargetSpacing <= 0) return pindexLast->nBits;
 
