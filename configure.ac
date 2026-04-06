@@ -172,6 +172,12 @@ AC_ARG_ENABLE([usdt],
   [use_usdt=$enableval],
   [use_usdt=yes])
 
+AC_ARG_WITH([jemalloc],
+  [AS_HELP_STRING([--with-jemalloc],
+  [use jemalloc allocator to reduce heap fragmentation (default: auto, i.e. use if found)])],
+  [use_jemalloc=$withval],
+  [use_jemalloc=auto])
+
 AC_ARG_WITH([miniupnpc],
   [AS_HELP_STRING([--with-miniupnpc],
   [enable UPNP (default is yes if libminiupnpc is found)])],
@@ -1218,6 +1224,25 @@ if test "$build_bitcoind$bitcoin_enable_qt$use_bench$use_tests" = "nononono"; th
   use_zmq=no
 fi
 
+dnl Check for jemalloc (optional, reduces heap fragmentation under high-churn workloads)
+JEMALLOC_LIBS=""
+have_jemalloc=no
+if test "$use_jemalloc" != "no"; then
+  PKG_CHECK_MODULES([JEMALLOC], [jemalloc],
+    [have_jemalloc=yes],
+    [dnl pkg-config not available or jemalloc not found via pkg-config; try AC_CHECK_LIB
+     AC_CHECK_LIB([jemalloc], [malloc_conf],
+       [have_jemalloc=yes; JEMALLOC_LIBS="-ljemalloc"],
+       [have_jemalloc=no])])
+fi
+if test "$have_jemalloc" = "yes"; then
+  AC_DEFINE([HAVE_JEMALLOC], [1], [Define to 1 if jemalloc is available])
+else
+  if test "$use_jemalloc" = "yes"; then
+    AC_MSG_ERROR([jemalloc requested but not found])
+  fi
+fi
+
 dnl Check for libminiupnpc (optional)
 if test "$use_upnp" != "no"; then
   TEMP_CPPFLAGS="$CPPFLAGS"
@@ -1679,6 +1704,7 @@ AC_SUBST(MINIUPNPC_CPPFLAGS)
 AC_SUBST(MINIUPNPC_LIBS)
 AC_SUBST(NATPMP_CPPFLAGS)
 AC_SUBST(NATPMP_LIBS)
+AC_SUBST(JEMALLOC_LIBS)
 AC_SUBST(HAVE_FDATASYNC)
 AC_SUBST(HAVE_FULLFSYNC)
 AC_SUBST(HAVE_O_CLOEXEC)
@@ -1758,6 +1784,7 @@ echo "  with fuzz binary = $enable_fuzz_binary"
 echo "  with bench      = $use_bench"
 echo "  with upnp       = $use_upnp"
 echo "  with natpmp     = $use_natpmp"
+echo "  with jemalloc   = ${have_jemalloc:-no}"
 echo "  USDT tracing    = $use_usdt"
 echo "  sanitizers      = $use_sanitizers"
 echo "  debug enabled   = $enable_debug"

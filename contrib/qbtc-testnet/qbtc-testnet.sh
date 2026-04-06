@@ -84,7 +84,9 @@ cmd_start() {
         -listen=1 \
         -txindex=1 \
         -logtimestamps=1 \
-        -printtoconsole=0
+        -printtoconsole=0 \
+        -dbcache=150 \
+        -maxsigcachesize=32
 
     echo "Node started. Use '$0 status' to check."
     echo "Logs: ~/.bitcoin/qbtctestnet/debug.log"

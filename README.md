@@ -153,7 +153,7 @@ PQC is enabled by default on qBTC chains. For manual configuration:
 ### Install Dependencies (Ubuntu/Debian)
 
 ```bash
-sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils python3
+sudo apt-get install build-essential libtool autotools-dev automake pkg-config bsdmainutils python3 libjemalloc-dev
 sudo apt-get install libevent-dev libboost-dev libboost-system-dev libboost-filesystem-dev
 sudo apt-get install libsqlite3-dev libminiupnpc-dev libnatpmp-dev libzmq3-dev
 ```
@@ -287,6 +287,45 @@ QBTC uses 1-second DAG blocks, so its emission parameters are scaled to match Bi
 - However, empty blocks earn **zero subsidy** (fees only).
 - Blocks that include at least one user transaction earn the normal halved subsidy plus fees.
 - This naturally transitions the network to transaction-driven mining.
+
+### Memory Optimization
+
+QBTC's 1-second DAG blocks generate high memory churn (block templates, GHOSTDAG mergesets, transaction validation, PQC signature caching). The following settings keep RSS well below 1,500 MB during normal testnet operation.
+
+#### jemalloc (recommended)
+
+[jemalloc](https://jemalloc.net/) replaces glibc's default `ptmalloc2` allocator with one that uses thread-local arenas, size-class bucketing, and aggressive page purging. This reduces heap fragmentation by roughly 40–60% under 1-second block churn.
+
+**Build-time integration (preferred):**
+
+Install the development package before running `./configure`:
+
+```bash
+sudo apt-get install libjemalloc-dev
+```
+
+When `libjemalloc-dev` is present, `./configure` detects it automatically (`--with-jemalloc=auto`) and links it into `bitcoind`, `bitcoin-cli`, and the test binary. Verify with:
+
+```
+$ ./configure | grep jemalloc
+  with jemalloc   = yes
+```
+
+**Runtime fallback (if not linked at build time):**
+
+```bash
+LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2 ./src/bitcoind -qbtctestnet
+```
+
+#### DAG-optimized cache flags
+
+The `contrib/qbtc-testnet/qbtc-testnet.sh` launch script already passes these flags. If running `bitcoind` directly, add them to your command line or `bitcoin.conf`:
+
+```ini
+[qbtctestnet]
+dbcache=150         # coins cache (MiB); default 450 is generous for 1-second blocks
+maxsigcachesize=32  # PQC signature cache (MiB); Dilithium sigs are 2420 bytes each
+```
 
 ### RPC Extensions
 

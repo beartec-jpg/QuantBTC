@@ -22,6 +22,9 @@ class COutPoint;
 class uint256;
 
 //! -dbcache default (MiB)
+// Note: DAG-mode chains with 1-second blocks generate far more UTXO churn than
+// Bitcoin. For testnet/low-RAM deployments, consider -dbcache=150 to reduce
+// memory footprint without a significant performance penalty.
 static const int64_t nDefaultDbCache = 450;
 //! -dbbatchsize default (bytes)
 static const int64_t nDefaultDbBatchSize = 16 << 20;
