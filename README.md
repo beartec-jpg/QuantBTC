@@ -39,7 +39,7 @@ Replaced Bitcoin's linear chain with parallel block production via the GHOSTDAG 
 - **Multi-parent block headers** — `hashParents` field with `BLOCK_VERSION_DAGMODE` flag
 - **DAG-aware validation** — parent existence checks, duplicate detection, max parents limit
 - **DAG difficulty adjustment** — `GetNextWorkRequiredDAG()` for variable block spacing
-- **1-second block target** with 16 MB max block weight
+- **10-second block target** with 16 MB max block weight
 - **RPC fields**: `dagparents`, `dagblock`, `dagmode`, `ghostdag_k`, `dag_tips`
 
 ### Real Cryptography (ML-DSA-44)
@@ -87,7 +87,7 @@ Fixed a critical bug where the wallet calculated fees based on ECDSA-only virtua
 - **qBTC Mainnet** (reserved): magic `e3b5d7a9`, P2P port 58333, RPC port 58332, bech32 prefix `qbtc`
 - PQC is **always active** on qBTC chains — no manual `-pqc=1` flag needed
 - GHOSTDAG K=32 (testnet) / K=18 (mainnet)
-- 0.08333333 QBTC block reward (8,333,333 satoshis), 126,000,000 block halving interval (~4 years), ~21M supply cap
+- 0.83333333 QBTC block reward (83,333,333 qSats), 12,600,000 block halving interval (~4 years), ~21M supply cap
 - Launch script and config template at `contrib/qbtc-testnet/`
 
 ### PQC Transaction Anatomy
@@ -253,35 +253,35 @@ A configuration template is available at `contrib/qbtc-testnet/qbtc-testnet.conf
 | RPC port | 28332 | 58332 |
 | Bech32 prefix | `qbtct` | `qbtc` |
 | GHOSTDAG K | 32 | 18 |
-| Block target | 1 second | 1 second |
+| Block target | 10 seconds | 10 seconds |
 | Max block weight | 16 MB | 16 MB |
-| Block reward | 0.08333333 QBTC | 0.08333333 QBTC |
-| Halving interval | 126,000,000 blocks (~4 years) | 126,000,000 blocks (~4 years) |
+| Block reward | 0.83333333 QBTC | 0.83333333 QBTC |
+| Halving interval | 12,600,000 blocks (~4 years) | 12,600,000 blocks (~4 years) |
 | Supply cap | ~21,000,000 QBTC | ~21,000,000 QBTC |
 | PQC deployment | Always active | Always active |
 | DAG mode | Enabled | Enabled |
 
 ### Tokenomics
 
-QBTC uses 1-second DAG blocks, so its emission parameters are scaled to match Bitcoin's ~4-year halving cadence and ~21M total supply:
+QBTC uses 10-second DAG blocks, so its emission parameters are scaled to match Bitcoin's ~4-year halving cadence and ~21M total supply. The smallest unit of QBTC (0.00000001 QBTC) is called a **qSat**.
 
 | Parameter | Bitcoin | QBTC |
 |-----------|---------|------|
-| Block interval | 600 s | 1 s |
-| Halving interval | 210,000 blocks (~4 years) | 126,000,000 blocks (~4 years) |
-| Initial block reward | 50 BTC | 0.08333333 QBTC (8,333,333 satoshis) |
+| Block interval | 600 s | 10 s |
+| Halving interval | 210,000 blocks (~4 years) | 12,600,000 blocks (~4 years) |
+| Initial block reward | 50 BTC | 0.83333333 QBTC (83,333,333 qSats) |
 | Total supply | ~21,000,000 BTC | ~21,000,000 QBTC |
 
 #### Two-Phase Emission Model
 
-**Phase 1 — Distribution (blocks 0 to 125,999,999 / ~4 years)**
+**Phase 1 — Distribution (blocks 0 to 12,599,999 / ~4 years)**
 
 - Empty blocks (coinbase-only) are valid and earn the full block reward.
 - Anyone can mine and collect QBTC — no transaction activity is required.
 - ~10,500,000 QBTC (50% of total supply) is distributed during this phase.
 - This is a fair-launch distribution: hash power is the only requirement.
 
-**Phase 2+ — Operational (block 126,000,000 onward, forever)**
+**Phase 2+ — Operational (block 12,600,000 onward, forever)**
 
 - Empty blocks remain technically valid so the chain never stalls during quiet periods.
 - However, empty blocks earn **zero subsidy** (fees only).
@@ -290,11 +290,11 @@ QBTC uses 1-second DAG blocks, so its emission parameters are scaled to match Bi
 
 ### Memory Optimization
 
-QBTC's 1-second DAG blocks generate high memory churn (block templates, GHOSTDAG mergesets, transaction validation, PQC signature caching). The following settings keep RSS well below 1,500 MB during normal testnet operation.
+QBTC's 10-second DAG blocks generate memory churn (block templates, GHOSTDAG mergesets, transaction validation, PQC signature caching). The following settings keep RSS well below 1,500 MB during normal testnet operation.
 
 #### jemalloc (recommended)
 
-[jemalloc](https://jemalloc.net/) replaces glibc's default `ptmalloc2` allocator with one that uses thread-local arenas, size-class bucketing, and aggressive page purging. This reduces heap fragmentation by roughly 40–60% under 1-second block churn.
+[jemalloc](https://jemalloc.net/) replaces glibc's default `ptmalloc2` allocator with one that uses thread-local arenas, size-class bucketing, and aggressive page purging. This reduces heap fragmentation by roughly 40–60% under DAG block churn.
 
 **Build-time integration (preferred):**
 
@@ -323,7 +323,7 @@ The `contrib/qbtc-testnet/qbtc-testnet.sh` launch script already passes these fl
 
 ```ini
 [qbtctestnet]
-dbcache=150         # coins cache (MiB); default 450 is generous for 1-second blocks
+dbcache=150         # coins cache (MiB); default 450 is generous for 10-second blocks
 maxsigcachesize=32  # PQC signature cache (MiB); Dilithium sigs are 2420 bytes each
 ```
 
@@ -630,20 +630,21 @@ test/functional/test_runner.py
 
 > **Snapshot date:** April 5, 2026 — network has been running continuously since initial deployment.
 
-The qBTC testnet is a live, publicly accessible 3-node network producing ~1 block/second with real PQC hybrid transactions.
+The qBTC testnet is a live, publicly accessible 3-node network producing ~1 block every 10 seconds with real PQC hybrid transactions.
+
+> **Testnet v2 (April 9, 2026):** Migrated from 1-second to 10-second blocks. See [TESTREPORT-2026-04-09.md](TESTREPORT-2026-04-09.md) for the full analysis. The original 1-second testnet report is at [TESTREPORT-2026-04-05.md](TESTREPORT-2026-04-05.md).
 
 ### Network Overview
 
 | Metric | Value |
 |--------|-------|
-| Chain height | ~96,600+ blocks |
-| Total transactions | ~134,900+ |
-| Chain size on disk | ~1.34 GB |
+| Chain | `qbtctestnet` v2 (10-second blocks) |
 | Consensus | GHOSTDAG K=32, DAG mode |
 | PQC status | Active (all transactions carry hybrid ECDSA + ML-DSA-44 witnesses) |
-| Block target | 1 second |
+| Block target | 10 seconds |
+| Block reward | 0.83333333 QBTC (83,333,333 qSats) |
 | Active miners | 3 (solo, `generatetoaddress`) |
-| Transaction traffic | ~7.2 tx/s (automated generators) |
+| Seed nodes | 3 (46.62.156.169, 37.27.47.236, 89.167.109.241) |
 
 ### Seed Nodes
 
@@ -685,17 +686,17 @@ Three automated stability test scripts validate crash recovery, restart integrit
 At current testnet difficulty, any hardware can mine via `generatetoaddress` RPC. No GPU or ASIC miners are supported yet (solo CPU only).
 
 ```bash
-# Throttled mining — one block every 10 seconds (~30 QBTC/hour)
+# Throttled mining — one block every ~10 seconds (~300 QBTC/hour)
 CLI="./src/bitcoin-cli -qbtctestnet"
 ADDR=$($CLI -rpcwallet=miner getnewaddress)
-while true; do $CLI generatetoaddress 1 "$ADDR" 999999999; sleep 10; done
+while true; do $CLI generatetoaddress 1 "$ADDR" 999999999; sleep 5; done
 ```
 
-| Block reward | 0.08333333 QBTC |
+| Block reward | 0.83333333 QBTC |
 |---|---|
-| Blocks/hour (sleep 1) | ~3,600 (~300 QBTC/hr) |
-| Blocks/hour (sleep 10) | ~360 (~30 QBTC/hr) |
-| Halving interval | 126M blocks (~4 years) |
+| Blocks/hour (natural pace) | ~360 (~300 QBTC/hr) |
+| Halving interval | 12.6M blocks (~4 years) |
+| Total supply | ~21,000,000 QBTC |
 
 See [doc/join-testnet.md](doc/join-testnet.md#home-mining-guide) for detailed mining performance tables.
 
@@ -736,6 +737,7 @@ See [ROADMAP.md](ROADMAP.md) for the full development history and planned phases
 
 - **Phase 8** — Public testnet with 3 seed nodes, block explorer, and faucet (✅ deployed)
 - **Phase 8.5** — Memory & consensus hardening at ~30k blocks (✅ complete)
+- **Phase 8.6** — 10-second block migration, tokenomics update, qSat naming (✅ complete)
 - **Phase 9** — Mining infrastructure (Stratum v2, pool protocol)
 - **Phase 10** — Protocol hardening (SPHINCS+ wallet signing, ML-KEM for P2P, security audit)
 - **Phase 11** — Mainnet preparation (genesis block, release binaries)

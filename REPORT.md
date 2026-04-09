@@ -1,9 +1,9 @@
 # QuantumBTC — Project Report & Additions Documentation
 
-**Date:** April 5, 2026
+**Date:** April 9, 2026
 **Repository:** [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin) (branch: `main`)
 **Base:** Bitcoin Core v28.0.0 fork
-**Latest commit:** `0c319ed`
+**Latest commit:** `1f9a422`
 **Total commits:** 145
 
 ---
@@ -13,8 +13,8 @@
 QuantumBTC (QBTC) is a Bitcoin Core v28.0.0 fork that adds:
 - **Post-Quantum Cryptography (PQC)** — ML-DSA-44 (Dilithium2) hybrid signatures
 - **BlockDAG with GHOSTDAG** — parallel block production with K=32
-- **1-second block targets** — high-throughput DAG-mode consensus
-- **Custom testnet** — 3-node live network at 95,700+ blocks
+- **10-second block targets** — high-throughput DAG-mode consensus (60× faster than Bitcoin)
+- **Custom testnet** — 3-node live network (v2, migrated from 1s to 10s blocks April 9, 2026)
 
 ---
 
@@ -62,9 +62,9 @@ QuantumBTC (QBTC) is a Bitcoin Core v28.0.0 fork that adds:
 | `ghostdag_k` | 32 | 32 | 32 |
 | `nMaxDagParents` | 64 | 64 | 32 |
 | `fDagMode` | true | true | false |
-| Block target | 1 second | 1 second | — |
-| Halving interval | 6,307,200 | 6,307,200 | 150 |
-| Block reward | 3.125 QBTC | 3.125 QBTC | 50 QBTC |
+| Block target | 10 seconds | 10 seconds | — |
+| Halving interval | 12,600,000 | 12,600,000 | 150 |
+| Block reward | 0.83333333 QBTC | 0.83333333 QBTC | 50 QBTC |
 
 **DAG Header Extension:**
 - `hashParents` vector in `CBlockHeader` — additional parent references beyond `hashPrevBlock`

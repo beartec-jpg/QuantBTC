@@ -7,12 +7,12 @@
 | Feature | Specification |
 |---------|---------------|
 | **Network** | Independent chain (not a Bitcoin testnet fork) |
-| **Consensus** | GHOSTDAG (K=32, 1-second blocks) |
+| **Consensus** | GHOSTDAG (K=32, 10-second blocks) |
 | **PQC** | ML-DSA-44 hybrid signatures (always active) |
 | **Port** | 28333 (P2P), 28332 (RPC) |
 | **Address prefix** | `qbtct1...` (bech32) |
 | **Base58 prefix** | `q...` (P2PKH), `r...` (P2SH) |
-| **Block reward** | 50 QBTC |
+| **Block reward** | 0.83333333 QBTC (83,333,333 qSats) |
 | **Max block weight** | 16 MB |
 | **Difficulty** | Trivial (easy solo mining) |
 | **Magic bytes** | `d1 a5 c3 b7` |

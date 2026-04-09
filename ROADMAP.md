@@ -169,7 +169,7 @@ Brought up a standalone QuantumBTC testnet network:
 Brought up a live 3-node testnet with public services:
 
 - [x] Deploy 3 seed nodes with static IPs (46.62.156.169, 37.27.47.236, 89.167.109.241)
-- [x] Continuous solo mining (~1 block/second) on all 3 nodes
+- [x] Continuous solo mining (~1 block/10 seconds) on all 3 nodes
 - [x] Web faucet for distributing testnet QBTC (beartec.uk/qbtc-faucet — 0.5 QBTC per claim, 1-hour rate limit)
 - [x] Web block explorer / search (beartec.uk/qbtc-scan — live dashboard with blocks, txs, DAG tips, PQC status)
 - [x] Stress tested with 10 parallel transaction streams (~7.2 tx/s sustained)
@@ -199,12 +199,36 @@ Proactive fixes identified via chain audit at ~30,000 blocks and validated throu
 
 - [x] **IsBlockAncestor BFS** — replaced `MAX_BFS_VISITS=100000` silent wrong-answer with height-bounded BFS. The old code could return `false` for a genuine ancestor, producing non-deterministic mergesets across nodes. New code guarantees correct answers proportional to DAG width × height difference.
 - [x] **EarlyProtection nChainWork** — removed per-node ephemeral data (peer activation times, ramp counts, IP windows) from `nChainWork` scaling. Different nodes seeing different peer events would compute different chain weights, causing inconsistent chain selection.
-- [x] **m_known_scores pruning** — `DagTipSet::m_known_scores` was never pruned, growing ~82 MB/day at 1-second blocks. Now evicts entries more than 1,000 blue_score behind the best tip that aren't current tips.
+- [x] **m_known_scores pruning** — `DagTipSet::m_known_scores` was never pruned, growing ~8.2 MB/day at 10-second blocks. Now evicts entries more than 1,000 blue_score behind the best tip that aren't current tips.
 - [x] **SelectedParentChain depth limit** — `GhostdagManager::SelectedParentChain()` walked to genesis on every block call. Limited to `2*K+1` (37 blocks for K=18), reducing O(height) to O(K).
 - [x] **Mergeset pruning** — `dagData.mergeset_blues` / `mergeset_reds` vectors were never freed. Now cleared for blocks buried more than 1,000 blocks deep during `ConnectTip()`.
 - [x] **PQC signature cache** — `CachingTransactionSignatureChecker` now overrides `CheckDilithiumSignature` to cache verification results in the CuckooCache, avoiding redundant 2,420-byte Dilithium checks during block relay and mempool re-acceptance.
 - [x] **mapDeltas bounding** — `PrioritiseTransaction` entries capped at 100,000 to prevent unbounded growth from orphaned delta entries.
-- [x] **jemalloc integration** — linked at build time to replace glibc ptmalloc2, reducing heap fragmentation by ~40–60% under 1-second block churn. DAG-optimized default cache sizes (`-dbcache=150`, `-maxsigcachesize=32`) added to launch scripts.
+- [x] **jemalloc integration** — linked at build time to replace glibc ptmalloc2, reducing heap fragmentation by ~40–60% under DAG block churn. DAG-optimized default cache sizes (`-dbcache=150`, `-maxsigcachesize=32`) added to launch scripts.
+
+### Phase 8.6: 10-Second Block Migration
+
+**Status: ✅ Complete**
+
+Migrated from 1-second to 10-second blocks to balance DAG utility against PQC storage/bandwidth costs:
+
+- [x] `nPowTargetSpacing`: 1 → 10 (10-second blocks)
+- [x] `nDagTargetSpacingMs`: 1000 → 10000
+- [x] `nPowTargetTimespan`: 128 → 1280 (128-block window × 10s)
+- [x] `nSubsidyHalvingInterval`: 126,000,000 → 12,600,000 (~4 years preserved)
+- [x] `DAG_INITIAL_BLOCK_REWARD`: 8,333,333 → 83,333,333 qSats (0.8333 QBTC/block)
+- [x] Total supply ~21M QBTC preserved exactly
+- [x] Genesis block unchanged (same nonce, nBits, hash)
+- [x] Chain wiped and rebuilt from genesis on all 3 nodes
+- [x] Difficulty converged to ~10s within 4 retarget windows (~512 blocks)
+- [x] Introduced "qSat" naming for QBTC's smallest unit (1 qSat = 0.00000001 QBTC)
+
+**Rationale:**
+- 1-second blocks with PQC signatures (20× larger) created 326 GB/day bandwidth at full blocks and 31.5M blocks/year IBD burden
+- 10-second blocks reduce this to 32 GB/day and 3.15M blocks/year while keeping 60× faster confirmations than Bitcoin
+- DAG collision rate at 10s with 100+ miners: ~40% parallel blocks — the DAG remains valuable
+
+See [TESTREPORT-2026-04-09.md](TESTREPORT-2026-04-09.md) for the full migration analysis.
 
 ### Phase 9: Mining Infrastructure (Planned)
 
@@ -225,7 +249,7 @@ Proactive fixes identified via chain audit at ~30,000 blocks and validated throu
 ### Phase 11: Mainnet Preparation (Planned)
 
 - [ ] Set realistic mainnet difficulty (not trivial)
-- [x] Finalize block reward schedule and halving parameters (scaled to 126M-block interval and 8,333,333 sat reward for 1-second DAG blocks)
+- [x] Finalize block reward schedule and halving parameters (scaled to 12.6M-block interval and 83,333,333 qSat reward for 10-second DAG blocks)
 - [x] Distribution Phase / Operational Phase emission model implemented
 - [ ] EXT_PUBLIC_KEY / EXT_SECRET_KEY prefix finalization
 - [ ] Genesis block with real mining (not nonce=0)
@@ -280,11 +304,11 @@ Proactive fixes identified via chain audit at ~30,000 blocks and validated throu
 | Base58 P2PKH | 120 (`q`) | 58 (`Q`) |
 | Base58 P2SH | 122 (`r`) | 60 (`R`) |
 | GHOSTDAG K | 32 | 18 |
-| Block target | 1 second | 1 second |
+| Block target | 10 seconds | 10 seconds |
 | Max block weight | 16 MB | 16 MB |
-| Block reward | 0.08333333 QBTC | 0.08333333 QBTC |
+| Block reward | 0.83333333 QBTC | 0.83333333 QBTC |
 | Supply cap | ~21,000,000 QBTC | ~21,000,000 QBTC |
-| Halving interval | 126,000,000 blocks (~4 years) | 126,000,000 blocks (~4 years) |
+| Halving interval | 12,600,000 blocks (~4 years) | 12,600,000 blocks (~4 years) |
 | PQC deployment | Always active | Always active |
 | DAG mode | Enabled | Enabled |
 
