@@ -163,6 +163,13 @@ struct Params {
     int64_t nDagTargetSpacingMs{1000};
 
     /**
+     * DAG difficulty adjustment window size (in blocks).
+     * Retarget occurs every nDagDiffWindowSize blocks.
+     * Default 4032 (~67 min at 1 s/block); shorter values give faster convergence.
+     */
+    int64_t nDagDiffWindowSize{4032};
+
+    /**
      * Maximum number of parent references a DAG block may include.
      * Increased to 64 to match the higher ghostdag_k and provide better
      * DAG connectivity for a widely distributed miner set.

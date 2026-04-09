@@ -590,14 +590,14 @@ public:
         consensus.CSVHeight = 1;
         consensus.SegwitHeight = 0;
         consensus.MinBIP9WarningHeight = 0;
-        consensus.powLimit = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
-        consensus.nPowTargetSpacing = 10 * 60;
-        consensus.fPowAllowMinDifficultyBlocks = true;
+        consensus.powLimit = uint256{"00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+        consensus.nPowTargetTimespan = 128; // 128 seconds (matches DAG window at 1s/block)
+        consensus.nPowTargetSpacing = 1;    // 1-second blocks
+        consensus.fPowAllowMinDifficultyBlocks = false; // mainnet-like: enforce retarget
         consensus.enforce_BIP94 = false;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 1512; // 75%
-        consensus.nMinerConfirmationWindow = 2016;
+        consensus.nRuleChangeActivationThreshold = 96; // 75% of 128
+        consensus.nMinerConfirmationWindow = 128;
 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -651,9 +651,11 @@ public:
         consensus.nMaxDagParents = 64;         // max parent refs per block (≥ K for burst headroom)
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MW — accommodates PQC witness overhead
 
+        // DAG difficulty window: 128 blocks (~2 min at 1 s/block).
+        // Short window for fast convergence to the 1-second target.
+        consensus.nDagDiffWindowSize = 128;
+
         // Transaction-load-aware difficulty: same thresholds as mainnet.
-        // Testnet uses fPowAllowMinDifficultyBlocks, so the load adjustment is
-        // effectively only applied during sustained high-traffic periods.
         consensus.nLoadDiffBaseline     = 200;
         consensus.nLoadDiffMaxMultiplier = 4;
 
@@ -670,9 +672,9 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        genesis = CreateQuantumBTCGenesisBlock(1743379200, 0, 0x207fffff, 1, 50 * COIN);
+        genesis = CreateQuantumBTCGenesisBlock(1743379200, 748526, 0x1e0fffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"434500d82dcecdcea5c11037ded57cda49875d9335f9125893194a2cf825d151"});
+        assert(consensus.hashGenesisBlock == uint256{"00000b81efa9e120194b75b82e94d65293144ac0040d85af3b1e8e5b9b2f01c5"});
         assert(genesis.hashMerkleRoot == uint256{"da5becb22904228b97769ee90301c1224f2433ecdc782b8670f875b196bf756d"});
 
         vFixedSeeds.clear();

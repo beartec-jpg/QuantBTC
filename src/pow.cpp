@@ -16,13 +16,10 @@
 /**
  * GetNextWorkRequired for QuantumBTC BlockDAG mode.
  *
- * When DAG mode is enabled (params.fDagMode), we use a per-block DAA
+ * When DAG mode is enabled (params.fDagMode), we use a per-window DAA
  * (Difficulty Adjustment Algorithm) similar to Kaspa's:
  *   - Target: nDagTargetSpacingMs (default 1000 ms / 1 second)
- *   - Window: last 4032 blocks
- *     (Bitcoin uses 2016 × 10-min = ~2 weeks; with 1-second blocks we use
- *      4032 × 1-second ≈ ~67 minutes, keeping the window long enough to
- *      smooth variance while adapting quickly to hashrate changes)
+ *   - Window: params.nDagDiffWindowSize blocks (default 4032; testnet 128)
  *   - Adjustment: clamp ratio to [1/4, 4] per window
  *
  * The PoW algorithm remains SHA-256 (ASIC/GPU compatible).
@@ -36,27 +33,20 @@ unsigned int GetNextWorkRequiredDAG(const CBlockIndex* pindexLast, const CBlockH
         return pindexLast->nBits;
     }
 
+    const int64_t nWindow = params.nDagDiffWindowSize;
+
     // Allow any difficulty in early blocks (first adjustment window)
-    if (pindexLast->nHeight < 4032) {
+    if (pindexLast->nHeight < nWindow) {
         return nProofOfWorkLimit;
     }
 
-    // DAG difficulty window: use last 4032 blocks
-    // With 1-second block targets, 4032 blocks ≈ ~67 minutes — long enough
-    // to smooth variance while still adapting quickly to hashrate changes.
-    // 4032 was chosen as double Bitcoin's 2016-block window: at 1 s/block the
-    // original 2016-block window covers only ~34 minutes, which is too short
-    // to measure real-world latency and variance; doubling it restores a
-    // reasonable measurement period without over-smoothing adjustments.
-    // (Bitcoin's 2016-block window was designed for 10-minute blocks; keeping
-    // the same window count would be far too short at 1-second spacing.)
     const int64_t nTargetSpacing = params.nDagTargetSpacingMs / 1000;
     if (nTargetSpacing <= 0) return pindexLast->nBits;
 
-    const int64_t nTargetTimespan = 4032 * nTargetSpacing;
+    const int64_t nTargetTimespan = nWindow * nTargetSpacing;
 
-    // Per-block adjustment: only retarget every 4032 blocks
-    if ((pindexLast->nHeight + 1) % 4032 != 0) {
+    // Retarget every nWindow blocks
+    if ((pindexLast->nHeight + 1) % nWindow != 0) {
         // Allow min-difficulty blocks on testnet
         if (params.fPowAllowMinDifficultyBlocks) {
             if (pblock->GetBlockTime() > pindexLast->GetBlockTime() + nTargetSpacing * 2) {
@@ -66,7 +56,7 @@ unsigned int GetNextWorkRequiredDAG(const CBlockIndex* pindexLast, const CBlockH
         return pindexLast->nBits;
     }
 
-    const CBlockIndex* pindexFirst = pindexLast->GetAncestor(pindexLast->nHeight - 4031);
+    const CBlockIndex* pindexFirst = pindexLast->GetAncestor(pindexLast->nHeight - (nWindow - 1));
     assert(pindexFirst);
 
     int64_t nActualTimespan = pindexLast->GetBlockTime() - pindexFirst->GetBlockTime();
@@ -98,8 +88,7 @@ unsigned int GetNextWorkRequiredDAG(const CBlockIndex* pindexLast, const CBlockH
         const uint64_t tx_last  = pindexLast->m_chain_tx_count;
         const uint64_t tx_first = pindexFirst->m_chain_tx_count;
         if (tx_last > tx_first) {
-            // 4031 blocks between pindexFirst+1 and pindexLast inclusive.
-            const int64_t kWindow = 4031;
+            const int64_t kWindow = nWindow - 1;
             // Divide in uint64_t first, then cast — result fits in int64_t since
             // even at uint64_t max the quotient is only ~4.5×10^15 < INT64_MAX.
             const int64_t avg_tx  = static_cast<int64_t>((tx_last - tx_first) / static_cast<uint64_t>(kWindow));
