@@ -1,5 +1,9 @@
 # **qBTC (QuantumBTC)**
 
+<p align="center">
+  <img src="doc/assets/quantumbtc-logo.jpg" alt="QuantumBTC official logo" width="260" />
+</p>
+
 > A quantum-resistant, high-throughput blockchain built on Bitcoin Core v28.0.0.
 >
 > qBTC is an independent fork maintained by [beartec](https://github.com/beartec-jpg), derived from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin). It combines **post-quantum cryptographic signatures** with **BlockDAG consensus (GHOSTDAG)** to create a network that is secure against both classical and quantum adversaries — not as a future upgrade, but as a consensus requirement from genesis.
@@ -789,6 +793,6 @@ QuantumBTC uses a **dual-license structure**:
 - **BearTec-authored standalone additions** created on or after `2026-03-09` are under **BUSL-1.1** until **2030-04-09**, then automatically convert to MIT — see [LICENSE-BUSL](LICENSE-BUSL) and [NOTICE](NOTICE)
 - **Recently modified inherited files** remain MIT as to upstream code; only the **BearTec-authored deltas from the last month** are claimed under `LICENSE-BUSL` to the extent they are separable and documented in git history / notices
 
-**Trademark notice:** `QuantumBTC`, `qBTC`, and `QBTC` are claimed marks of **BearTec**. The code licenses do not grant trademark rights.
+**Trademark notice:** `QuantumBTC`, `qBTC`, and `QBTC` are claimed marks of **BearTec**. The code licenses do not grant trademark rights. The official project logo at `doc/assets/quantumbtc-logo.jpg` is **Copyright © 2026 BearTec, all rights reserved**. See [TRADEMARKS.md](TRADEMARKS.md).
 
 qBTC is forked from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin), originally created by [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsCode), which is itself based on [Bitcoin Core](https://github.com/bitcoin/bitcoin).

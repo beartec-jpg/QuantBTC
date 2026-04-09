@@ -57,6 +57,8 @@ Examples include:
 -------------------
 "QuantumBTC", "qBTC", and "QBTC" are claimed as trademarks of BearTec. The code licenses do not grant trademark rights.
 
+The official brand image/logo located at `doc/assets/quantumbtc-logo.jpg` is **Copyright © 2026 BearTec, all rights reserved**. It is a brand asset and is not granted for reuse as part of the MIT or BUSL code licenses except for limited nominative/project-reference use.
+
 5. Practical scope rule
 -----------------------
 A good working rule in this repository is:
