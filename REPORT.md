@@ -225,7 +225,63 @@ Consolidation used batched `createrawtransaction` with `-stdin` flag to avoid `A
 
 ---
 
-## 9. Key Bug Fixes
+## 9. Security Audit Fixes (April 9, 2026)
+
+A code-level security review identified 3 CRITICAL, 5 HIGH, and 4 MEDIUM findings across the PQC consensus and key management code. All have been resolved.
+
+### 9.1 CRITICAL
+
+| # | Finding | File(s) | Fix |
+|---|---------|---------|-----|
+| C1 | SPHINCS+ witness routing — interpreter hard-gated on Dilithium sig size; SPHINCS+ witnesses always rejected | `src/script/interpreter.cpp` | 4-element witness path now branches on signature size: `== Dilithium::SIGNATURE_SIZE` routes to `CheckPQCSignature()`, `== SPHINCS::SIGNATURE_SIZE` routes to `CheckSPHINCSSignature()` |
+| C2 | PQC private key stored in plain `std::vector<unsigned char>` — no memory locking, no cleanse on resize | `src/crypto/pqc/hybrid_key.h`, `hybrid_key.cpp` | Changed to `PQCPrivateKey` typedef (`std::vector<unsigned char, secure_allocator<unsigned char>>`); removed public `GetPQCPrivateKey()` getter; added scoped `SignPQCMessage()` |
+| C3 | `CheckPQCSignatures()` name implies cryptographic verification but only checks element sizes | `src/consensus/pqc_validation.h`, `pqc_validation.cpp` | Added explicit docstring: "structural precheck only — cryptographic PQC verification is consensus-enforced in VerifyScript()/interpreter.cpp" |
+
+### 9.2 HIGH
+
+| # | Finding | File(s) | Fix |
+|---|---------|---------|-----|
+| H4 | Hot-path `LogPrintf` in witness verification (interpreter.cpp) | `src/script/interpreter.cpp` | Replaced with `LogDebug(BCLog::VALIDATION, ...)` |
+| H5 | `GetPQCPrivateKey()` public getter exposes raw secret key material | `src/crypto/pqc/hybrid_key.h`, `hybrid_key.cpp`, `src/script/sign.cpp` | Removed getter; added `HasPQCPrivateKey()` (bool) and `SignPQCMessage()` (scoped sign with cleanse); updated `CreatePQCSig()` in sign.cpp to use new API |
+| H6 | `HybridKey::Sign()` hybrid blob format undocumented, could be confused with on-chain 4-element witness | `src/crypto/pqc/hybrid_key.h` | Added docstring clarifying it produces `[1-byte ECDSA len][ECDSA sig][PQC sig]` internal format, NOT the consensus witness |
+| H7 | `-pqcalgo=kyber,frodo,ntru` silently accepted but all three KEM implementations return false | `src/crypto/pqc/pqc_config.cpp`, `pqc_config.h` | Added `LogPrintf` warning "currently stubbed/disabled, ignoring" for each stub KEM; cleared default `enabled_kems` to `{}` |
+| H8 | Falcon/SQIsign stubs — verified already return false on all operations | `src/crypto/pqc/falcon.h`, `sqisign.cpp` | No change needed — already safe |
+
+### 9.3 MEDIUM
+
+| # | Finding | File(s) | Fix |
+|---|---------|---------|-----|
+| M9 | Default `enabled_kems` advertised `{KYBER, FRODOKEM, NTRU}` despite all being stubs | `src/crypto/pqc/pqc_config.h` | Already fixed in H7 — changed to `{}` (empty) |
+| M10 | SPHINCS+ size check over-permissive: range `(2420, 17088]` accepted garbage blobs that pass size validation | `src/consensus/pqc_validation.cpp`, `src/script/interpreter.cpp` | Tightened to exact match: `sig_elem.size() == pqc::SPHINCS::SIGNATURE_SIZE` (17088) in both IsPQCWitness() and VerifyWitnessProgram() |
+| M11 | `Verify()` used `enable_hybrid_signatures` config flag as branch condition — toggling config silently downgrades hybrid txs to ECDSA-only verification | `src/crypto/pqc/hybrid_key.cpp` | Now detects hybrid format from signature structure (`[len][ECDSA][PQC]` header) regardless of config flag; hybrid-signed data always verified as hybrid |
+| M12 | `memory_cleanse()` not called on intermediate `classical_sig` and `pqc_sig` vectors in `Sign()` | `src/crypto/pqc/hybrid_key.cpp` | Added `memory_cleanse()` calls for both vectors before return |
+
+### 9.4 Files Modified
+
+```
+src/script/interpreter.cpp          — C1, H4, M10
+src/crypto/pqc/hybrid_key.h         — C2, H5, H6
+src/crypto/pqc/hybrid_key.cpp       — C2, H5, M11, M12
+src/script/sign.cpp                 — H5
+src/consensus/pqc_validation.h      — C3
+src/consensus/pqc_validation.cpp    — C3, M10
+src/crypto/pqc/pqc_config.h         — H7, M9
+src/crypto/pqc/pqc_config.cpp       — H7
+src/test/pqc_witness_tests.cpp      — Regression test (valid_sphincs_witness)
+```
+
+### 9.5 Build Verification
+
+All modified translation units compiled cleanly with `make -j2`:
+- `libbitcoin_crypto_base_la-hybrid_key.lo` ✓
+- `libbitcoin_consensus_a-interpreter.o` ✓
+- `libbitcoin_common_a-pqc_validation.o` ✓
+- `libbitcoin_common_a-sign.o` ✓
+- `libbitcoin_crypto_base_la-pqc_config.lo` ✓
+
+---
+
+## 10. Historical Bug Fixes
 
 | Issue | Root Cause | Fix | Commit |
 |-------|-----------|-----|--------|
@@ -240,7 +296,7 @@ Consolidation used batched `createrawtransaction` with `-stdin` flag to avoid `A
 
 ---
 
-## 10. Source File Inventory
+## 11. Source File Inventory
 
 ### New directories (112 source files):
 ```

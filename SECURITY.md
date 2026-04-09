@@ -26,3 +26,14 @@ QBTC-specific areas of particular interest:
 - **Signature cache** — ECDSA, Schnorr, and Dilithium cache entry computation
 
 For vulnerabilities in upstream Bitcoin Core code, please report to the Bitcoin Core security team at security@bitcoincore.org.
+
+## Completed Audits
+
+### Internal Code Review — April 9, 2026
+
+A security review of the PQC consensus and key management code identified and resolved:
+- **3 CRITICAL** — SPHINCS+ witness routing, insecure private key storage, misleading validation naming
+- **5 HIGH** — hot-path logging, public key getter exposure, undocumented formats, stub KEM warnings
+- **4 MEDIUM** — default KEM config, over-permissive size checks, config-dependent verification downgrade, missing memory cleanse
+
+Full details in [REPORT.md § 9](REPORT.md).
