@@ -1934,9 +1934,9 @@ CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams, b
         return 0;
 
     // DAG chains use a scaled-down initial reward to preserve Bitcoin's ~21M total supply
-    // while accommodating 1-second blocks with a 126M-block halving interval.
-    // 50 COIN / 600 = 8,333,333.33... satoshis; integer-truncated to 8,333,333.
-    static constexpr CAmount DAG_INITIAL_BLOCK_REWARD{8333333};
+    // while accommodating 10-second blocks with a 12.6M-block halving interval.
+    // 50 COIN / 60 = 83,333,333.33... satoshis; integer-truncated to 83,333,333.
+    static constexpr CAmount DAG_INITIAL_BLOCK_REWARD{83333333};
     CAmount nSubsidy = consensusParams.fDagMode ? DAG_INITIAL_BLOCK_REWARD : 50 * COIN;
     // Subsidy is cut in half every halving interval (~4 years).
     nSubsidy >>= halvings;

@@ -582,7 +582,7 @@ public:
         m_chain_type = ChainType::QBTCTESTNET;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 126000000; // 210000 * 600 — preserves ~4-year halving cadence at 1-second blocks
+        consensus.nSubsidyHalvingInterval = 12600000; // 210000 * 60 — preserves ~4-year halving cadence at 10-second blocks
         consensus.BIP34Height = 1;
         consensus.BIP34Hash = uint256();
         consensus.BIP65Height = 1;
@@ -591,13 +591,13 @@ public:
         consensus.SegwitHeight = 0;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256{"00000fffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
-        consensus.nPowTargetTimespan = 128; // 128 seconds (matches DAG window at 1s/block)
-        consensus.nPowTargetSpacing = 1;    // 1-second blocks
+        consensus.nPowTargetTimespan = 1280; // 1280 seconds (matches DAG window at 10s/block)
+        consensus.nPowTargetSpacing = 10;    // 10-second blocks
         consensus.fPowAllowMinDifficultyBlocks = false; // mainnet-like: enforce retarget
         consensus.enforce_BIP94 = false;
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 96; // 75% of 128
-        consensus.nMinerConfirmationWindow = 128;
+        consensus.nMinerConfirmationWindow = 128;  // ~21 min at 10s/block
 
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -620,26 +620,17 @@ public:
 
         // QuantumBTC BlockDAG: enabled
         // ─────────────────────────────────────────────────────────────────────
-        // GHOSTDAG K=32, 1-second target, up to 64 parent references.
+        // GHOSTDAG K=32, 10-second target, up to 64 parent references.
         //
         // K=32 is intentionally higher than Kaspa's K=18 to maximise blue-
-        // block inclusivity: with fast (1 s) blocks, many miners solve
-        // concurrently and a larger K ensures their blocks are classified
-        // "blue" rather than orphaned.  This is the core "People's Chain"
-        // design — small/home miners earn rewards alongside pools.
+        // block inclusivity: with 10 s blocks and many miners, K=32
+        // ensures concurrent blocks are classified "blue" rather than
+        // orphaned.  This is the core "People's Chain" design — small/home
+        // miners earn rewards alongside pools.
         //
-        // Trade-offs:
-        //   • Security: GHOSTDAG's honest-majority guarantee weakens as K
-        //     grows; K=32 remains safe under the standard 50 % assumption
-        //     when anticone sizes stay well below K.  Monitor via
-        //     getblock/getblockheader verbosity ≥ 2 and getdagstatus.
-        //   • Bandwidth/storage: more parent references per block means
-        //     slightly larger headers.  nMaxDagParents=64 provides
-        //     headroom beyond K=32 for burst conditions.
-        //   • PQC overhead: every block's transactions carry ~3.7 kB PQC
-        //     witness data per input; the signature cache
-        //     (getpqcsigcachestats RPC) amortises the ~35× verification
-        //     cost.  Monitor dilithium_hit_rate under sustained load.
+        // At 10s blocks with ~500ms propagation, expect ~5% collision rate
+        // with 100+ miners (~40% of blocks parallel).  This balances DAG
+        // utility against IBD/storage cost with PQC signatures.
         //
         // GetHash() hashes ONLY the 80-byte base header (not DAG parents).
         // See doc/ghostdag.md for the design rationale and the restart-
@@ -647,12 +638,12 @@ public:
         // ─────────────────────────────────────────────────────────────────────
         consensus.fDagMode = true;
         consensus.ghostdag_k = 32;             // max anticone size for blue classification
-        consensus.nDagTargetSpacingMs = 1000;  // 1-second blocks
+        consensus.nDagTargetSpacingMs = 10000; // 10-second blocks
         consensus.nMaxDagParents = 64;         // max parent refs per block (≥ K for burst headroom)
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MW — accommodates PQC witness overhead
 
-        // DAG difficulty window: 128 blocks (~2 min at 1 s/block).
-        // Short window for fast convergence to the 1-second target.
+        // DAG difficulty window: 128 blocks (~21 min at 10 s/block).
+        // Short window for fast convergence to the 10-second target.
         consensus.nDagDiffWindowSize = 128;
 
         // Transaction-load-aware difficulty: same thresholds as mainnet.
