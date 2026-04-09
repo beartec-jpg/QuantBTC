@@ -1,0 +1,68 @@
+QuantumBTC Repository Notice
+===========================
+
+Effective date: 2026-04-09
+Copyright holder for protected additions: BearTec
+
+This repository contains a mix of inherited open-source code and BearTec-authored additions.
+
+1. Inherited / upstream code
+---------------------------
+- Bitcoin Core inherited code remains under the MIT License in `LICENSE`.
+- Code inherited from the upstream `QBlockQ/pqc-bitcoin` fork remains under its existing notices.
+- Vendored/reference cryptography code under `src/crypto/pqc/ml-dsa/**`, `src/crypto/pqc/ml-kem/**`, and `src/crypto/pqc/sphincsplus/**` retains its upstream licensing.
+
+2. BearTec-authored standalone additions (protected)
+---------------------------------------------------
+Unless a file contains a different explicit upstream notice, the following BearTec-authored standalone files and path groups added on or after 2026-03-09 are governed by `LICENSE-BUSL` until 2030-04-09, after which they convert to MIT:
+
+- `src/dag/**`
+- `src/earlyprotection.h`
+- `src/test/dag_tests.cpp`
+- `src/test/pqc_*.cpp`
+- `src/test/fuzz/pqc_witness.cpp`
+- `contrib/beartec-wallet/**`
+- `contrib/qbtc-testnet/**`
+- `contrib/testgen/sustained_test.py`
+- `contrib/testgen/ghostdag_contention_test.py`
+- `qbtc-mine.sh`
+- `verify_dag.py`
+- `crash_repro.py`
+- `test_*.py`
+- `test_*.sh`
+- `run_*.py`
+- `run_*.sh`
+- `ci_test_runner.sh`
+- `ROADMAP.md`
+- `REPORT.md`
+- `TODO.md`
+- `TESTREPORT-*.md`
+- `doc/ghostdag.md`
+- `doc/join-testnet.md`
+
+3. Recently modified inherited files (protecting only the edits)
+---------------------------------------------------------------
+For files that were inherited from Bitcoin Core or upstream `pqc-bitcoin` but were edited by BearTec during the last month, only the BearTec-authored additions and deltas are claimed under `LICENSE-BUSL` to the extent they are separable and identifiable in commit history, comments, or diffs. The inherited portions of those files remain MIT-licensed.
+
+Examples include:
+- `src/kernel/chainparams.cpp`
+- `src/chainparams.cpp`
+- `src/chain.h`
+- `src/validation.cpp`
+- `src/rpc/blockchain.cpp`
+- `src/consensus/params.h`
+- and similar inherited files modified after 2026-03-09
+
+4. Trademark notice
+-------------------
+"QuantumBTC", "qBTC", and "QBTC" are claimed as trademarks of BearTec. The code licenses do not grant trademark rights.
+
+5. Practical scope rule
+-----------------------
+A good working rule in this repository is:
+- files newly created by BearTec in the last month -> `LICENSE-BUSL`
+- upstream inherited files -> `LICENSE`
+- BearTec modifications inside upstream files -> protected only as to the new BearTec-authored deltas, not the inherited code
+- git creation dates, commit history, and per-file header notices may be used as evidence of which parts were added or edited by BearTec during the protected period
+
+For release and compliance purposes, consult legal counsel before relying on this notice in a commercial enforcement context.

@@ -1,0 +1,39 @@
+Business Source License 1.1
+
+Licensor: BearTec
+Licensed Work: BearTec-authored original additions to the QuantumBTC repository, including standalone files first added on or after 2026-03-09 and identified in `NOTICE` or in per-file copyright headers.
+Additional Use Grant: You may copy, modify, compile, test, audit, and run the Licensed Work for personal, educational, research, security-review, testnet, and internal evaluation purposes. You may not use the Licensed Work, or a derivative of it, in production, for a commercial service, to launch a competing blockchain/network, or to sell/host/distribute a commercial offering without prior written permission from BearTec.
+Change Date: 2030-04-09
+Change License: MIT
+
+---
+
+Copyright (c) 2026 BearTec
+
+Use Limitation
+
+The Licensor grants you a non-exclusive, worldwide, non-transferable, revocable license to use, copy, modify, create derivative works from, redistribute, and make non-production use of the Licensed Work, subject to the conditions in this license and the Additional Use Grant above.
+
+Before the Change Date, Production Use of the Licensed Work requires a separate written license from the Licensor.
+
+For the purposes of this license, "Production Use" includes any use of the Licensed Work in or for:
+- a live or value-bearing blockchain network,
+- a public mainnet or commercial testnet,
+- a wallet service, exchange, payment service, hosted node, mining or pool service,
+- a paid API, SaaS, managed service, or internal commercial deployment,
+- or a competing product or service offered to third parties.
+
+Conditions
+
+1. You must retain this license, the `NOTICE` file, and all relevant copyright notices.
+2. You may not remove or alter trademark notices.
+3. This license applies only to BearTec-owned additions described above. Inherited Bitcoin Core and upstream `pqc-bitcoin` code remains under the MIT License in `LICENSE`. Embedded third-party/reference cryptography code retains its upstream license notices.
+4. Nothing in this license grants any right to use the names, logos, or marks "QuantumBTC", "qBTC", or "QBTC" except as necessary for nominative reference.
+
+Change License
+
+On and after the Change Date, the Licensed Work will automatically be made available under the MIT License.
+
+Disclaimer
+
+THE LICENSED WORK IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE LICENSED WORK OR ITS USE OR OTHER DEALINGS IN THE LICENSED WORK.

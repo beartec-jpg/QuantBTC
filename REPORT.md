@@ -1,3 +1,4 @@
+<!-- Copyright (c) 2026 BearTec. Licensed under BUSL-1.1 until 2030-04-09; then MIT. See LICENSE-BUSL and NOTICE. -->
 # QuantumBTC — Project Report & Additions Documentation
 
 **Date:** April 9, 2026

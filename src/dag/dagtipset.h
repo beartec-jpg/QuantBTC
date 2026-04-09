@@ -1,7 +1,8 @@
-// Copyright (c) 2026 beartec-jpg / QuantumBTC
+// Copyright (c) 2026 BearTec / QuantumBTC
 // Copyright (c) 2024 The QuantumBTC developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// BearTec original additions in this file are licensed under the
+// Business Source License 1.1 until 2030-04-09, after which the
+// Change License is MIT. See LICENSE-BUSL and NOTICE.
 
 #ifndef BITCOIN_DAG_DAGTIPSET_H
 #define BITCOIN_DAG_DAGTIPSET_H

@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 BearTec.
+# This file is part of QuantumBTC.
+# Licensed under the Business Source License 1.1 until 2030-04-09.
+# On 2030-04-09, the Change License becomes MIT. See LICENSE-BUSL and NOTICE.
 """
 QuantumBTC GHOSTDAG Comprehensive Test
 Mines 30-50 blocks while creating parallel forks, then analyzes:

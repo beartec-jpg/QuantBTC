@@ -1,3 +1,13 @@
+Repository licensing notice
+
+This repository contains both inherited MIT-licensed code and BearTec-authored additions.
+
+- Inherited Bitcoin Core / upstream `pqc-bitcoin` code remains governed by the MIT License below.
+- BearTec-authored standalone files added on or after 2026-03-09, and identified in `NOTICE` or per-file headers, are governed by `LICENSE-BUSL` until the Change Date (2030-04-09), after which they convert to MIT.
+- For inherited files modified by BearTec during the last month, only the BearTec-authored deltas are claimed under `LICENSE-BUSL` to the extent they are separable; upstream portions remain MIT.
+
+See `NOTICE` and `LICENSE-BUSL` for scope details.
+
 MIT License
 
 Copyright (c) 2024 QBlock

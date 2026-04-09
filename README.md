@@ -783,6 +783,12 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines.
 
 ## License
 
-This project is licensed under the MIT License — see [LICENSE](LICENSE) for details.
+QuantumBTC uses a **dual-license structure**:
+
+- **Inherited Bitcoin Core / upstream `pqc-bitcoin` code** remains under the **MIT License** — see [LICENSE](LICENSE)
+- **BearTec-authored standalone additions** created on or after `2026-03-09` are under **BUSL-1.1** until **2030-04-09**, then automatically convert to MIT — see [LICENSE-BUSL](LICENSE-BUSL) and [NOTICE](NOTICE)
+- **Recently modified inherited files** remain MIT as to upstream code; only the **BearTec-authored deltas from the last month** are claimed under `LICENSE-BUSL` to the extent they are separable and documented in git history / notices
+
+**Trademark notice:** `QuantumBTC`, `qBTC`, and `QBTC` are claimed marks of **BearTec**. The code licenses do not grant trademark rights.
 
 qBTC is forked from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin), originally created by [QBlock](https://github.com/QBlockQ) & [Qbits](https://github.com/QbitsCode), which is itself based on [Bitcoin Core](https://github.com/bitcoin/bitcoin).

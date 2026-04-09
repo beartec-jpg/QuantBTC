@@ -1,3 +1,8 @@
+// Copyright (c) 2026 BearTec / QuantumBTC
+// BearTec original additions in this file are licensed under the
+// Business Source License 1.1 until 2030-04-09, after which the
+// Change License is MIT. See LICENSE-BUSL and NOTICE.
+
 #ifndef BITCOIN_CONSENSUS_PQC_VALIDATION_H
 #define BITCOIN_CONSENSUS_PQC_VALIDATION_H
 

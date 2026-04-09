@@ -1,6 +1,7 @@
-// Copyright (c) 2024-2026 QuantumBTC developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Copyright (c) 2026 BearTec / QuantumBTC developers
+// BearTec original additions in this file are licensed under the
+// Business Source License 1.1 until 2030-04-09, after which the
+// Change License is MIT. See LICENSE-BUSL and NOTICE.
 
 #ifndef BITCOIN_EARLYPROTECTION_H
 #define BITCOIN_EARLYPROTECTION_H

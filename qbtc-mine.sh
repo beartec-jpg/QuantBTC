@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# Copyright (c) 2026 BearTec.
+# This file is part of QuantumBTC.
+# Licensed under the Business Source License 1.1 until 2030-04-09.
+# On 2030-04-09, the Change License becomes MIT. See LICENSE-BUSL and NOTICE.
+#
 # qbtc-mine.sh — Mine blocks on QuantumBTC testnet
 #
 # Usage:

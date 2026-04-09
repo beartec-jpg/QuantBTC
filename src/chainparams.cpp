@@ -1,7 +1,9 @@
 // Copyright (c) 2010 Satoshi Nakamoto
 // Copyright (c) 2009-2022 The Bitcoin Core developers
-// Distributed under the MIT software license, see the accompanying
-// file COPYING or http://www.opensource.org/licenses/mit-license.php.
+// Upstream/inherited portions of this file remain under the MIT software license.
+// BearTec-authored modifications added on or after 2026-03-09 are separately
+// claimed under the Business Source License 1.1 until 2030-04-09, to the extent
+// those deltas are separable and identifiable. See LICENSE-BUSL and NOTICE.
 
 #include <chainparams.h>
 
