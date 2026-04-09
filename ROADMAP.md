@@ -230,12 +230,30 @@ Migrated from 1-second to 10-second blocks to balance DAG utility against PQC st
 
 See [TESTREPORT-2026-04-09.md](TESTREPORT-2026-04-09.md) for the full migration analysis.
 
+### Phase 8.7: Performance Testing & Validation (Planned)
+
+**Status: 🔄 In Progress**
+
+Systematic throughput and resilience testing at scale:
+
+- [x] 7-phase stress test (baseline → ramp → sustained → burst → recovery → multi-output → cooldown)
+- [x] Max-TPS blast test: 60 wallets, 3 nodes, 180s blast → 87 tx/s confirmed, 894 tx/block peak
+- [ ] 30–60 minute sustained run at 15–20 tx/s with 50+ wallets (endurance test)
+- [ ] True GHOSTDAG parallelism test: 8–12 miners to force simultaneous blocks and verify blue/red scoring under contention
+- [ ] Mixed-version sync and longer IBD from a populated chain (~1,300+ blocks)
+- [ ] PQC signature verification CPU profiling under peak load (`getpqcsigcachestats`)
+- [ ] Benchmark signature cache hit rates during sustained blast
+- [ ] Pruning strategy validation for DAG metadata beyond 100k blocks
+
+Test scripts: `contrib/testgen/sustained_test.py`, `contrib/testgen/ghostdag_contention_test.py`
+
 ### Phase 9: Mining Infrastructure (Planned)
 
 - [ ] Stratum v2 integration for pool mining
 - [ ] DAG-aware mining pool protocol (multi-parent template)
 - [ ] GPU/ASIC miner compatibility testing
 - [ ] Difficulty adjustment tuning for real hash rate
+- [ ] Publish home mining guides (CPU/GPU/small ASIC) using current testnet difficulty
 
 ### Phase 10: Protocol Hardening (Planned)
 
@@ -245,6 +263,7 @@ See [TESTREPORT-2026-04-09.md](TESTREPORT-2026-04-09.md) for the full migration 
 - [ ] Formal security audit of PQC consensus rules
 - [ ] BIP specification for QBTC hybrid witness format
 - [ ] Add SPHINCS+ signature cache entries alongside Dilithium
+- [ ] Pruning strategy for DAG metadata as the chain grows beyond 100k blocks
 
 ### Phase 11: Mainnet Preparation (Planned)
 
@@ -376,5 +395,5 @@ Classical equivalent:         ~141 vB (7.6× smaller)
 
 ---
 
-*Last updated: April 3, 2026*
+*Last updated: April 9, 2026*
 *QuantumBTC — Quantum-safe BlockDAG for a post-quantum world*
