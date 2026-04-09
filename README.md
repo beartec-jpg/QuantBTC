@@ -2,6 +2,8 @@
 
 <p align="center">
   <img src="doc/assets/quantumbtc-logo.jpg" alt="QuantumBTC official logo" width="260" />
+  <br />
+  <sub><em>QuantumBTC logo © 2026 BearTec. All rights reserved.</em></sub>
 </p>
 
 > A quantum-resistant, high-throughput blockchain built on Bitcoin Core v28.0.0.
