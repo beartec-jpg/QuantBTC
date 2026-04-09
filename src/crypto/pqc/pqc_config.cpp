@@ -26,32 +26,28 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
         else if (arg.rfind("-pqcalgo=", 0) == 0) {
             std::string algoList = arg.substr(9);
             enabled_kems.clear();
-            
+
+            const auto handle_kem = [&](const std::string& algo) {
+                if (algo.empty()) return;
+                if (algo == "kyber") {
+                    LogPrintf("PQC WARNING: kyber KEM is currently stubbed/disabled, ignoring explicit request\n");
+                } else if (algo == "frodo") {
+                    LogPrintf("PQC WARNING: frodo KEM is currently stubbed/disabled, ignoring explicit request\n");
+                } else if (algo == "ntru") {
+                    LogPrintf("PQC WARNING: ntru KEM is currently stubbed/disabled, ignoring explicit request\n");
+                } else {
+                    LogPrintf("PQC WARNING: unknown pqcalgo '%s', ignoring\n", algo);
+                }
+            };
+
             size_t pos = 0;
             while ((pos = algoList.find(',')) != std::string::npos) {
-                std::string algo = algoList.substr(0, pos);
-                if (algo == "kyber") {
-                    enabled_kems.push_back(PQCAlgorithm::KYBER);
-                }
-                else if (algo == "frodo") {
-                    enabled_kems.push_back(PQCAlgorithm::FRODOKEM);
-                }
-                else if (algo == "ntru") {
-                    enabled_kems.push_back(PQCAlgorithm::NTRU);
-                }
+                handle_kem(algoList.substr(0, pos));
                 algoList.erase(0, pos + 1);
             }
-            
+
             // Handle last algorithm
-            if (algoList == "kyber") {
-                enabled_kems.push_back(PQCAlgorithm::KYBER);
-            }
-            else if (algoList == "frodo") {
-                enabled_kems.push_back(PQCAlgorithm::FRODOKEM);
-            }
-            else if (algoList == "ntru") {
-                enabled_kems.push_back(PQCAlgorithm::NTRU);
-            }
+            handle_kem(algoList);
         }
         else if (arg.rfind("-pqcsig=", 0) == 0) {
             std::string sigList = arg.substr(8);

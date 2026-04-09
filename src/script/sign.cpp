@@ -96,17 +96,14 @@ bool MutableTransactionSignatureCreator::CreatePQCSig(const SigningProvider& pro
 
     pqc::HybridKey hybridKey;
     if (!provider.GetHybridKey(keyid, hybridKey)) return false;
-    if (hybridKey.GetPQCPrivateKey().empty() || hybridKey.GetPQCPublicKey().empty()) return false;
+    if (!hybridKey.HasPQCPrivateKey() || hybridKey.GetPQCPublicKey().empty()) return false;
 
-    // Compute the same BIP143 sighash that ECDSA used
+    // Compute the same BIP143 sighash that ECDSA used.
     const int hashtype = nHashType == SIGHASH_DEFAULT ? SIGHASH_ALL : nHashType;
     uint256 hash = SignatureHash(scriptCode, m_txto, nIn, hashtype, amount, sigversion, m_txdata);
 
-    // Sign with Dilithium
-    pqc::Dilithium dilithium;
-    std::vector<unsigned char> privkey = hybridKey.GetPQCPrivateKey();
-    pqcSig.resize(pqc::Dilithium::SIGNATURE_SIZE);
-    if (!dilithium.Sign(std::vector<unsigned char>(hash.begin(), hash.end()), privkey, pqcSig)) {
+    // Create the detached PQC witness element without exposing the raw private key.
+    if (!hybridKey.SignPQCMessage(std::vector<unsigned char>(hash.begin(), hash.end()), pqcSig)) {
         LogPrintf("PQC: Dilithium signing failed for key %s\n", keyid.ToString());
         return false;
     }

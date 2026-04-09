@@ -29,11 +29,17 @@ static constexpr unsigned int SCRIPT_VERIFY_HYBRID_SIG = (1U << 25);
 bool HasPQCSignatures(const CTransaction& tx);
 
 /**
- * Validate PQC signatures in a transaction
- * @param[in]   tx              The transaction to validate
- * @param[in]   flags          Script verification flags
- * @param[out]  state          Validation state
- * @return true if all PQC signatures are valid
+ * Structural PQC witness precheck only.
+ *
+ * @param[in]   tx     The transaction to inspect
+ * @param[in]   flags  Script verification flags
+ * @param[out]  state  Validation state
+ * @return true if PQC witness presence/element sizes are acceptable
+ *
+ * This function validates PQC witness presence and element sizes, but it does
+ * NOT perform cryptographic signature verification. Real verification occurs in
+ * `VerifyScript()` via `src/script/interpreter.cpp`, which has the required
+ * scriptCode/sighash/amount context.
  */
 bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidationState& state);
 

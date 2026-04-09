@@ -8,6 +8,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/sphincs.h>
 #include <key.h>
 #include <pubkey.h>
 #include <script/interpreter.h>
@@ -124,6 +125,61 @@ BOOST_AUTO_TEST_CASE(valid_pqc_witness)
 }
 
 /// Correct ECDSA sig + wrong Dilithium sig → SCRIPT_ERR_PQC_SIG
+BOOST_AUTO_TEST_CASE(valid_sphincs_witness)
+{
+    ECC_Context ecc_context{};
+    CKey key = GenerateRandomKey();
+    CPubKey pubkey = key.GetPubKey();
+    CScript spk = GetScriptForDestination(WitnessV0KeyHash(pubkey));
+    CAmount value = 100000;
+
+    CMutableTransaction credit_mut = BuildCreditingTransaction(spk, value);
+    CTransaction txCredit(credit_mut);
+    CMutableTransaction txSpend = BuildSpendingTransaction(CScript(), CScriptWitness(), txCredit);
+
+    FlatSigningProvider provider;
+    provider.pubkeys[pubkey.GetID()] = pubkey;
+    provider.keys[pubkey.GetID()] = key;
+
+    CScript witnessscript;
+    witnessscript << OP_DUP << OP_HASH160 << ToByteVector(pubkey.GetID())
+                  << OP_EQUALVERIFY << OP_CHECKSIG;
+
+    MutableTransactionSignatureCreator creator(txSpend, 0, value, SIGHASH_ALL);
+
+    std::vector<unsigned char> ecdsa_sig;
+    BOOST_REQUIRE(creator.CreateSig(provider, ecdsa_sig, pubkey.GetID(),
+                                     witnessscript, SigVersion::WITNESS_V0));
+
+    pqc::SPHINCS sphincs;
+    std::vector<uint8_t> sphincs_pk, sphincs_sk;
+    BOOST_REQUIRE(sphincs.GenerateKeyPair(sphincs_pk, sphincs_sk));
+
+    uint256 sighash = SignatureHash(witnessscript, txSpend, 0, SIGHASH_ALL, value, SigVersion::WITNESS_V0);
+    std::vector<uint8_t> msg(sighash.begin(), sighash.end());
+    std::vector<uint8_t> sphincs_sig;
+    BOOST_REQUIRE(sphincs.Sign(msg, sphincs_sk, sphincs_sig));
+
+    txSpend.vin[0].scriptWitness.stack.clear();
+    txSpend.vin[0].scriptWitness.stack.push_back(ecdsa_sig);
+    txSpend.vin[0].scriptWitness.stack.push_back(
+        std::vector<unsigned char>(pubkey.begin(), pubkey.end()));
+    txSpend.vin[0].scriptWitness.stack.push_back(
+        std::vector<unsigned char>(sphincs_sig.begin(), sphincs_sig.end()));
+    txSpend.vin[0].scriptWitness.stack.push_back(
+        std::vector<unsigned char>(sphincs_pk.begin(), sphincs_pk.end()));
+
+    ScriptError err;
+    CTransaction tx(txSpend);
+    BOOST_CHECK_MESSAGE(
+        VerifyScript(CScript(), spk, &txSpend.vin[0].scriptWitness,
+                     PQC_WITNESS_FLAGS,
+                     TransactionSignatureChecker(&tx, 0, value, MissingDataBehavior::ASSERT_FAIL),
+                     &err),
+        "Valid SPHINCS+ PQC witness should pass verification");
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_OK);
+}
+
 BOOST_AUTO_TEST_CASE(wrong_dilithium_sig_rejected)
 {
     ECC_Context ecc_context{};

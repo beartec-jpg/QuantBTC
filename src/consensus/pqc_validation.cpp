@@ -19,9 +19,8 @@ static bool IsPQCWitness(const std::vector<unsigned char>& sig_elem,
     if (sig_elem.size() == pqc::Dilithium::SIGNATURE_SIZE &&
         pk_elem.size() == pqc::Dilithium::PUBLIC_KEY_SIZE)
         return true;
-    // SPHINCS+ (SLH-DSA-SHA2-128f): sig<=17088, pk=32
-    if (sig_elem.size() <= pqc::SPHINCS::SIGNATURE_SIZE &&
-        sig_elem.size() > pqc::Dilithium::SIGNATURE_SIZE &&
+    // SPHINCS+ (SLH-DSA-SHA2-128f): sig==17088, pk=32
+    if (sig_elem.size() == pqc::SPHINCS::SIGNATURE_SIZE &&
         pk_elem.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE)
         return true;
     return false;
@@ -38,6 +37,8 @@ bool HasPQCSignatures(const CTransaction& tx) {
 }
 
 bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidationState& state) {
+    // NOTE: This is intentionally a structural precheck only. Cryptographic PQC
+    // verification is consensus-enforced in VerifyScript()/interpreter.cpp.
     if (!(flags & SCRIPT_VERIFY_PQC)) {
         return true;
     }
