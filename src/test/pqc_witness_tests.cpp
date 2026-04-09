@@ -263,4 +263,88 @@ BOOST_AUTO_TEST_CASE(wrong_size_dilithium_pk_rejected)
     BOOST_CHECK_EQUAL(err, SCRIPT_ERR_PQC_SIG_SIZE);
 }
 
+/// Correct ECDSA sig + correct-size but wrong-content SPHINCS+ sig → SCRIPT_ERR_PQC_SIG
+BOOST_AUTO_TEST_CASE(wrong_sphincs_sig_rejected)
+{
+    ECC_Context ecc_context{};
+    CKey key = GenerateRandomKey();
+
+    // Generate a real SPHINCS+ keypair but sign a wrong message
+    pqc::SPHINCS sphincs;
+    std::vector<uint8_t> sphincs_pk, sphincs_sk;
+    BOOST_REQUIRE(sphincs.GenerateKeyPair(sphincs_pk, sphincs_sk));
+
+    // Sign a dummy message (NOT the real sighash) → wrong sig
+    std::vector<uint8_t> wrong_msg(32, 0xAB);
+    std::vector<uint8_t> wrong_sig;
+    BOOST_REQUIRE(sphincs.Sign(wrong_msg, sphincs_sk, wrong_sig));
+
+    CTransactionRef txCredit;
+    CMutableTransaction txSpend;
+    BuildPQCSpend(key, wrong_sig, sphincs_pk, txCredit, txSpend);
+
+    ScriptError err;
+    CTransaction tx(txSpend);
+    CScript spk = txCredit->vout[0].scriptPubKey;
+    BOOST_CHECK_MESSAGE(
+        !VerifyScript(CScript(), spk, &txSpend.vin[0].scriptWitness,
+                      PQC_WITNESS_FLAGS,
+                      TransactionSignatureChecker(&tx, 0, txCredit->vout[0].nValue, MissingDataBehavior::ASSERT_FAIL),
+                      &err),
+        "Wrong SPHINCS+ sig should be rejected");
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_PQC_SIG);
+}
+
+/// Correct ECDSA sig + wrong-size SPHINCS+ sig → SCRIPT_ERR_PQC_SIG_SIZE
+BOOST_AUTO_TEST_CASE(wrong_size_sphincs_sig_rejected)
+{
+    ECC_Context ecc_context{};
+    CKey key = GenerateRandomKey();
+
+    // Sig that's too short (100 bytes instead of 17088)
+    std::vector<unsigned char> short_sig(100, 0x42);
+    std::vector<unsigned char> valid_pk(pqc::SPHINCS::PUBLIC_KEY_SIZE, 0x00);
+
+    CTransactionRef txCredit;
+    CMutableTransaction txSpend;
+    BuildPQCSpend(key, short_sig, valid_pk, txCredit, txSpend);
+
+    ScriptError err;
+    CTransaction tx(txSpend);
+    CScript spk = txCredit->vout[0].scriptPubKey;
+    BOOST_CHECK_MESSAGE(
+        !VerifyScript(CScript(), spk, &txSpend.vin[0].scriptWitness,
+                      PQC_WITNESS_FLAGS,
+                      TransactionSignatureChecker(&tx, 0, txCredit->vout[0].nValue, MissingDataBehavior::ASSERT_FAIL),
+                      &err),
+        "Wrong-size SPHINCS+ sig should be rejected");
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_PQC_SIG_SIZE);
+}
+
+/// Correct ECDSA sig + correct-size SPHINCS+ sig + wrong-size SPHINCS+ pubkey → SCRIPT_ERR_PQC_SIG_SIZE
+BOOST_AUTO_TEST_CASE(wrong_size_sphincs_pk_rejected)
+{
+    ECC_Context ecc_context{};
+    CKey key = GenerateRandomKey();
+
+    std::vector<unsigned char> valid_sig(pqc::SPHINCS::SIGNATURE_SIZE, 0x00);
+    // Pubkey that's too large (64 bytes instead of 32)
+    std::vector<unsigned char> wrong_pk(64, 0x42);
+
+    CTransactionRef txCredit;
+    CMutableTransaction txSpend;
+    BuildPQCSpend(key, valid_sig, wrong_pk, txCredit, txSpend);
+
+    ScriptError err;
+    CTransaction tx(txSpend);
+    CScript spk = txCredit->vout[0].scriptPubKey;
+    BOOST_CHECK_MESSAGE(
+        !VerifyScript(CScript(), spk, &txSpend.vin[0].scriptWitness,
+                      PQC_WITNESS_FLAGS,
+                      TransactionSignatureChecker(&tx, 0, txCredit->vout[0].nValue, MissingDataBehavior::ASSERT_FAIL),
+                      &err),
+        "Wrong-size SPHINCS+ pubkey should be rejected");
+    BOOST_CHECK_EQUAL(err, SCRIPT_ERR_PQC_SIG_SIZE);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
