@@ -279,9 +279,10 @@ def test_garbage_sphincs_sig():
     utxo = get_spendable_utxo()
     signed_hex, witness = sign_tx_get_witness(utxo)
 
+    witness_desc = ", ".join(f"{len(w)//2}B" for w in witness)
     report("Got signed tx with ECDSA witness",
-           len(witness) == 2,
-           f"witness: [{len(witness[0])//2}B ecdsa_sig, {len(witness[1])//2}B ecdsa_pk]")
+           len(witness) >= 2,
+           f"witness: [{witness_desc}]")
 
     ecdsa_sig = witness[0]
     ecdsa_pk = witness[1]

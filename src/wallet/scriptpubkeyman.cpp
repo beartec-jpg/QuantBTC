@@ -2070,6 +2070,32 @@ util::Result<CTxDestination> DescriptorScriptPubKeyMan::GetNewDestination(const 
         if (!ExtractDestination(scripts_temp[0], dest)) {
             return util::Error{_("Error: Cannot extract destination from the generated scriptpubkey")}; // shouldn't happen
         }
+
+        // QuantumBTC: produce hybrid address Hash160(ecdsa_pk || pqc_pk) for PQC pubkey binding
+        if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
+            if (auto* wkh = std::get_if<WitnessV0KeyHash>(&dest)) {
+                CKeyID keyid = ToKeyID(*wkh);
+                auto pqc_it = m_map_pqc_keys.find(keyid);
+                if (pqc_it != m_map_pqc_keys.end()) {
+                    const auto& pqc_pub = pqc_it->second.GetPQCPublicKey();
+                    if (!pqc_pub.empty()) {
+                        auto pk_it = out_keys.pubkeys.find(keyid);
+                        if (pk_it != out_keys.pubkeys.end()) {
+                            valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
+                            std::vector<unsigned char> combined_hash(20);
+                            CHash160().Write(ecdsa_bytes).Write(pqc_pub).Finalize(combined_hash);
+                            uint160 hybrid_hash;
+                            std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
+                            dest = WitnessV0KeyHash(hybrid_hash);
+                            // Register hybrid scriptPubKey for IsMine detection
+                            CScript hybrid_spk = GetScriptForDestination(dest);
+                            m_map_script_pub_keys[hybrid_spk] = m_wallet_descriptor.next_index;
+                        }
+                    }
+                }
+            }
+        }
+
         m_wallet_descriptor.next_index++;
         WalletBatch(m_storage.GetDatabase()).WriteDescriptor(GetID(), m_wallet_descriptor);
         return dest;
@@ -2280,6 +2306,19 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                     if (!batch.WriteDescriptorPQCKey(id, pubkey, pqc_pub, pqc_priv)) {
                         throw std::runtime_error(std::string(__func__) + ": writing PQC key failed");
                     }
+
+                    // Register hybrid P2WPKH scriptPubKey for IsMine detection
+                    {
+                        valtype ecdsa_bytes(pubkey.begin(), pubkey.end());
+                        std::vector<unsigned char> combined_hash(20);
+                        CHash160().Write(ecdsa_bytes).Write(pqc_pub).Finalize(combined_hash);
+                        uint160 hybrid_hash;
+                        std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
+                        CScript hybrid_spk = GetScriptForDestination(WitnessV0KeyHash(hybrid_hash));
+                        m_map_script_pub_keys[hybrid_spk] = i;
+                        new_spks.insert(hybrid_spk);
+                    }
+
                     WalletLogPrintf("PQC: generated Dilithium keypair for %s (index %d)\n",
                                     keyid.ToString(), i);
                 }
@@ -2488,6 +2527,20 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
         m_map_signing_providers[index] = *out_keys;
     }
 
+    // QuantumBTC: index pubkeys by hybrid hash so solving/signing works for hybrid addresses
+    for (const auto& [keyid, pqckey] : m_map_pqc_keys) {
+        auto pk_it = out_keys->pubkeys.find(keyid);
+        if (pk_it != out_keys->pubkeys.end() && !pqckey.GetPQCPublicKey().empty()) {
+            valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
+            std::vector<unsigned char> combined_hash(20);
+            CHash160().Write(ecdsa_bytes).Write(pqckey.GetPQCPublicKey()).Finalize(combined_hash);
+            uint160 hybrid_hash;
+            std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
+            CKeyID hybrid_keyid(hybrid_hash);
+            out_keys->pubkeys[hybrid_keyid] = pk_it->second;
+        }
+    }
+
     if (HavePrivateKeys() && include_private) {
         FlatSigningProvider master_provider;
         master_provider.keys = GetKeys();
@@ -2497,6 +2550,18 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
         for (const auto& [keyid, pqckey] : m_map_pqc_keys) {
             if (out_keys->keys.count(keyid)) {
                 out_keys->pqc_keys[keyid] = pqckey;
+
+                // Also index PQC keys by hybrid hash for signing
+                auto pk_it = out_keys->pubkeys.find(keyid);
+                if (pk_it != out_keys->pubkeys.end() && !pqckey.GetPQCPublicKey().empty()) {
+                    valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
+                    std::vector<unsigned char> combined_hash(20);
+                    CHash160().Write(ecdsa_bytes).Write(pqckey.GetPQCPublicKey()).Finalize(combined_hash);
+                    uint160 hybrid_hash;
+                    std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
+                    CKeyID hybrid_keyid(hybrid_hash);
+                    out_keys->pqc_keys[hybrid_keyid] = pqckey;
+                }
             }
         }
     }

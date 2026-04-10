@@ -272,9 +272,10 @@ def test_sigcache_poisoning():
     utxo = get_spendable_utxo()
     signed_hex, witness, dest = sign_tx_get_witness(utxo)
 
-    report("Wallet produces 2-element ECDSA-only witness",
-           len(witness) == 2,
-           f"witness: [{len(witness[0])//2}B, {len(witness[1])//2}B]")
+    witness_desc = ", ".join(f"{len(w)//2}B" for w in witness)
+    report("Wallet produces signed witness",
+           len(witness) >= 2,
+           f"witness: [{witness_desc}]")
 
     # First submission — accepted (no PQC enforcement yet on unpatched binary)
     result1 = cli_json("testmempoolaccept", json.dumps([signed_hex]))
@@ -361,10 +362,10 @@ def test_mixed_input_partial_pqc():
     w0 = decoded["vin"][0].get("txinwitness", [])
     w1 = decoded["vin"][1].get("txinwitness", [])
 
-    report("2-input tx: both inputs have ECDSA-only witnesses",
-           (len(w0) == 2 and len(w1) == 2) or (len(w0) == 0 and len(w1) == 0),
+    report("2-input tx: both inputs have signed witnesses",
+           (len(w0) >= 2 and len(w1) >= 2) or (len(w0) == 0 and len(w1) == 0),
            f"input 0: {len(w0)} elements, input 1: {len(w1)} elements"
-           + (" (patched binary: empty witnesses expected)" if len(w0) == 0 else ""))
+           + (" (hybrid: 4-element PQC witness)" if len(w0) == 4 else ""))
 
     # Part 5c: Now craft: input 0 gets garbage PQC (4-element), input 1 stays ECDSA (2-element)
     garbage_dil_sig = secrets.token_hex(DILITHIUM_SIG_SIZE)
@@ -391,9 +392,9 @@ def test_mixed_input_partial_pqc():
     mod_w0 = mod_decoded["vin"][0].get("txinwitness", [])
     mod_w1 = mod_decoded["vin"][1].get("txinwitness", [])
 
-    report("Modified tx: input 0 = 4-element, input 1 = 2-element",
-           len(mod_w0) == 4 and len(mod_w1) == 2,
-           f"input 0: {len(mod_w0)} elements (fake PQC), input 1: {len(mod_w1)} elements (ECDSA-only)")
+    report("Modified tx: input 0 = 4-element (garbage PQC), input 1 = wallet witness",
+           len(mod_w0) == 4,
+           f"input 0: {len(mod_w0)} elements (fake PQC), input 1: {len(mod_w1)} elements")
 
     # Submit — should be rejected
     result = cli_json("testmempoolaccept", json.dumps([modified_hex]))
