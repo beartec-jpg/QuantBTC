@@ -158,3 +158,4 @@ confi*/
 
 # Out-of-tree build directory
 build-fresh/
+pqc_sign_tool

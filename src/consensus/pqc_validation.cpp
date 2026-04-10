@@ -61,6 +61,11 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidat
             return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                                  "missing-pqc-sig",
                                  strprintf("Input %u: missing required PQC signature (2-element witness)", i));
+        } else if (witness_stack.size() == 3 || witness_stack.size() > 4) {
+            // Only 2-element (ECDSA) and 4-element (hybrid PQC) P2WPKH witnesses are valid.
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                                 "bad-witness-count",
+                                 strprintf("Input %u: invalid witness element count (%u)", i, witness_stack.size()));
         }
     }
 

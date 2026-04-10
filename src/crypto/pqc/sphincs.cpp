@@ -1,5 +1,6 @@
 #include "sphincs.h"
 #include <logging.h>
+#include <support/cleanse.h>
 
 /* randombytes() is provided by the canonical definition in
  * crypto/pqc/ml-dsa/randombytes.cpp with GetStrongRandBytes.  */
@@ -27,6 +28,8 @@ bool SPHINCS::GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<uint
 
     if (crypto_sign_keypair(public_key.data(), private_key.data()) != 0) {
         LogPrintf("SPHINCS::GenerateKeyPair: crypto_sign_keypair failed\n");
+        memory_cleanse(public_key.data(), public_key.size());
+        memory_cleanse(private_key.data(), private_key.size());
         public_key.clear();
         private_key.clear();
         return false;
@@ -57,6 +60,9 @@ bool SPHINCS::Sign(const std::vector<uint8_t>& message, const std::vector<uint8_
 
 bool SPHINCS::Verify(const std::vector<uint8_t>& message, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& public_key) {
     if (public_key.size() != PUBLIC_KEY_SIZE) {
+        return false;
+    }
+    if (signature.size() != SIGNATURE_SIZE) {
         return false;
     }
 

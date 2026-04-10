@@ -10,13 +10,10 @@
 /**
  * Constant-time primitives for the Fujisaki-Okamoto (FO) transform.
  *
- * These helpers are used by NTRU::Decaps() (ntru.cpp) and
- * FrodoKEM::Decaps() (frodokem.cpp) to implement the full FO
- * transform: each Decaps re-encrypts the recovered plaintext,
- * compares the result against the received ciphertext with
- * ct_verify(), and uses ct_cmov() to select between the real
- * shared secret and a rejection value in constant time.
- * This provides IND-CCA2 security.
+ * These helpers are intended for use by KEM Decaps implementations
+ * (e.g., NTRU, FrodoKEM) to implement the full FO transform.
+ * Currently unused — all KEM implementations are disabled stubs.
+ * Retained for future use when KEMs are re-enabled.
  */
 
 /**

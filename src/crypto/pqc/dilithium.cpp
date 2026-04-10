@@ -1,10 +1,17 @@
 #include "dilithium.h"
 
 #include <logging.h>
+#include <support/cleanse.h>
 
 extern "C" {
 #include <crypto/pqc/ml-dsa/sign.h>
+#include <crypto/pqc/ml-dsa/params.h>
 }
+
+// Compile-time guards: ensure our constants match the vendored library.
+static_assert(pqc::Dilithium::PUBLIC_KEY_SIZE  == CRYPTO_PUBLICKEYBYTES, "Dilithium PUBLIC_KEY_SIZE mismatch");
+static_assert(pqc::Dilithium::PRIVATE_KEY_SIZE == CRYPTO_SECRETKEYBYTES, "Dilithium PRIVATE_KEY_SIZE mismatch");
+static_assert(pqc::Dilithium::SIGNATURE_SIZE   == CRYPTO_BYTES,          "Dilithium SIGNATURE_SIZE mismatch");
 
 namespace pqc {
 
@@ -18,6 +25,8 @@ bool Dilithium::GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<ui
 
     if (crypto_sign_keypair(public_key.data(), private_key.data()) != 0) {
         LogPrintf("Dilithium::GenerateKeyPair: crypto_sign_keypair failed\n");
+        memory_cleanse(public_key.data(), public_key.size());
+        memory_cleanse(private_key.data(), private_key.size());
         public_key.clear();
         private_key.clear();
         return false;
@@ -41,6 +50,8 @@ bool Dilithium::DeriveKeyPair(const std::vector<uint8_t>& seed,
 
     if (crypto_sign_seed_keypair(public_key.data(), private_key.data(), seed.data()) != 0) {
         LogPrintf("Dilithium::DeriveKeyPair: crypto_sign_seed_keypair failed\n");
+        memory_cleanse(public_key.data(), public_key.size());
+        memory_cleanse(private_key.data(), private_key.size());
         public_key.clear();
         private_key.clear();
         return false;

@@ -80,6 +80,10 @@ std::vector<uint256> GhostdagManager::ComputeMergeset(
     std::unordered_set<uint256, BlockHasher> visited;
     visited.insert(selected_parent);
 
+    // DoS prevention: cap mergeset size to avoid unbounded memory/CPU
+    // consumption from adversarial DAG topologies.
+    static constexpr size_t MAX_MERGESET_SIZE = 1000;
+
     // BFS queue: start from all parents except the selected parent
     std::queue<uint256> q;
     for (const uint256& p : block_parents) {
@@ -91,6 +95,7 @@ std::vector<uint256> GhostdagManager::ComputeMergeset(
     }
 
     while (!q.empty()) {
+        if (mergeset.size() >= MAX_MERGESET_SIZE) break;
         uint256 cur = q.front();
         q.pop();
 

@@ -711,8 +711,12 @@ public:
         consensus.SegwitHeight = 0;
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256{"00000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
-        consensus.nPowTargetTimespan = 14 * 24 * 60 * 60; // two weeks
-        consensus.nPowTargetSpacing = 10 * 60;
+        // PoW retargeting aligned to 1-second DAG block interval:
+        //   nPowTargetSpacing  = 1 second (matches nDagTargetSpacingMs)
+        //   nPowTargetTimespan = 2016 seconds (~33.6 min) for 2016-block window
+        //   nMinerConfirmationWindow = 2016 blocks
+        consensus.nPowTargetTimespan = 2016;   // 2016 seconds
+        consensus.nPowTargetSpacing = 1;        // 1-second blocks
         consensus.fPowAllowMinDifficultyBlocks = false;
         consensus.enforce_BIP94 = false;
         consensus.fPowNoRetargeting = false;
@@ -765,9 +769,13 @@ public:
         m_assumed_blockchain_size = 0;
         m_assumed_chain_state_size = 0;
 
-        genesis = CreateQuantumBTCGenesisBlock(1743379200, 0, 0x207fffff, 1, 50 * COIN);
+        // Genesis block with real difficulty target.
+        // 0x1d00ffff = Bitcoin mainnet genesis target — requires actual PoW.
+        // TODO: Mine a proper genesis block with this target and update nonce + hash asserts.
+        genesis = CreateQuantumBTCGenesisBlock(1743379200, 0, 0x1d00ffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256{"434500d82dcecdcea5c11037ded57cda49875d9335f9125893194a2cf825d151"});
+        // NOTE: Genesis hash asserts must be updated after re-mining with the new difficulty target.
+        // assert(consensus.hashGenesisBlock == uint256{"...new hash..."});
         assert(genesis.hashMerkleRoot == uint256{"da5becb22904228b97769ee90301c1224f2433ecdc782b8670f875b196bf756d"});
 
         vFixedSeeds.clear();

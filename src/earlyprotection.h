@@ -67,17 +67,29 @@ static constexpr int ACTIVATION_DELAY_MIN_SECS = 30;
 static constexpr int ACTIVATION_DELAY_MAX_SECS = 300;
 
 /**
- * Extract the /24 subnet prefix from an IP address string.
- * E.g. "192.168.1.42" -> "192.168.1", "::1" -> "::1".
+ * Extract a subnet prefix from an IP address string.
+ * IPv4: /24 — e.g. "192.168.1.42" -> "192.168.1"
+ * IPv6: /48 — e.g. "2001:db8:abcd:1234::1" -> "2001:db8:abcd"
  */
 inline std::string GetSubnet24(const std::string& ip)
 {
-    // For IPv4: strip last octet
+    // For IPv4: strip last octet (/24)
     auto pos = ip.rfind('.');
     if (pos != std::string::npos) {
         return ip.substr(0, pos);
     }
-    // For IPv6 or other formats: use the full address (conservative)
+    // For IPv6: extract the first 3 groups (/48 prefix).
+    // Split on ':' and take the first 3 segments.
+    size_t colon_count = 0;
+    for (size_t i = 0; i < ip.size(); ++i) {
+        if (ip[i] == ':') {
+            ++colon_count;
+            if (colon_count == 3) {
+                return ip.substr(0, i);
+            }
+        }
+    }
+    // Fallback: return full address if fewer than 3 colons
     return ip;
 }
 

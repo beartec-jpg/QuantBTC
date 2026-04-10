@@ -68,6 +68,17 @@ void SignatureCache::ComputeEntryDilithiumRaw(uint256& entry, Span<const unsigne
     hasher.Finalize(entry.begin());
 }
 
+void SignatureCache::ComputeEntryPQC(uint256& entry, Span<const unsigned char> pqc_sig, Span<const unsigned char> pqc_pubkey, Span<const unsigned char> scriptCode, unsigned char sigversion, unsigned char hashType) const
+{
+    CSHA256 hasher = m_salted_hasher_dilithium;
+    hasher.Write(pqc_sig.data(), pqc_sig.size());
+    hasher.Write(pqc_pubkey.data(), pqc_pubkey.size());
+    hasher.Write(scriptCode.data(), scriptCode.size());
+    hasher.Write(&sigversion, 1);
+    hasher.Write(&hashType, 1);
+    hasher.Finalize(entry.begin());
+}
+
 bool SignatureCache::Get(const uint256& entry, const bool erase)
 {
     std::shared_lock<std::shared_mutex> lock(cs_sigcache);
@@ -126,6 +137,53 @@ bool CachingTransactionSignatureChecker::CheckDilithiumSignature(const std::vect
     ++m_signature_cache.m_dilithium_misses;
 
     if (!TransactionSignatureChecker::CheckDilithiumSignature(pqc_sig, pqc_pubkey, ecdsa_sig, scriptCode, sigversion))
+        return false;
+
+    if (store) m_signature_cache.Set(entry);
+    return true;
+}
+
+bool CachingTransactionSignatureChecker::CheckPQCSignature(const std::vector<unsigned char>& pqcSig, const std::vector<unsigned char>& pqcPubKey, const CScript& scriptCode, SigVersion sigversion, int nHashType) const
+{
+    uint256 entry;
+    m_signature_cache.ComputeEntryPQC(entry,
+        Span<const unsigned char>(pqcSig),
+        Span<const unsigned char>(pqcPubKey),
+        Span<const unsigned char>(scriptCode.data(), scriptCode.size()),
+        static_cast<unsigned char>(sigversion),
+        static_cast<unsigned char>(nHashType & 0xff));
+
+    if (m_signature_cache.Get(entry, !store)) {
+        ++m_signature_cache.m_dilithium_hits;
+        return true;
+    }
+    ++m_signature_cache.m_dilithium_misses;
+
+    if (!TransactionSignatureChecker::CheckPQCSignature(pqcSig, pqcPubKey, scriptCode, sigversion, nHashType))
+        return false;
+
+    if (store) m_signature_cache.Set(entry);
+    return true;
+}
+
+bool CachingTransactionSignatureChecker::CheckSPHINCSSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig, const CScript& scriptCode, SigVersion sigversion) const
+{
+    // Build a cache entry using the Dilithium domain hasher (same PQC domain).
+    uint256 entry;
+    m_signature_cache.ComputeEntryDilithiumRaw(entry,
+        Span<const unsigned char>(pqc_sig),
+        Span<const unsigned char>(pqc_pubkey),
+        Span<const unsigned char>(ecdsa_sig),
+        Span<const unsigned char>(scriptCode.data(), scriptCode.size()),
+        static_cast<unsigned char>(sigversion));
+
+    if (m_signature_cache.Get(entry, !store)) {
+        ++m_signature_cache.m_dilithium_hits;
+        return true;
+    }
+    ++m_signature_cache.m_dilithium_misses;
+
+    if (!TransactionSignatureChecker::CheckSPHINCSSignature(pqc_sig, pqc_pubkey, ecdsa_sig, scriptCode, sigversion))
         return false;
 
     if (store) m_signature_cache.Set(entry);

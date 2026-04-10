@@ -71,13 +71,15 @@ bool HybridKey::SignPQCMessage(const std::vector<unsigned char>& message,
         return false;
     }
 
-    // Use a short-lived copy only for the signing call, then cleanse it immediately.
-    std::vector<unsigned char> privkey(m_pqc_private_key.begin(), m_pqc_private_key.end());
+    // Use a short-lived copy in secure (mlocked) memory for the signing call,
+    // then cleanse it immediately. PQCPrivateKey uses secure_allocator which
+    // prevents the OS from swapping the key material to disk.
+    PQCPrivateKey privkey_secure(m_pqc_private_key.begin(), m_pqc_private_key.end());
+    std::vector<unsigned char> privkey(privkey_secure.begin(), privkey_secure.end());
     PQCManager& manager = PQCManager::GetInstance();
     const bool ok = manager.Sign(PQCAlgorithm::DILITHIUM, message, privkey, signature);
-    if (!privkey.empty()) {
-        memory_cleanse(privkey.data(), privkey.size());
-    }
+    memory_cleanse(privkey.data(), privkey.size());
+    memory_cleanse(privkey_secure.data(), privkey_secure.size());
     if (!ok) {
         LogPrintf("HybridKey::SignPQCMessage: Dilithium signing failed\n");
     }

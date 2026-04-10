@@ -7,6 +7,7 @@
 #include <hash.h>
 #include <addresstype.h>
 #include <bech32.h>
+#include <chainparams.h>
 #include <key_io.h>
 #include <serialize.h>
 #include <util/strencodings.h>
@@ -48,8 +49,8 @@ std::string ConvertToPQCAddress(const std::string& address) {
     ConvertBits<8, 5, true>([&](unsigned char c) { data.push_back(c); },
                             program.begin(), program.end());
 
-    // Encode as Bech32m with "bc" HRP
-    return bech32::Encode(bech32::Encoding::BECH32M, "bc", data);
+    // Encode as Bech32m using the active chain's HRP
+    return bech32::Encode(bech32::Encoding::BECH32M, Params().Bech32HRP(), data);
 }
 
 CScript CreatePQCWitnessProgram(const uint160& pubKeyHash) {
