@@ -2792,19 +2792,23 @@ bool DescriptorScriptPubKeyMan::AddPQCKey(const CKeyID& key_id, const std::vecto
     hybrid.SetPQCKey(pqc_pubkey, pqc_privkey);
     m_map_pqc_keys[key_id] = std::move(hybrid);
 
-    // Register hybrid P2WPKH scriptPubKey for IsMine detection on wallet reload
-    if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
-        for (const auto& [pubkey, index] : m_map_pubkeys) {
-            if (pubkey.GetID() == key_id) {
-                valtype ecdsa_bytes(pubkey.begin(), pubkey.end());
-                std::vector<unsigned char> combined_hash(20);
-                CHash160().Write(ecdsa_bytes).Write(pqc_pubkey).Finalize(combined_hash);
-                uint160 hybrid_hash;
-                std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
-                CScript hybrid_spk = GetScriptForDestination(WitnessV0KeyHash(hybrid_hash));
-                m_map_script_pub_keys[hybrid_spk] = index;
-                break;
-            }
+    // Register hybrid P2WPKH scriptPubKey for IsMine detection on wallet reload.
+    // Must update BOTH the per-descriptor m_map_script_pub_keys AND the wallet-level
+    // m_cached_spks (via TopUpCallback), since CWallet::IsMine() only checks the cache.
+    for (const auto& [pubkey, index] : m_map_pubkeys) {
+        if (pubkey.GetID() == key_id) {
+            valtype ecdsa_bytes(pubkey.begin(), pubkey.end());
+            std::vector<unsigned char> combined_hash(20);
+            CHash160().Write(ecdsa_bytes).Write(pqc_pubkey).Finalize(combined_hash);
+            uint160 hybrid_hash;
+            std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
+            CScript hybrid_spk = GetScriptForDestination(WitnessV0KeyHash(hybrid_hash));
+            m_map_script_pub_keys[hybrid_spk] = index;
+            // Notify the wallet to add this SPK to m_cached_spks
+            std::set<CScript> new_spks;
+            new_spks.insert(hybrid_spk);
+            m_storage.TopUpCallback(new_spks, this);
+            break;
         }
     }
 
