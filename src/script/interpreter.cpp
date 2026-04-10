@@ -2015,7 +2015,7 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                     if (!CheckSignatureEncoding(stack[0], flags, serror)) return false;
                     if (!CheckPubKeyEncoding(stack[1], flags, SigVersion::WITNESS_V0, serror)) return false;
                     if (!checker.CheckECDSASignature(stack[0], stack[1], pqc_scriptCode, SigVersion::WITNESS_V0)) {
-                        return set_error(serror, SCRIPT_ERR_SIG);
+                        return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
                     }
                     return set_success(serror);
                 }
