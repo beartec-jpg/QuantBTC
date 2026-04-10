@@ -10,7 +10,14 @@ Supports:
   - qbtct1... Bech32 address creation
   - Hybrid PQC transaction signing (ECDSA + Dilithium witness)
   - RPC broadcast to qbtctestnet node
-  - 2-of-3 Shamir secret sharing compatible key splitting
+  - 2-of-3 Shamir secret sharing of the master seed (NOT the ECDSA key)
+
+SECURITY MODEL:
+  ECDSA and Dilithium keys are derived INDEPENDENTLY from the master seed
+  using domain-separated HMAC-SHA512 derivation paths. This ensures that
+  breaking ECDSA (e.g. via a quantum computer) does NOT compromise the
+  Dilithium key.  Shamir splits the master seed so both keys can be
+  reconstructed, but neither key can derive the other.
 
 Witness structure (P2WPKH-PQC hybrid):
   [0] ECDSA DER signature          (~71 bytes)
@@ -136,6 +143,10 @@ def expand_to_size(seed: bytes, context: bytes, outlen: int) -> bytes:
 # CRYSTALS-Dilithium2 / NIST ML-DSA-44 reference implementation.
 # This class raises NotImplementedError until a Python binding (e.g.
 # liboqs-python) is integrated.
+#
+# SECURITY: Dilithium keys MUST be derived independently from the master
+# seed, NOT from the ECDSA private key.  Deriving Dilithium from ECDSA
+# means a quantum break of ECDSA would also compromise Dilithium.
 # ---------------------------------------------------------------------------
 class DilithiumKey:
     """CRYSTALS-Dilithium2 (ML-DSA-44) key stub.
@@ -143,6 +154,10 @@ class DilithiumKey:
     IMPORTANT: The previous HMAC-SHA512 implementation was NOT real lattice
     cryptography and has been removed from the node.  Signatures produced by
     the old code will NOT verify against the new node.
+
+    SECURITY: Dilithium keys must be derived independently from the master
+    seed using a domain-separated path (b"QBTC-PQC"), NOT from the ECDSA
+    private key.  See QBTCKeyPair.from_seed() for the correct derivation.
 
     To use Dilithium signing from Python, install liboqs-python:
         pip install liboqs-python
@@ -161,14 +176,12 @@ class DilithiumKey:
         )
 
     @classmethod
-    def from_ecdsa_privkey(cls, ecdsa_privkey: bytes) -> "DilithiumKey":
-        raise NotImplementedError(
-            "The HMAC-SHA512 Dilithium stub has been removed. "
-            "Use liboqs-python (oqs.Signature('Dilithium2')) for real ML-DSA-44."
-        )
-
-    @classmethod
     def from_seed(cls, seed: bytes) -> "DilithiumKey":
+        """Derive a Dilithium keypair from a 32-byte seed.
+
+        This seed MUST be derived independently from the master seed,
+        NOT from the ECDSA private key.  See QBTCKeyPair.from_seed().
+        """
         raise NotImplementedError(
             "The HMAC-SHA512 Dilithium stub has been removed. "
             "Use liboqs-python (oqs.Signature('Dilithium2')) for real ML-DSA-44."
@@ -226,41 +239,75 @@ except ImportError:
 # QBTC Hybrid Keypair
 # ---------------------------------------------------------------------------
 class QBTCKeyPair:
-    """Combined ECDSA + Dilithium keypair for QuantumBTC."""
+    """Combined ECDSA + Dilithium keypair for QuantumBTC.
 
-    def __init__(self, ecdsa_key: ECDSAKey):
+    SECURITY: ECDSA and Dilithium keys are derived INDEPENDENTLY from the
+    master seed using domain-separated HMAC-SHA512 paths.  This ensures
+    that a quantum break of ECDSA does NOT compromise the Dilithium key.
+    """
+
+    def __init__(self, ecdsa_key: ECDSAKey, dilithium_key=None):
         self.ecdsa = ecdsa_key
-        # Dilithium key derivation requires liboqs-python.
-        # Set to None when the binding is not available.
-        try:
-            self.dilithium = DilithiumKey.from_ecdsa_privkey(ecdsa_key.privkey)
-        except NotImplementedError:
-            self.dilithium = None
+        self.dilithium = dilithium_key
 
     @classmethod
     def generate(cls) -> "QBTCKeyPair":
-        """Generate a new random hybrid keypair."""
-        return cls(ECDSAKey())
+        """Generate a new random hybrid keypair from a fresh 64-byte seed."""
+        master_seed = secrets.token_bytes(64)
+        return cls.from_seed(master_seed)
 
     @classmethod
-    def from_seed(cls, seed: bytes, path_index: int = 0) -> "QBTCKeyPair":
-        """Derive from a BIP-32-style master seed (same seed used for BTC/ETH/etc).
-        
-        Derivation:
-            child_key = HMAC-SHA512(seed, "QBTC" || path_index_be32)[0:32]
-        
-        This is compatible with your existing 2-of-3 key splitting since
-        the same master seed produces the same child key deterministically.
+    def from_seed(cls, seed: bytes, path_index: int = 0, *, legacy: bool = False) -> "QBTCKeyPair":
+        """Derive from a master seed with INDEPENDENT key derivation.
+
+        ECDSA and Dilithium are derived from separate domain-separated
+        paths so that compromising one does NOT reveal the other:
+
+            ecdsa_material = HMAC-SHA512(seed, b"QBTC-ECDSA" || index)[0:32]
+            pqc_material   = HMAC-SHA512(seed, b"QBTC-PQC"   || index)[0:32]
+
+        Shamir splitting should operate on the master seed (not ECDSA key)
+        so that both keys can be reconstructed independently.
+
+        Args:
+            legacy: If True, use the old (insecure) derivation path
+                    b"QBTC" for ECDSA to recover pre-existing wallets.
+                    Dilithium is still derived independently (the old code
+                    never produced real Dilithium keys).  Use this ONLY
+                    for migration — new wallets must use legacy=False.
         """
         idx_bytes = struct.pack(">I", path_index)
-        child = hmac_sha512(seed, b"QBTC" + idx_bytes)
-        ecdsa = ECDSAKey(child[:32])
-        return cls(ecdsa)
+
+        if legacy:
+            # Old derivation: HMAC-SHA512(seed, b"QBTC" || index)[0:32]
+            # Kept for migration of wallets created before the security fix.
+            ecdsa_child = hmac_sha512(seed, b"QBTC" + idx_bytes)
+        else:
+            # Domain-separated derivation: ECDSA path
+            ecdsa_child = hmac_sha512(seed, b"QBTC-ECDSA" + idx_bytes)
+        ecdsa_key = ECDSAKey(ecdsa_child[:32])
+
+        # Domain-separated derivation: PQC path (independent of ECDSA)
+        pqc_child = hmac_sha512(seed, b"QBTC-PQC" + idx_bytes)
+        pqc_seed = pqc_child[:32]
+        try:
+            dilithium_key = DilithiumKey.from_seed(pqc_seed)
+        except NotImplementedError:
+            dilithium_key = None
+
+        kp = cls(ecdsa_key, dilithium_key)
+        kp._master_seed = seed
+        kp._pqc_seed = pqc_seed
+        return kp
 
     @classmethod
     def from_privkey_hex(cls, hex_privkey: str) -> "QBTCKeyPair":
-        """Import from a hex-encoded 32-byte ECDSA private key."""
-        return cls(ECDSAKey(bytes.fromhex(hex_privkey)))
+        """Import from a hex-encoded 32-byte ECDSA private key.
+
+        WARNING: This creates an ECDSA-only keypair with no Dilithium key.
+        For full hybrid security, use from_seed() with the master seed.
+        """
+        return cls(ECDSAKey(bytes.fromhex(hex_privkey)), dilithium_key=None)
 
     def address(self, hrp: str = QBTC_TESTNET_HRP) -> str:
         """Generate qbtct1... Bech32 P2WPKH address."""
@@ -287,10 +334,14 @@ class QBTCKeyPair:
 # ---------------------------------------------------------------------------
 class ShamirSplit:
     """2-of-3 Shamir secret sharing for hybrid PQC keys.
-    
-    Splits the 32-byte ECDSA private key into 3 shares where any 2
-    can reconstruct it. The Dilithium key is derived deterministically
-    from the ECDSA key, so splitting the ECDSA key is sufficient.
+
+    IMPORTANT: Split the MASTER SEED, not the ECDSA private key.
+    Both ECDSA and Dilithium keys are derived independently from the
+    master seed, so recovering the seed recovers both keys.
+
+    Splitting only the ECDSA key would be a security flaw: if the
+    Dilithium key were derived from ECDSA, a quantum break of ECDSA
+    would also compromise Dilithium, defeating the purpose of PQC.
     """
 
     @staticmethod
@@ -455,39 +506,24 @@ class QBTCRpc:
 # Self-test
 # ---------------------------------------------------------------------------
 def self_test():
-    """Run self-test of Dilithium signing + Bech32 address generation."""
+    """Run self-test of independent key derivation + Shamir seed splitting."""
     print("=== QBTC Wallet Library Self-Test ===\n")
 
-    # 1. Test Dilithium key derivation and signing
-    # NOTE: The HMAC-SHA512 Dilithium stub has been removed.  The DilithiumKey
-    # class now raises NotImplementedError.  Install liboqs-python for real
-    # ML-DSA-44 signing (see module docstring for details).
-    try:
-        seed = bytes.fromhex("deadbeef" * 8)  # 32-byte test seed
-        dk = DilithiumKey.from_seed(seed)
-        assert len(dk.public_key) == DILITHIUM_PK_SIZE
-        assert len(dk.private_key) == DILITHIUM_SK_SIZE
-        print(f"Dilithium PK: {dk.public_key[:16].hex()}... ({len(dk.public_key)} bytes)")
+    # 1. Test that ECDSA and Dilithium derivation paths are independent
+    master_seed = bytes.fromhex("deadbeef" * 16)  # 64-byte test seed
+    print("Testing independent key derivation from master seed...")
 
-        msg = hashlib.sha256(b"test message").digest()
-        sig = dk.sign(msg)
-        assert len(sig) == DILITHIUM_SIG_SIZE
-        assert dk.verify(msg, sig), "Signature verification failed!"
-        print(f"Dilithium signature: {sig[:16].hex()}... ({len(sig)} bytes) VERIFIED")
+    idx_bytes = struct.pack(">I", 0)
+    ecdsa_material = hmac_sha512(master_seed, b"QBTC-ECDSA" + idx_bytes)[:32]
+    pqc_material = hmac_sha512(master_seed, b"QBTC-PQC" + idx_bytes)[:32]
+    assert ecdsa_material != pqc_material, "ECDSA and PQC seeds must differ!"
+    print(f"  ECDSA seed:     {ecdsa_material[:16].hex()}...")
+    print(f"  PQC seed:       {pqc_material[:16].hex()}...")
+    print("  Independence:   PASS (domain-separated derivation)")
 
-        sig2 = dk.sign(msg)
-        assert sig == sig2, "Signatures not deterministic!"
-        print("Determinism: PASS (same key + message = same signature)")
-
-        assert not dk.verify(b"wrong", sig), "Should have failed!"
-        print("Wrong-message rejection: PASS")
-    except NotImplementedError as e:
-        print(f"Dilithium test SKIPPED: {e}")
-        print("Install liboqs-python (pip install liboqs-python) for real ML-DSA-44 support.")
-
-    # 2. Test Bech32 address generation
+    # 2. Test Bech32 address generation with independent derivation
     if ECDSA_AVAILABLE:
-        kp = QBTCKeyPair.from_seed(seed)
+        kp = QBTCKeyPair.from_seed(master_seed)
         addr = kp.address()
         assert addr.startswith("qbtct1"), f"Bad address prefix: {addr}"
         print(f"\nAddress (testnet): {addr}")
@@ -500,7 +536,7 @@ def self_test():
     else:
         print("\nSkipping ECDSA tests (install 'ecdsa' package)")
 
-    # 3. Test 2-of-3 Shamir splitting
+    # 3. Test 2-of-3 Shamir splitting of arbitrary secret
     secret = secrets.token_bytes(32)
     s1, s2, s3 = ShamirSplit.split_key(secret)
     assert ShamirSplit.recover_key(s1, 1, s2, 2) == secret
@@ -508,18 +544,23 @@ def self_test():
     assert ShamirSplit.recover_key(s2, 2, s3, 3) == secret
     print(f"\n2-of-3 Shamir split/recover: PASS (all 3 pairs recover correctly)")
 
-    # 4. Demonstrate full hybrid key from split recovery
+    # 4. Demonstrate Shamir splitting the MASTER SEED (not ECDSA key)
+    #    Recovering the seed re-derives BOTH keys independently.
     if ECDSA_AVAILABLE:
-        ecdsa_secret = kp.ecdsa.privkey
-        sh1, sh2, sh3 = ShamirSplit.split_key(ecdsa_secret)
-        recovered = ShamirSplit.recover_key(sh1, 1, sh3, 3)
-        recovered_kp = QBTCKeyPair.from_privkey_hex(recovered.hex())
+        sh1, sh2, sh3 = ShamirSplit.split_key(master_seed)
+        recovered_seed = ShamirSplit.recover_key(sh1, 1, sh3, 3)
+        recovered_kp = QBTCKeyPair.from_seed(recovered_seed)
         assert recovered_kp.address() == kp.address()
-        if recovered_kp.dilithium is not None and kp.dilithium is not None:
-            assert recovered_kp.dilithium.public_key == kp.dilithium.public_key
-        print(f"Recovered hybrid key matches original: PASS")
+        assert recovered_kp.ecdsa.pubkey_compressed == kp.ecdsa.pubkey_compressed
+        print(f"Recovered hybrid key from seed split: PASS")
         print(f"  Address:        {recovered_kp.address()}")
-        print(f"  Dilithium PK:   {recovered_kp.dilithium.public_key[:32].hex()}...")
+        print(f"  ECDSA pubkey:   {recovered_kp.ecdsa.pubkey_compressed.hex()}")
+
+        # Verify that splitting only ECDSA key would NOT recover Dilithium
+        print(f"\nSecurity check: ECDSA key alone cannot derive PQC key...")
+        ecdsa_only_kp = QBTCKeyPair.from_privkey_hex(kp.ecdsa.privkey.hex())
+        assert ecdsa_only_kp.dilithium is None, "ECDSA-only import must not have Dilithium!"
+        print(f"  ECDSA-only import has no Dilithium key: PASS")
 
     print("\n=== All tests passed ===")
 

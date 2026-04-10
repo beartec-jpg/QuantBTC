@@ -15,11 +15,12 @@ BearTec Wallet
 ├── Existing BTC/ETH/etc chains
 └── QuantumBTC (QBTC)              ← new chain
     ├── Key Generation               qbtc_wallet.QBTCKeyPair
-    │   ├── ECDSA (secp256k1)        Standard Bitcoin signing
-    │   └── Dilithium2 (ML-DSA-44)   PQC signing (derived from ECDSA key)
+    │   ├── ECDSA (secp256k1)        HMAC-SHA512(seed, "QBTC-ECDSA" || idx)
+    │   └── Dilithium2 (ML-DSA-44)   HMAC-SHA512(seed, "QBTC-PQC"   || idx)
+    │       (ECDSA and Dilithium derived INDEPENDENTLY from master seed)
     ├── Address                       qbtct1... (Bech32 P2WPKH)
     ├── Transaction Signing           4-element witness (hybrid PQC)
-    └── 2-of-3 Key Splitting         Shamir over 32-byte ECDSA seed
+    └── 2-of-3 Seed Splitting        Shamir over 64-byte master seed
 ```
 
 ## 1. Generate PQC + ECDSA Keypairs from Seed
@@ -33,13 +34,14 @@ master_seed = bytes.fromhex("your_bip39_seed_hex_here")
 # Derive QBTC keypair (index 0 = first account)
 kp = QBTCKeyPair.from_seed(master_seed, path_index=0)
 
-# The Dilithium key is derived deterministically from the ECDSA key:
-#   dil_seed = HMAC-SHA512(ecdsa_privkey, "QuantBTC-Dilithium")[0:32]
-# So the same seed always produces the same hybrid keypair.
+# ECDSA and Dilithium are derived INDEPENDENTLY via domain separation:
+#   ecdsa_key = HMAC-SHA512(seed, "QBTC-ECDSA" || index)[0:32]
+#   pqc_seed  = HMAC-SHA512(seed, "QBTC-PQC"   || index)[0:32]
+# Breaking ECDSA does NOT compromise the Dilithium key.
 
 print(kp.address())                        # qbtct1q7x...
 print(kp.ecdsa.pubkey_compressed.hex())     # 02abc...
-print(kp.dilithium.public_key[:32].hex())   # first 32 bytes of 1312-byte Dilithium PK
+# print(kp.dilithium.public_key[:32].hex())  # requires liboqs-python
 ```
 
 ## 2. Create a Valid qbtct1... Bech32 Address
@@ -153,32 +155,49 @@ txid = rpc.sendtoaddress("qbtct1q...", 42.0, fee_rate=10)
 # Node handles the hybrid PQC signing internally.
 ```
 
-## 5. 2-of-3 Key Splitting with PQC
+## 5. 2-of-3 Seed Splitting with PQC
 
-Since the Dilithium key is **deterministically derived** from the ECDSA private key,
-splitting the 32-byte ECDSA private key is enough to protect **both** keys.
+**IMPORTANT:** Split the **master seed**, not the ECDSA private key.
+Both ECDSA and Dilithium are derived independently from the seed,
+so recovering the seed recovers both keys.
 
 ```python
 from qbtc_wallet import QBTCKeyPair, ShamirSplit
 
-kp = QBTCKeyPair.generate()
+kp = QBTCKeyPair.generate()  # creates a 64-byte master seed internally
 
-# Split the ECDSA private key into 3 shares
-s1, s2, s3 = ShamirSplit.split_key(kp.ecdsa.privkey)
+# Split the MASTER SEED into 3 shares (64 bytes each)
+s1, s2, s3 = ShamirSplit.split_key(kp._master_seed)
 
 # Store shares in separate locations (hardware, paper, vault)
-print(f"Share 1: {s1.hex()}")
+print(f"Share 1: {s1.hex()}")  # 64 bytes
 print(f"Share 2: {s2.hex()}")
 print(f"Share 3: {s3.hex()}")
 
 # Recover from any 2 shares (indices are 1-based)
-recovered_key = ShamirSplit.recover_key(s1, 1, s3, 3)
+recovered_seed = ShamirSplit.recover_key(s1, 1, s3, 3)
 
-# Reconstruct full hybrid keypair
-recovered = QBTCKeyPair.from_privkey_hex(recovered_key.hex())
+# Reconstruct full hybrid keypair from recovered seed
+recovered = QBTCKeyPair.from_seed(recovered_seed)
 
-assert recovered.address() == kp.address()                          # same address
-assert recovered.dilithium.public_key == kp.dilithium.public_key    # same Dilithium key
+assert recovered.address() == kp.address()  # same ECDSA address
+# Both ECDSA and Dilithium keys are independently re-derived from the seed
+```
+
+### Migration from Old Wallets
+
+Wallets created before the security fix used `b"QBTC"` as the derivation
+tag. Use `legacy=True` to recover those keys, then migrate funds:
+
+```python
+# Recover old wallet
+old_kp = QBTCKeyPair.from_seed(master_seed, legacy=True)
+
+# Create new wallet with secure derivation
+new_kp = QBTCKeyPair.from_seed(master_seed)  # legacy=False (default)
+
+# Send funds from old address to new address via node RPC
+rpc.sendtoaddress(new_kp.address(), old_balance, fee_rate=10)
 ```
 
 ### Integration with Existing BearTec 2-of-3
@@ -192,7 +211,7 @@ master_shares = beartec_split_mnemonic(mnemonic_words)
 # When recovering, derive QBTC key from the recovered master seed
 recovered_seed = beartec_recover(master_shares[0], master_shares[2])
 kp = QBTCKeyPair.from_seed(recovered_seed)
-# Both ECDSA and Dilithium keys are now available
+# Both ECDSA and Dilithium keys are now available and independent
 ```
 
 ## Network Parameters
