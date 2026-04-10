@@ -760,6 +760,11 @@ void InitParameterInteraction(ArgsManager& args)
         } catch (...) {} // chain type not yet determined — use false
 
         pqcconf.enable_pqc = args.GetBoolArg("-pqc", pqc_default);
+        // QuantumBTC: prevent disabling PQC on chains where it is mandatory
+        if (pqc_default && !pqcconf.enable_pqc) {
+            LogPrintf("WARNING: PQC cannot be disabled on this chain (DEPLOYMENT_PQC=ALWAYS_ACTIVE). Forcing -pqc=1.\n");
+            pqcconf.enable_pqc = true;
+        }
         pqcconf.enable_hybrid_signatures = pqcconf.enable_pqc; // default: same as -pqc
         std::string pqcmode = args.GetArg("-pqcmode", "hybrid");
         if (pqcmode == "classical") {

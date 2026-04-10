@@ -8,6 +8,7 @@
 #include <crypto/ripemd160.h>
 #include <crypto/sha1.h>
 #include <crypto/sha256.h>
+#include <consensus/pqc_validation.h>
 #include <crypto/pqc/dilithium.h>
 #include <crypto/pqc/sphincs.h>
 #include <logging.h>
@@ -1958,20 +1959,34 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
             // BIP141 P2WPKH: 20-byte witness v0 program (which encodes Hash160(pubkey))
             if (stack.size() == 4) {
                 // QuantBTC PQC-extended P2WPKH: [ecdsa_sig, pubkey, pqc_sig, pqc_pubkey]
-                // Strip the PQC elements after verifying the appropriate PQC scheme
-                // over the same BIP143 sighash that ECDSA will verify below.
                 const valtype& pqc_pubkey = SpanPopBack(stack);
                 const valtype& pqc_sig = SpanPopBack(stack);
 
-                // Build the implied P2PKH script (same scriptCode ECDSA will use)
-                CScript pqc_scriptCode;
-                pqc_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
-
-                // The ECDSA signature remains at stack[0] after the two pops.
-                if (stack.size() < 2 || stack[0].empty()) {
+                // stack now has [ecdsa_sig, ecdsa_pubkey]
+                if (stack.size() != 2 || stack[0].empty() || stack[1].empty()) {
                     return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
                 }
 
+                // SECURITY: Verify PQC pubkey is bound to the UTXO.
+                // Hybrid addresses: program = Hash160(ecdsa_pk || pqc_pk)
+                // Legacy addresses:  program = Hash160(ecdsa_pk)
+                valtype combined_hash(20);
+                CHash160().Write(stack[1]).Write(pqc_pubkey).Finalize(combined_hash);
+                bool is_hybrid_addr = std::equal(combined_hash.begin(), combined_hash.end(), program.begin());
+
+                valtype ecdsa_hash(20);
+                CHash160().Write(stack[1]).Finalize(ecdsa_hash);
+                bool is_legacy_addr = std::equal(ecdsa_hash.begin(), ecdsa_hash.end(), program.begin());
+
+                if (!is_hybrid_addr && !is_legacy_addr) {
+                    return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+                }
+
+                // Build the scriptCode for BIP143 sighash computation.
+                CScript pqc_scriptCode;
+                pqc_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
+
+                // Verify PQC signature over the BIP143 sighash.
                 if (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
                     pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
                     const int nHashType = stack[0].back();
@@ -1979,25 +1994,40 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                                                    SigVersion::WITNESS_V0, nHashType)) {
                         return set_error(serror, SCRIPT_ERR_PQC_SIG);
                     }
-                    LogDebug(BCLog::VALIDATION,
-                             "PQC: verified Dilithium signature (%u-byte sig, %u-byte pk) for hybrid P2WPKH input\n",
-                             pqc_sig.size(), pqc_pubkey.size());
                 } else if (pqc_sig.size() == pqc::SPHINCS::SIGNATURE_SIZE &&
                            pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
                     if (!checker.CheckSPHINCSSignature(pqc_sig, pqc_pubkey, stack[0],
                                                        pqc_scriptCode, SigVersion::WITNESS_V0)) {
                         return set_error(serror, SCRIPT_ERR_PQC_SIG);
                     }
-                    LogDebug(BCLog::VALIDATION,
-                             "PQC: verified SPHINCS+ signature (%u-byte sig, %u-byte pk) for hybrid P2WPKH input\n",
-                             pqc_sig.size(), pqc_pubkey.size());
                 } else {
                     return set_error(serror, SCRIPT_ERR_PQC_SIG_SIZE);
                 }
-                // stack now has 2 elements - proceed with standard ECDSA verification
+
+                LogDebug(BCLog::VALIDATION,
+                         "PQC: verified %s signature (hybrid_addr=%d) for P2WPKH input\n",
+                         pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE ? "Dilithium" : "SPHINCS+",
+                         is_hybrid_addr);
+
+                if (is_hybrid_addr) {
+                    // Hybrid address: ECDSA pubkey is NOT Hash160-committed to program
+                    // (program = Hash160(ecdsa_pk||pqc_pk)), so we verify ECDSA explicitly.
+                    if (!CheckSignatureEncoding(stack[0], flags, serror)) return false;
+                    if (!CheckPubKeyEncoding(stack[1], flags, SigVersion::WITNESS_V0, serror)) return false;
+                    if (!checker.CheckECDSASignature(stack[0], stack[1], pqc_scriptCode, SigVersion::WITNESS_V0)) {
+                        return set_error(serror, SCRIPT_ERR_SIG);
+                    }
+                    return set_success(serror);
+                }
+                // Legacy address: fall through to implied P2PKH script execution
+                // which verifies Hash160(ecdsa_pk) == program and checks ECDSA sig.
             }
             if (stack.size() != 2) {
-                return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH); // 2 items in witness
+                return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+            }
+            // Reject ECDSA-only (2-element) witnesses when hybrid PQC signatures are mandatory.
+            if (flags & Consensus::SCRIPT_VERIFY_HYBRID_SIG) {
+                return set_error(serror, SCRIPT_ERR_PQC_SIG);
             }
             exec_script << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
             return ExecuteWitnessScript(stack, exec_script, flags, SigVersion::WITNESS_V0, checker, execdata, serror);

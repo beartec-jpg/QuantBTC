@@ -90,7 +90,7 @@ mining_loop() {
         else
             sleep 2  # brief backoff on error
         fi
-        sleep 0.5  # ~50% duty cycle — mine, brief pause, mine
+        sleep 1.5  # ~50% duty cycle on 2-core — mine, pause, mine
     done
 }
 
@@ -123,7 +123,7 @@ tx_loop() {
             POOLED=$(cli getmempoolinfo 2>/dev/null | grep '"size"' | grep -o '[0-9]*' || echo "?")
             log "TX: round=${round} sent=${sent}/${TX_PER_ROUND} total=${total_tx} mempool=${POOLED}"
         fi
-        sleep 2  # pace the tx spray
+        sleep 3  # pace the tx spray
     done
 }
 

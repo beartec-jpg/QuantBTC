@@ -8,6 +8,7 @@
 #include <crypto/pqc/pqc_config.h>
 #include <crypto/pqc/dilithium.h>
 #include <crypto/pqc/sphincs.h>
+#include <tinyformat.h>
 
 namespace Consensus {
 
@@ -43,8 +44,6 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidat
         return true;
     }
 
-    bool pqc_found = false;
-
     for (size_t i = 0; i < tx.vin.size(); i++) {
         const auto& witness_stack = tx.vin[i].scriptWitness.stack;
         if (witness_stack.empty()) {
@@ -52,20 +51,17 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidat
         }
 
         if (witness_stack.size() == 4) {
-            if (IsPQCWitness(witness_stack[2], witness_stack[3])) {
-                pqc_found = true;
-            } else {
+            if (!IsPQCWitness(witness_stack[2], witness_stack[3])) {
                 return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                                      "bad-pqc-witness",
-                                     "Invalid PQC witness element sizes");
+                                     strprintf("Input %u: invalid PQC witness element sizes", i));
             }
+        } else if ((flags & SCRIPT_VERIFY_HYBRID_SIG) && witness_stack.size() == 2) {
+            // Every witness input must have PQC when HYBRID_SIG is enforced.
+            return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                                 "missing-pqc-sig",
+                                 strprintf("Input %u: missing required PQC signature (2-element witness)", i));
         }
-    }
-
-    if ((flags & SCRIPT_VERIFY_HYBRID_SIG) && !pqc_found) {
-        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
-                             "missing-pqc-sig",
-                             "Missing required PQC signature");
     }
 
     return true;

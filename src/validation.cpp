@@ -2422,6 +2422,7 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
     // QuantumBTC: enable PQC signature verification when deployment active
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_PQC)) {
         flags |= Consensus::SCRIPT_VERIFY_PQC;
+        flags |= Consensus::SCRIPT_VERIFY_HYBRID_SIG;
     }
 
     return flags;
@@ -2645,6 +2646,17 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
 
         if (!tx.IsCoinBase())
         {
+            // QuantumBTC: enforce PQC witness presence for all non-coinbase txs
+            if (flags & Consensus::SCRIPT_VERIFY_HYBRID_SIG) {
+                BlockValidationState pqc_state;
+                if (!Consensus::CheckPQCSignatures(tx, flags, pqc_state)) {
+                    state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                                  pqc_state.GetRejectReason(), pqc_state.GetDebugMessage());
+                    LogError("%s: PQC signature check failed: %s, %s\n", __func__, tx.GetHash().ToString(), state.ToString());
+                    return false;
+                }
+            }
+
             CAmount txfee = 0;
             TxValidationState tx_state;
             if (!Consensus::CheckTxInputs(tx, tx_state, view, pindex->nHeight, txfee)) {
