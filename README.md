@@ -28,6 +28,7 @@ qBTC (QuantumBTC) transforms Bitcoin Core into a quantum-safe, high-throughput b
 | PQC-aware fee estimation | ✅ |
 | RBF and CPFP support | ✅ |
 | DAG-aware block validation and reorg handling | ✅ |
+| Cross-chain atomic swaps (QBTC ↔ USDC via HTLC) | ✅ |
 | Unique bech32 addresses (`qbtct1...` / `qbtc1...`) | ✅ |
 
 ---

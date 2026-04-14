@@ -145,6 +145,7 @@ Brought up a standalone QuantumBTC testnet network:
 | **Multiple wallets** | ✅ | Concurrent wallets, cross-wallet PQC verification |
 | **Wallet encryption** | ✅ | Encrypt/unlock/lock cycle with PQC signing |
 | **DAG parallel blocks** | ✅ | Multiple concurrent tips, GHOSTDAG blue ordering |
+| **Cross-chain atomic swaps** | ✅ | QBTC ↔ USDC via HTLC (P2WSH + EVM), 3 swaps completed |
 | **`qbtct1...` addresses** | ✅ | Unique bech32 prefix, no confusion with Bitcoin |
 
 ### What's Not Yet Production-Ready
@@ -180,16 +181,14 @@ Brought up a live 3-node testnet with public services:
 - [ ] Docker images for easy node deployment
 - [ ] Operator documentation (systemd service files, monitoring)
 
-**Live Network Stats (April 5, 2026):**
+**Live Network Stats (April 14, 2026):**
 
 | Metric | Value |
 |--------|-------|
-| Chain height | ~96,600+ blocks |
-| Total transactions | ~134,900+ |
-| Chain size on disk | ~1.34 GB |
+| Chain height | ~35,600+ blocks (post-wipe for 10s migration) |
+| Chain size on disk | ~3.27 GB |
 | Active peers per node | 3–4 |
-| Total mined supply | ~8,050 QBTC |
-| Transaction rate | ~7.2 tx/s |
+| Cross-chain swaps completed | 3 (QBTC ↔ USDC) |
 | Node uptime | Continuous since deployment |
 
 ### Phase 8.5: Memory & Consensus Hardening
@@ -231,7 +230,24 @@ Migrated from 1-second to 10-second blocks to balance DAG utility against PQC st
 
 See [TESTREPORT-2026-04-09.md](TESTREPORT-2026-04-09.md) for the full migration analysis.
 
-### Phase 8.7: Performance Testing & Validation (Planned)
+### Phase 8.7: Cross-Chain Atomic Swaps (QBTC ↔ USDC)
+
+**Status: ✅ Complete**
+
+First-ever cross-chain atomic swap between a post-quantum blockchain and an EVM stablecoin, executed April 14, 2026:
+
+- [x] EVM HTLC smart contract deployed on Ethereum Sepolia (`0xaF898a5F565c0cAE1746122ad475c0B7F160A3eb`)
+- [x] QBTC P2WSH HTLC script — hash-only claim path (secret = proof, no private key needed)
+- [x] Swap coordination server (Node.js/Express/PostgreSQL) — secret generation, state tracking, claim verification
+- [x] Web wallet integration — HTLC construction, EVM interaction, order book UI
+- [x] Timelock safety: QBTC 48h (seller refund) > EVM 24h (buyer refund)
+- [x] Fixed `pqc_validation.cpp` to allow 3-element P2WSH witnesses alongside PQC 4-element witnesses
+- [x] **3 successful swaps completed** — 0.03 QBTC ↔ 13 USDC, all verified on both chains
+- [x] All HTLC addresses fully settled (0 balance, preimages revealed on-chain)
+
+See [ATOMIC-SWAP-REPORT.md](ATOMIC-SWAP-REPORT.md) for full transaction details and protocol documentation.
+
+### Phase 8.8: Performance Testing & Validation (Planned)
 
 **Status: 🔄 In Progress**
 
@@ -396,5 +412,5 @@ Classical equivalent:         ~141 vB (7.6× smaller)
 
 ---
 
-*Last updated: April 9, 2026*
+*Last updated: April 14, 2026*
 *QuantumBTC — Quantum-safe BlockDAG for a post-quantum world*
