@@ -2419,10 +2419,13 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
         flags |= SCRIPT_VERIFY_NULLDUMMY;
     }
 
-    // QuantumBTC: enable PQC signature verification when deployment active
+    // QuantumBTC: enable PQC signature verification when deployment active.
+    // SCRIPT_VERIFY_PQC validates PQC sigs when present (4-element witness).
+    // SCRIPT_VERIFY_HYBRID_SIG rejects ECDSA-only (2-element) witnesses — disabled
+    // to allow dual-mode: hot wallet (ECDSA-only) + vault (PQC hybrid).
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_PQC)) {
         flags |= Consensus::SCRIPT_VERIFY_PQC;
-        flags |= Consensus::SCRIPT_VERIFY_HYBRID_SIG;
+        // flags |= Consensus::SCRIPT_VERIFY_HYBRID_SIG;  // disabled: allow ECDSA-only sends
     }
 
     return flags;
