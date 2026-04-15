@@ -117,6 +117,9 @@ public:
     std::optional<uint32_t> m_version;
     //! Caps weight of resulting tx
     std::optional<int> m_max_tx_weight{std::nullopt};
+    //! Override PQC hybrid signing for this transaction.
+    //! nullopt = use global pqcmode setting, true = force hybrid sig, false = force classical-only.
+    std::optional<bool> m_use_pqc_signing;
 
     CCoinControl();
 

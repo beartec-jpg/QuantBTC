@@ -27,6 +27,7 @@
 #include <wallet/spend.h>
 #include <wallet/transaction.h>
 #include <wallet/wallet.h>
+#include <crypto/pqc/pqc_config.h>
 
 #include <cmath>
 
@@ -1318,8 +1319,12 @@ static util::Result<CreatedTransactionResult> CreateTransactionInternal(
         return util::Error{error};
     }
 
-    if (sign && !wallet.SignTransaction(txNew)) {
-        return util::Error{_("Signing transaction failed")};
+    if (sign) {
+        // Apply per-transaction PQC signing override from coin_control
+        pqc::PQCSigningOverride pqc_guard(coin_control.m_use_pqc_signing);
+        if (!wallet.SignTransaction(txNew)) {
+            return util::Error{_("Signing transaction failed")};
+        }
     }
 
     // Return the constructed transaction data.

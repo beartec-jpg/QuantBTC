@@ -92,7 +92,7 @@ bool MutableTransactionSignatureCreator::CreatePQCSig(const SigningProvider& pro
                                                        const CScript& scriptCode,
                                                        SigVersion sigversion) const
 {
-    if (!pqc::PQCConfig::GetInstance().enable_hybrid_signatures) return false;
+    if (!pqc::PQCConfig::GetInstance().ShouldSignPQC()) return false;
 
     pqc::HybridKey hybridKey;
     if (!provider.GetHybridKey(keyid, hybridKey)) return false;
@@ -620,7 +620,7 @@ bool SignSignature(const SigningProvider& provider, const CScript& fromPubKey, C
     bool complete = ProduceSignature(provider, creator, fromPubKey, sig_data);
     UpdateInput(txTo.vin.at(nIn), sig_data);
 
-    if (complete && pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
+    if (complete && pqc::PQCConfig::GetInstance().ShouldSignPQC()) {
         std::vector<unsigned char> script_sig_data(txTo.vin[nIn].scriptSig.begin(), txTo.vin[nIn].scriptSig.end());
         CKeyID keyid;
         std::vector<std::vector<unsigned char>> solutions;
@@ -830,7 +830,7 @@ public:
                       std::vector<unsigned char>& pqcPubKey, const CKeyID& keyid,
                       const CScript& scriptCode, SigVersion sigversion) const override
     {
-        if (!pqc::PQCConfig::GetInstance().enable_hybrid_signatures) return false;
+        if (!pqc::PQCConfig::GetInstance().ShouldSignPQC()) return false;
         pqcSig.assign(pqc::Dilithium::SIGNATURE_SIZE, '\000');
         pqcPubKey.assign(pqc::Dilithium::PUBLIC_KEY_SIZE, '\000');
         return true;

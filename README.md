@@ -722,15 +722,17 @@ QuantumBTC achieves high throughput despite PQC-sized transactions (~4,100 bytes
 | **GHOSTDAG parallelism** | 12.5% multi-parent blocks | 8 concurrent miners, K=32 (max 2 parents observed vs 32 allowed) |
 | **Stress test (7-phase)** | 4,532 txs, 67.7% success | 15 tx/s sustained, peak 343 tx/block (44.2% fill) |
 | **10-node stress test** | 10,000/10,000 txs (100% success) | 13.4 tx/s, P95 latency 146 ms |
+| **50K high-throughput (90/10 ECDSA/PQC)** | 49,998/50,000 txs (100% success) | 61.2 tx/s, 10 nodes, 29.2% multi-parent DAG blocks |
+| **72-hour surge endurance** | ~417,000 txs over 72.7h | 0 consensus splits, 0 data loss, 25,736 blocks |
 | **Submit latency (P95)** | 146 ms | Cross-node PQC hybrid transactions |
 | **Block relay (P95)** | 368 ms | 10-node full mesh |
 | **vs Bitcoin throughput** | **8–19× higher** | Despite 12× larger transactions |
 
 **PQC signing overhead:** Dilithium-2 signing takes ~2.7ms vs ECDSA's ~0.2ms (13.5×), with signatures 34× larger (2,420 bytes vs 72 bytes). The `sendtoaddress` RPC at ~130ms creates a serial bottleneck of ~7–8 tx/s per node — the chain itself handles 89 tx/s. Batch/async sending eliminates this limit.
 
-All transactions carry dual ECDSA + ML-DSA-44 (Dilithium-2) signatures verified at consensus. Full reports: [Max-TPS Blast](TESTREPORT-2026-04-09-MAX-TPS.md) | [7-Phase Stress](TESTREPORT-2026-04-09-STRESS.md) | [Sustained Endurance & GHOSTDAG](TESTREPORT-2026-04-09-SUSTAINED-GHOSTDAG.md).
+All transactions carry dual ECDSA + ML-DSA-44 (Dilithium-2) signatures verified at consensus. Full reports: [Max-TPS Blast](TESTREPORT-2026-04-09-MAX-TPS.md) | [7-Phase Stress](TESTREPORT-2026-04-09-STRESS.md) | [Sustained Endurance & GHOSTDAG](TESTREPORT-2026-04-09-SUSTAINED-GHOSTDAG.md) | [50K High-Throughput](TESTREPORT-2026-04-15-PROJECTIONS.md) | [72-Hour Surge](TESTREPORT-2026-04-14-72HR-FINAL.md) | [Security Audit](TESTREPORT-2026-07-15-SECURITY-AUDIT.md).
 
-**Testnet status (April 9, 2026):** Chain height ~1,898 across 3 seed nodes. See [doc/join-testnet.md](doc/join-testnet.md) to connect and mine.
+**Testnet status (April 15, 2026):** Chain height ~154,000+ across 3 seed nodes, ~417,000+ transactions confirmed, 72-hour surge endurance test completed with zero consensus splits. Security audit: 86/90 pass, 0 unexpected failures ([full report](TESTREPORT-2026-07-15-SECURITY-AUDIT.md)). See [doc/join-testnet.md](doc/join-testnet.md) to connect and mine.
 
 **UTXO management matters:** Nodes with more pre-split UTXOs sustain higher throughput. N3 (1,920 UTXOs) hit 57 tx/s sustained with 0% failure; N1 (254 UTXOs) was limited to 12.5 tx/s. Use `contrib/beartec-wallet/utxo-splitter.py` to prepare wallets for high-throughput operation.
 

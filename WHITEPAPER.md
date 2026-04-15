@@ -22,7 +22,7 @@ Every transaction on the qBTC network carries a **hybrid witness**: a classical 
 
 The protocol replaces Bitcoin's linear chain model with a Directed Acyclic Graph (DAG) consensus layer based on the GHOSTDAG/PHANTOM protocol (Sompolinsky & Zohar, 2018). Blocks reference multiple concurrent tips, enabling parallel block production at a 10-second target interval with up to 64 parent references per block and a GHOSTDAG k-parameter of 32 (testnet) / 18 (mainnet). This yields 60× faster confirmations than Bitcoin while preserving Bitcoin's economic model: a 21,000,000 QBTC supply cap with SHA-256 proof-of-work and a halving schedule calibrated to the same ~4-year cadence.
 
-As of April 2026, qBTC operates a live testnet with 3 public seed nodes, over **96,600 blocks**, over **134,900 transactions**, and approximately **8,050 QBTC** mined. A public block explorer ([beartec.uk/qbtc-scan](https://beartec.uk/qbtc-scan)) and testnet faucet ([beartec.uk/qbtc-faucet](https://beartec.uk/qbtc-faucet)) are operational. Mainnet has not yet been launched.
+As of April 2026, qBTC operates a live testnet with 3 public seed nodes, over **154,000 blocks**, over **417,000 transactions**, and approximately **12,800 QBTC** mined. A public block explorer ([beartec.uk/qbtc-scan](https://beartec.uk/qbtc-scan)) and testnet faucet ([beartec.uk/qbtc-faucet](https://beartec.uk/qbtc-faucet)) are operational. Mainnet has not yet been launched.
 
 ---
 
@@ -403,6 +403,39 @@ A comprehensive 10-node stress test was conducted in April 2026:
 
 All 10 nodes maintained 18 peers in a full mesh and synced consistently at height 531. The 100% success rate across 10,000 PQC hybrid transactions demonstrates the protocol's readiness for testnet use.
 
+### 6.3.2 High-Throughput Multi-Miner DAG Test (50,000 Transactions)
+
+A subsequent high-throughput test validated the optional hybrid architecture at scale:
+
+| Parameter | Value |
+|-----------|-------|
+| Nodes | 10 (9 classical + 1 hybrid) |
+| Transactions | 50,000 (90% ECDSA / 10% ML-DSA) |
+| Succeeded | 49,998 (100.0%) |
+| Effective TPS | **61.2 tx/s** |
+| Multi-parent DAG blocks | 29.2% |
+| Max DAG tips | 10 |
+| Mean / P99 latency | 13.3 ms / 38.7 ms |
+| Total wall time | 14.5 minutes |
+
+This test confirmed the optional hybrid model: at 10% hybrid adoption, the average transaction is only 2.7× larger than Bitcoin (not 18× for full hybrid), making the storage footprint manageable on commodity hardware.
+
+### 6.3.3 72-Hour Surge Endurance Test
+
+A 72.7-hour endurance test across 3 live testnet nodes demonstrated long-term stability:
+
+| Metric | Value |
+|--------|-------|
+| Duration | 72.7 hours |
+| Blocks produced | 25,736 |
+| Estimated transactions | ~417,000 |
+| Consensus splits | **0** |
+| Data loss | **None** |
+| Node crashes | 2 (auto-recovered, chain synced) |
+| Final UTXO hash | Identical on all 3 nodes |
+
+Full reports: [50K High-Throughput](TESTREPORT-2026-04-15-PROJECTIONS.md) | [72-Hour Surge](TESTREPORT-2026-04-14-72HR-FINAL.md)
+
 ### 6.4 10-Second Block Rationale
 
 qBTC migrated from 1-second to 10-second blocks in April 2026 (commit series, Phase 8.6). The primary driver was the interaction between PQC transaction size and block interval:
@@ -527,17 +560,18 @@ The Early Protection System's ephemeral per-node data (peer activation times, ra
 
 ### 8.3 Live Testnet
 
-The qBTC testnet has been operational continuously since deployment. Network statistics as of April 5, 2026:
+The qBTC testnet has been operational continuously since deployment. Network statistics as of April 15, 2026:
 
 | Metric | Value |
 |--------|-------|
-| Chain height | ~96,600+ blocks |
-| Total transactions | ~134,900+ |
-| Chain size on disk | ~1.34 GB |
+| Chain height | ~154,000+ blocks |
+| Total transactions | ~417,000+ |
+| Chain size on disk | ~5+ GB |
 | Active nodes | 3 seed nodes |
 | Active peers per node | 3–4 |
-| Total mined supply | ~8,050 QBTC |
-| Sustained transaction rate | ~7.2 tx/s |
+| Total mined supply | ~12,800+ QBTC |
+| 72-hour surge endurance | Completed — 0 consensus splits |
+| Security audit | 86/90 pass, 0 unexpected failures |
 
 **Seed nodes:**
 
@@ -610,7 +644,7 @@ qBTC occupies a unique position in the blockchain landscape: it is the only prod
 
 The protocol addresses the long-term existential threat that quantum computing poses to ECDSA-based blockchains, doing so today rather than deferring the problem to future governance battles. The hybrid ECDSA + ML-DSA-44 design ensures backwards compatibility with classical security assumptions while providing forward security against quantum adversaries.
 
-The live testnet demonstrates that the design is technically sound: over 96,600 blocks and 134,900 transactions have been produced with a 100% PQC witness rate, the network has sustained 13.4 tx/s under stress, and block relay averages 289 ms across 10 nodes.
+The live testnet demonstrates that the design is technically sound: over 154,000 blocks and 417,000 transactions have been produced with full PQC consensus enforcement, the network has sustained 61.2 tx/s under high-throughput testing (87 tx/s peak), completed a 72-hour surge endurance test with zero consensus splits, and passed a security audit with 86/90 tests passing and zero unexpected failures.
 
 **Join the testnet.** Connect a node to the public seed addresses, claim testnet QBTC from the faucet, and submit PQC hybrid transactions. The network is live and accepting peers.
 

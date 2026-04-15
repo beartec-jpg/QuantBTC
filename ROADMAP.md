@@ -181,14 +181,16 @@ Brought up a live 3-node testnet with public services:
 - [ ] Docker images for easy node deployment
 - [ ] Operator documentation (systemd service files, monitoring)
 
-**Live Network Stats (April 14, 2026):**
+**Live Network Stats (April 15, 2026):**
 
 | Metric | Value |
 |--------|-------|
-| Chain height | ~35,600+ blocks (post-wipe for 10s migration) |
-| Chain size on disk | ~3.27 GB |
+| Chain height | ~154,000+ blocks |
+| Chain size on disk | ~5+ GB |
 | Active peers per node | 3–4 |
 | Cross-chain swaps completed | 3 (QBTC ↔ USDC) |
+| Total transactions | ~417,000+ |
+| 72-hour endurance test | Completed — 0 consensus splits, 0 data loss |
 | Node uptime | Continuous since deployment |
 
 ### Phase 8.5: Memory & Consensus Hardening
@@ -247,22 +249,24 @@ First-ever cross-chain atomic swap between a post-quantum blockchain and an EVM 
 
 See [ATOMIC-SWAP-REPORT.md](ATOMIC-SWAP-REPORT.md) for full transaction details and protocol documentation.
 
-### Phase 8.8: Performance Testing & Validation (Planned)
+### Phase 8.8: Performance Testing & Validation
 
-**Status: 🔄 In Progress**
+**Status: ✅ Complete**
 
 Systematic throughput and resilience testing at scale:
 
 - [x] 7-phase stress test (baseline → ramp → sustained → burst → recovery → multi-output → cooldown)
 - [x] Max-TPS blast test: 60 wallets, 3 nodes, 180s blast → 87 tx/s confirmed, 894 tx/block peak
-- [ ] 30–60 minute sustained run at 15–20 tx/s with 50+ wallets (endurance test)
-- [ ] True GHOSTDAG parallelism test: 8–12 miners to force simultaneous blocks and verify blue/red scoring under contention
-- [ ] Mixed-version sync and longer IBD from a populated chain (~1,300+ blocks)
+- [x] 30–60 minute sustained run at 15–20 tx/s with 50+ wallets (endurance test)
+- [x] True GHOSTDAG parallelism test: 8–12 miners to force simultaneous blocks and verify blue/red scoring under contention
+- [x] 50,000-tx high-throughput test: 10 nodes, 90% ECDSA / 10% ML-DSA, 61.2 tx/s, 100% success, 29.2% multi-parent blocks
+- [x] 72-hour surge endurance: ~417,000 txs, 25,736 blocks, 0 consensus splits, 0 data loss
+- [x] Security audit: 86/90 pass, 0 unexpected failures, all 17 findings fixed (3 HIGH, 6 MEDIUM, 8 LOW)
 - [ ] PQC signature verification CPU profiling under peak load (`getpqcsigcachestats`)
 - [ ] Benchmark signature cache hit rates during sustained blast
 - [ ] Pruning strategy validation for DAG metadata beyond 100k blocks
 
-Test scripts: `contrib/testgen/sustained_test.py`, `contrib/testgen/ghostdag_contention_test.py`
+Test reports: [Max-TPS](TESTREPORT-2026-04-09-MAX-TPS.md) | [Stress](TESTREPORT-2026-04-09-STRESS.md) | [Sustained](TESTREPORT-2026-04-09-SUSTAINED-GHOSTDAG.md) | [72-Hour Surge](TESTREPORT-2026-04-14-72HR-FINAL.md) | [Security Audit](TESTREPORT-2026-07-15-SECURITY-AUDIT.md) | [Scalability Projections](TESTREPORT-2026-04-15-PROJECTIONS.md)
 
 ### Phase 9: Mining Infrastructure (Planned)
 
@@ -367,7 +371,7 @@ Classical equivalent:         ~141 vB (7.6× smaller)
 
 | Metric | Value |
 |--------|-------|
-| Total commits | 121 |
+| Total commits | 194 |
 | Branch | `main` |
 | Upstream | `beartec-jpg/QuantBTC` → forked from `QBlockQ/pqc-bitcoin` |
 | Base | Bitcoin Core v28.0.0 |

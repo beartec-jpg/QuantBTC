@@ -250,6 +250,10 @@ RPCHelpMan sendtoaddress()
                                          "dirty if they have previously been used in a transaction. If true, this also activates avoidpartialspends, grouping outputs by their addresses."},
                     {"fee_rate", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"not set, fall back to wallet fee estimation"}, "Specify a fee rate in " + CURRENCY_ATOM + "/vB."},
                     {"verbose", RPCArg::Type::BOOL, RPCArg::Default{false}, "If true, return extra information about the transaction."},
+                    {"pqc", RPCArg::Type::BOOL, RPCArg::Optional::OMITTED, "Override PQC hybrid signing for this transaction.\n"
+                                         "true = force hybrid (ECDSA + Dilithium) signature,\n"
+                                         "false = force classical ECDSA-only signature.\n"
+                                         "Default uses the node's pqcmode setting."},
                 },
                 {
                     RPCResult{"if verbose is not set or set to false",
@@ -275,6 +279,10 @@ RPCHelpMan sendtoaddress()
                     "\nSend 0.5 BTC with a fee rate of 25 " + CURRENCY_ATOM + "/vB using named arguments\n"
                     + HelpExampleCli("-named sendtoaddress", "address=\"" + EXAMPLE_ADDRESS[0] + "\" amount=0.5 fee_rate=25")
                     + HelpExampleCli("-named sendtoaddress", "address=\"" + EXAMPLE_ADDRESS[0] + "\" amount=0.5 fee_rate=25 subtractfeefromamount=false replaceable=true avoid_reuse=true comment=\"2 pizzas\" comment_to=\"jeremy\" verbose=true")
+                    + "\nSend 0.1 BTC with classical ECDSA-only signature (no PQC)\n"
+                    + HelpExampleCli("-named sendtoaddress", "address=\"" + EXAMPLE_ADDRESS[0] + "\" amount=0.1 pqc=false")
+                    + "\nSend 0.1 BTC with forced hybrid PQC signature\n"
+                    + HelpExampleCli("-named sendtoaddress", "address=\"" + EXAMPLE_ADDRESS[0] + "\" amount=0.1 pqc=true")
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
@@ -304,6 +312,11 @@ RPCHelpMan sendtoaddress()
     coin_control.m_avoid_partial_spends |= coin_control.m_avoid_address_reuse;
 
     SetFeeEstimateMode(*pwallet, coin_control, /*conf_target=*/request.params[6], /*estimate_mode=*/request.params[7], /*fee_rate=*/request.params[9], /*override_min_fee=*/false);
+
+    // QuantumBTC: per-transaction PQC signing override
+    if (!request.params[11].isNull()) {
+        coin_control.m_use_pqc_signing = request.params[11].get_bool();
+    }
 
     EnsureWalletIsUnlocked(*pwallet);
 
@@ -352,6 +365,10 @@ RPCHelpMan sendmany()
                       + FeeModesDetail(std::string("economical mode is used if the transaction is replaceable;\notherwise, conservative mode is used"))},
                     {"fee_rate", RPCArg::Type::AMOUNT, RPCArg::DefaultHint{"not set, fall back to wallet fee estimation"}, "Specify a fee rate in " + CURRENCY_ATOM + "/vB."},
                     {"verbose", RPCArg::Type::BOOL, RPCArg::Default{false}, "If true, return extra information about the transaction."},
+                    {"pqc", RPCArg::Type::BOOL, RPCArg::Optional::OMITTED, "Override PQC hybrid signing for this transaction.\n"
+                                         "true = force hybrid (ECDSA + Dilithium) signature,\n"
+                                         "false = force classical ECDSA-only signature.\n"
+                                         "Default uses the node's pqcmode setting."},
                 },
                 {
                     RPCResult{"if verbose is not set or set to false",
@@ -403,6 +420,11 @@ RPCHelpMan sendmany()
     }
 
     SetFeeEstimateMode(*pwallet, coin_control, /*conf_target=*/request.params[6], /*estimate_mode=*/request.params[7], /*fee_rate=*/request.params[8], /*override_min_fee=*/false);
+
+    // QuantumBTC: per-transaction PQC signing override
+    if (!request.params[10].isNull()) {
+        coin_control.m_use_pqc_signing = request.params[10].get_bool();
+    }
 
     std::vector<CRecipient> recipients = CreateRecipients(
             ParseOutputs(sendTo),
@@ -1249,6 +1271,10 @@ RPCHelpMan send()
                     },
                     {"max_tx_weight", RPCArg::Type::NUM, RPCArg::Default{MAX_STANDARD_TX_WEIGHT}, "The maximum acceptable transaction weight.\n"
                                                   "Transaction building will fail if this can not be satisfied."},
+                    {"pqc", RPCArg::Type::BOOL, RPCArg::Optional::OMITTED, "Override PQC hybrid signing for this transaction.\n"
+                                         "true = force hybrid (ECDSA + Dilithium) signature,\n"
+                                         "false = force classical ECDSA-only signature.\n"
+                                         "Default uses the node's pqcmode setting."},
                 },
                 FundTxDoc()),
                 RPCArgOptions{.oneline_description="options"}},
@@ -1298,6 +1324,10 @@ RPCHelpMan send()
             coin_control.m_allow_other_inputs = rawTx.vin.size() == 0;
             if (options.exists("max_tx_weight")) {
                 coin_control.m_max_tx_weight = options["max_tx_weight"].getInt<int>();
+            }
+            // QuantumBTC: per-transaction PQC signing override
+            if (options.exists("pqc")) {
+                coin_control.m_use_pqc_signing = options["pqc"].get_bool();
             }
             SetOptionsInputWeights(options["inputs"], options);
             // Clear tx.vout since it is not meant to be used now that we are passing outputs directly.

@@ -107,7 +107,7 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
         return false;
     }
 
-    if (!PQCConfig::GetInstance().enable_hybrid_signatures) {
+    if (!PQCConfig::GetInstance().ShouldSignPQC()) {
         signature = std::move(classical_sig);
         return true;
     }

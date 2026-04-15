@@ -3,6 +3,7 @@
 
 #include "pqc_manager.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,10 +34,39 @@ struct PQCConfig {
         static PQCConfig instance;
         return instance;
     }
-    
+
+    /** Thread-local per-transaction override for PQC signing.
+     *  When set, takes precedence over enable_hybrid_signatures. */
+    static std::optional<bool>& SigningOverride() {
+        static thread_local std::optional<bool> override;
+        return override;
+    }
+
+    /** Check whether PQC signing should occur, respecting per-tx overrides. */
+    bool ShouldSignPQC() const {
+        auto& ovr = SigningOverride();
+        if (ovr.has_value()) return *ovr;
+        return enable_hybrid_signatures;
+    }
+
     void LoadFromArgs(const std::vector<std::string>& args);
 private:
     PQCConfig() = default;
+};
+
+/** RAII guard: temporarily override PQC signing for the current thread.
+ *  Used by wallet RPCs to control per-transaction hybrid vs classical signing. */
+class PQCSigningOverride {
+    std::optional<bool> m_saved;
+public:
+    explicit PQCSigningOverride(std::optional<bool> use_pqc)
+        : m_saved(PQCConfig::SigningOverride())
+    {
+        if (use_pqc.has_value()) PQCConfig::SigningOverride() = use_pqc;
+    }
+    ~PQCSigningOverride() { PQCConfig::SigningOverride() = m_saved; }
+    PQCSigningOverride(const PQCSigningOverride&) = delete;
+    PQCSigningOverride& operator=(const PQCSigningOverride&) = delete;
 };
 
 } // namespace pqc
