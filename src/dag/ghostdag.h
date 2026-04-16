@@ -30,6 +30,7 @@
  */
 
 #include <cstdint>
+#include <optional>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -95,16 +96,23 @@ public:
  */
 class GhostdagManager {
 public:
-    explicit GhostdagManager(uint32_t k = DEFAULT_GHOSTDAG_K) : m_k(k) {}
+    /** K must be supplied explicitly — callers must pass GetConsensus().ghostdag_k
+     *  to prevent silent consensus divergence when the chain parameter differs
+     *  from DEFAULT_GHOSTDAG_K. */
+    explicit GhostdagManager(uint32_t k) : m_k(k) {}
 
     /**
      * Compute GHOSTDAG data for a new block given its parent hashes.
      *
+     * Returns std::nullopt if the block's mergeset exceeds MAX_MERGESET_SIZE,
+     * which indicates an adversarially crafted DAG topology; the caller should
+     * reject the block with BLOCK_CONSENSUS in that case.
+     *
      * @param parents     - set of parent block hashes for the new block
      * @param provider    - callback interface to query existing DAG data
-     * @return            - computed GhostdagData for the new block
+     * @return            - computed GhostdagData, or nullopt on mergeset overflow
      */
-    GhostdagData ComputeGhostdag(
+    std::optional<GhostdagData> ComputeGhostdag(
         const std::vector<uint256>& parents,
         const IGhostdagBlockProvider& provider) const;
 
@@ -117,8 +125,9 @@ public:
 
     /**
      * Compute the "virtual" block GHOSTDAG data (all current tips as parents).
+     * Returns nullopt on mergeset overflow (same semantics as ComputeGhostdag).
      */
-    GhostdagData ComputeVirtual(
+    std::optional<GhostdagData> ComputeVirtual(
         const std::vector<uint256>& tips,
         const IGhostdagBlockProvider& provider) const;
 
@@ -151,19 +160,20 @@ private:
         const IGhostdagBlockProvider& provider) const;
 
     /**
-     * Compute the mergeset of a block relative to its selected parent:
-     * all blocks in the block's past that are NOT in the selected parent's past
-     * (excluding the selected parent itself).
+     * Compute the mergeset of a block relative to its selected parent.
      *
-     * @param block_parents  - parent hashes of the block being processed
-     * @param selected_parent - the chosen selected parent
-     * @param provider        - DAG provider interface
-     * @return                - ordered mergeset (topological order within)
+     * Returns false if the mergeset exceeds MAX_MERGESET_SIZE (adversarial
+     * topology detected; caller should reject the block).  On false return,
+     * out_mergeset is in an indeterminate state.
+     *
+     * On true return, out_mergeset is the complete, topologically sorted
+     * mergeset (all blocks in past(block) \ past(selected_parent)).
      */
-    std::vector<uint256> ComputeMergeset(
+    bool ComputeMergeset(
         const std::vector<uint256>& block_parents,
         const uint256& selected_parent,
-        const IGhostdagBlockProvider& provider) const;
+        const IGhostdagBlockProvider& provider,
+        std::vector<uint256>& out_mergeset) const;
 
     /**
      * From a mergeset, classify each block as blue or red using the
@@ -189,11 +199,14 @@ private:
 /**
  * Virtual chain: the sequence of selected parents from virtual block back
  * to genesis. This is the "main chain" equivalent in a BlockDAG.
+ *
+ * k must be supplied explicitly (use GetConsensus().ghostdag_k).
+ * Returns an empty vector on mergeset overflow (adversarial topology).
  */
 std::vector<uint256> ComputeVirtualSelectedParentChain(
     const std::vector<uint256>& tips,
     const IGhostdagBlockProvider& provider,
-    uint32_t k = DEFAULT_GHOSTDAG_K);
+    uint32_t k);
 
 } // namespace dag
 
