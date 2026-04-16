@@ -47,7 +47,7 @@ public:
      * hashParents holds the remaining referenced tips (up to MAX_BLOCK_PARENTS-1).
      * All parent hashes together define the block's position in the DAG.
      *
-     * hashParentsRoot = SHA256d(hashParents[0] || ... || hashParents[n]),
+     * hashParentsRoot = SHA256d(concat(hashParents[0], ..., hashParents[n])),
      * or all-zeros when hashParents is empty.  It is placed BEFORE the nonce
      * in the 112-byte DAG block header so that PoW covers the entire DAG
      * topology and an adversary cannot replace hashParents after mining.
@@ -73,7 +73,7 @@ public:
     /**
      * Serialization for DAG blocks:
      *   [nVersion | hashPrevBlock | hashMerkleRoot | nTime | nBits | hashParentsRoot | nNonce]  ← PoW-covered
-     *   [hashParents]  ← after nonce, not PoW-covered but validated against hashParentsRoot
+     *   [hashParents (variable-length vector)]  ← after nonce, not PoW-covered but validated against hashParentsRoot
      *
      * Serialization for non-DAG blocks:
      *   [nVersion | hashPrevBlock | hashMerkleRoot | nTime | nBits | nNonce]  ← standard 80 bytes

@@ -100,10 +100,6 @@ bool GhostdagManager::ComputeMergeset(
     }
 
     while (!q.empty()) {
-        if (out_mergeset.size() >= MAX_MERGESET_SIZE) {
-            // Mergeset overflow: adversarial topology, caller must reject block.
-            return false;
-        }
         uint256 cur = q.front();
         q.pop();
 
@@ -122,6 +118,13 @@ bool GhostdagManager::ComputeMergeset(
                 }
                 q.push(p);
             }
+        }
+        // Check after each node's children are processed — multiple elements
+        // can be added in the inner loop above, so checking here catches every
+        // new addition and keeps memory bounded.
+        if (out_mergeset.size() >= MAX_MERGESET_SIZE) {
+            // Mergeset overflow: adversarial topology, caller must reject block.
+            return false;
         }
     }
 
