@@ -265,6 +265,12 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
                 if (wstack[2].size() != pqc::Falcon::PUBLIC_KEY_SIZE) {
                     return false;
                 }
+            } else if (wstack.size() != 2) {
+                // Standard P2WPKH forms:
+                // 2 = classical [ecdsa_sig, ecdsa_pubkey]
+                // 3 = classical-hybrid-address [ecdsa_sig, ecdsa_pubkey, falcon_pk]
+                // 4 = hybrid [ecdsa_sig, ecdsa_pubkey, falcon_sig, falcon_pk]
+                return false;
             }
         }
 
