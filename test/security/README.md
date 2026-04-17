@@ -53,6 +53,11 @@ python3 test/security/test_sphincs_verify.py
 - **Impact**: Attacker who compromises ECDSA key can generate their own PQC keypair and bypass
   the quantum-resistant layer entirely.
 
+### RESOLVED: HTLC Claim Front-Running (Medium Severity)
+- **File**: `ATOMIC-SWAP-REPORT.md` — QBTC HTLC P2WSH script (claim branch)
+- **Issue**: The original claim branch used `OP_TRUE` as the sole spend condition — any party who observed the secret (SHA-256 preimage) in the mempool could construct a competing transaction claiming the QBTC to a different address, beating the legitimate buyer.
+- **Fix**: Replaced `OP_TRUE` with `<buyerPubKey> OP_CHECKSIG`. The buyer's public key is embedded in the HTLC script at lock time. Spending now requires both the secret AND a valid ECDSA signature from the buyer's key. Witness format updated from `[secret, 0x01, htlcScript]` to `[buyer_sig, secret, htlcScript]`.
+
 ### RESOLVED: SPHINCS+/Dilithium Verify() Stubs
 - **Status**: **Not a vulnerability**. Both call real vendored NIST reference implementations.
 - **TODO.md**: Entry is outdated and should be corrected.

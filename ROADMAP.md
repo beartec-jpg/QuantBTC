@@ -239,7 +239,7 @@ See [TESTREPORT-2026-04-09.md](TESTREPORT-2026-04-09.md) for the full migration 
 First-ever cross-chain atomic swap between a post-quantum blockchain and an EVM stablecoin, executed April 14, 2026:
 
 - [x] EVM HTLC smart contract deployed on Ethereum Sepolia (`0xaF898a5F565c0cAE1746122ad475c0B7F160A3eb`)
-- [x] QBTC P2WSH HTLC script — hash-only claim path (secret = proof, no private key needed)
+- [x] QBTC P2WSH HTLC script — buyer-pubkey-bound claim path (`OP_SHA256 <secretHash> OP_EQUALVERIFY <buyerPubKey> OP_CHECKSIG`); secret alone is not sufficient — prevents mempool front-running
 - [x] Swap coordination server (Node.js/Express/PostgreSQL) — secret generation, state tracking, claim verification
 - [x] Web wallet integration — HTLC construction, EVM interaction, order book UI
 - [x] Timelock safety: QBTC 48h (seller refund) > EVM 24h (buyer refund)
