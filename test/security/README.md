@@ -53,6 +53,15 @@ python3 test/security/test_sphincs_verify.py
 - **Impact**: Attacker who compromises ECDSA key can generate their own PQC keypair and bypass
   the quantum-resistant layer entirely.
 
+### OPEN: Centralized Secret Generation — Coordinator Trust Assumption (Medium Severity, Finding 3.2)
+- **Component**: Swap server (Node.js / Neon PostgreSQL) — **not in this repository**
+- **Issue**: The swap server generates the HTLC preimage, stores it in plaintext in Neon PostgreSQL, and reveals it to the seller on demand. This introduces three risk vectors:
+  1. **Server compromise** — attacker learns the secret before the buyer locks USDC; can drain both sides.
+  2. **Database breach** — a single DB breach exposes all pending secrets simultaneously.
+  3. **Server unavailability** — swap stalls at the reveal step; both parties must wait out their timelocks to recover funds.
+- **Recommended fix**: Move secret generation to the seller's client (web wallet). The seller generates `secret = crypto.getRandomValues(32)` locally, derives `secretHash = SHA-256(secret)`, and posts only the hash to the server on offer creation. The server stores only the hash. The secret is revealed publicly on-chain when the seller calls `withdraw()` on the EVM HTLC. The `secret` column should be dropped from the database. Required changes: swap server + web wallet. QBTC node and on-chain scripts are unaffected.
+- **Reference**: Standard Lightning / BTCPay submarine-swap design.
+
 ### RESOLVED: HTLC Claim Front-Running (Medium Severity)
 - **File**: `ATOMIC-SWAP-REPORT.md` — QBTC HTLC P2WSH script (claim branch)
 - **Issue**: The original claim branch used `OP_TRUE` as the sole spend condition — any party who observed the secret (SHA-256 preimage) in the mempool could construct a competing transaction claiming the QBTC to a different address, beating the legitimate buyer.

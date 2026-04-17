@@ -103,6 +103,14 @@ The server is a **coordination layer only** — it never holds keys or funds. It
 - Reveals the secret to the seller after both sides are locked
 - Records claim transaction IDs
 
+> **Security note (Finding 3.2 — Medium):** The current design centralises secret generation on the server, introducing a coordinator trust assumption. Three risk vectors follow from this:
+>
+> 1. **Server compromise** — a compromised server learns the preimage before the buyer locks USDC. It can call `withdraw()` on the EVM HTLC to claim the USDC while the QBTC refund timelock is still live, stealing from the seller.
+> 2. **Database breach** — secrets are stored in Neon PostgreSQL. A breach exposes every pending swap's preimage simultaneously.
+> 3. **Server unavailability** — if the server is offline at reveal time the swap stalls; both parties must wait for their respective timelocks to expire before recovering funds.
+>
+> **Recommended fix:** Adopt the standard Lightning/submarine-swap pattern: the *seller* (initiator) generates the 32-byte secret locally (`crypto.getRandomValues()` in the web wallet) and posts only `secretHash = SHA-256(secret)` to the server when creating the offer. The server stores only the hash and forwards it to the buyer. The secret never leaves the seller's device until the seller calls `withdraw()` on the EVM HTLC, at which point it is revealed publicly on-chain for the buyer to use. The `secret` column can then be dropped from the database entirely. This change requires updates to the swap server and web wallet; the QBTC node and on-chain scripts are unaffected.
+
 ---
 
 ## First Swap — Transaction Details
