@@ -85,7 +85,6 @@ cmd_start() {
         -txindex=1 \
         -logtimestamps=1 \
         -printtoconsole=0 \
-        -dbcache=150 \
         -maxsigcachesize=32
 
     echo "Node started. Use '$0 status' to check."
