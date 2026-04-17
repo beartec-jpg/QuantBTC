@@ -58,6 +58,11 @@ python3 test/security/test_sphincs_verify.py
 - **Issue**: The original claim branch used `OP_TRUE` as the sole spend condition — any party who observed the secret (SHA-256 preimage) in the mempool could construct a competing transaction claiming the QBTC to a different address, beating the legitimate buyer.
 - **Fix**: Replaced `OP_TRUE` with `<buyerPubKey> OP_CHECKSIG`. The buyer's public key is embedded in the HTLC script at lock time. Spending now requires both the secret AND a valid ECDSA signature from the buyer's key. Witness format updated from `[secret, 0x01, htlcScript]` to `[buyer_sig, secret, htlcScript]`.
 
+### RESOLVED: 3-Element Witness Pass-Through Could Mask Future PQC Validation Bugs (Low Severity)
+- **File**: `src/consensus/pqc_validation.cpp` lines 64–84
+- **Issue**: The `continue` that lets non-2/non-4 element witnesses bypass `CheckPQCSignatures`'s structural precheck is correct for P2WSH HTLC spends, but if a future PQC upgrade introduces a hybrid witness format whose stack depth is not 2 or 4, this pass-through would silently skip its verification.
+- **Fix**: Expanded the comment block on the `continue` branch to enumerate every known legitimate use-case (HTLC claim/refund, multi-sig), and added an explicit `*** MAINTENANCE NOTE ***` warning requiring any future non-2/non-4 PQC witness format to add an explicit `if` branch *above* the catch-all `else` rather than relying on the pass-through.
+
 ### RESOLVED: SPHINCS+/Dilithium Verify() Stubs
 - **Status**: **Not a vulnerability**. Both call real vendored NIST reference implementations.
 - **TODO.md**: Entry is outdated and should be corrected.
