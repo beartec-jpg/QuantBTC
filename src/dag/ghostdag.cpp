@@ -217,6 +217,8 @@ std::optional<GhostdagData> GhostdagManager::ComputeGhostdag(
 
     // 3. Inherit selected-parent chain blue context. Missing ancestry data is
     // treated as incomplete context and must not be approximated.
+    // The inherited context depth is capped at 2*K+1, matching the same
+    // bounded anti-cone relevance window used by SelectedParentChain().
     const size_t max_inherited_depth = 2 * static_cast<size_t>(m_k) + 1;
     std::vector<uint256> inherited_blues;
     inherited_blues.reserve(max_inherited_depth);

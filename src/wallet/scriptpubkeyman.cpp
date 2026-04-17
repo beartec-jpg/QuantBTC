@@ -57,7 +57,8 @@ typedef std::vector<unsigned char> valtype;
 
 namespace {
 
-static constexpr const char* PQC_DERIVATION_DOMAIN_V1 = "qbtc.pqc.dilithium.v1";
+static constexpr const char* INTERNAL_PQC_DERIVATION_DOMAIN_V1 = "qbtc.pqc.dilithium.v1";
+static_assert(pqc::Dilithium::SEED_SIZE == 32, "Dilithium deterministic derivation expects a 32-byte seed");
 
 bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
                                          const uint256& descriptor_id,
@@ -72,7 +73,7 @@ bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
 
     std::vector<unsigned char> ecdsa_secret{ecdsa_key.begin(), ecdsa_key.end()};
     CHashWriter hasher(SER_GETHASH, 0);
-    hasher << std::string{PQC_DERIVATION_DOMAIN_V1};
+    hasher << std::string{INTERNAL_PQC_DERIVATION_DOMAIN_V1};
     hasher << descriptor_id;
     hasher << index;
     hasher << pubkey;
@@ -80,9 +81,6 @@ bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
     uint256 seed_hash = hasher.GetHash();
     memory_cleanse(ecdsa_secret.data(), ecdsa_secret.size());
 
-    if (pqc::Dilithium::SEED_SIZE != 32) {
-        return false;
-    }
     std::vector<unsigned char> seed(pqc::Dilithium::SEED_SIZE);
     std::copy(seed_hash.begin(), seed_hash.begin() + seed.size(), seed.begin());
 
