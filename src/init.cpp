@@ -786,7 +786,7 @@ void InitParameterInteraction(ArgsManager& args)
         std::string pqcsig = args.GetArg("-pqcsig", "falcon");
         pqcconf.enabled_signatures.clear();
         if (pqcsig != "falcon") {
-            LogPrintf("WARNING: -pqcsig=%s is not permitted by relay policy; only Falcon-512 is accepted for new signatures, forcing Falcon-padded-512\n", pqcsig);
+            LogPrintf("WARNING: -pqcsig=%s is not permitted by relay policy; only Falcon-512 is accepted for new signatures, forcing Falcon-512\n", pqcsig);
         }
         pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
         pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON);
