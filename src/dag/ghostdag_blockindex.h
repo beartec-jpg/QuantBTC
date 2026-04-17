@@ -104,6 +104,10 @@ private:
         // which causes GHOSTDAG to classify the block as "red" rather than
         // "blue".  This is safe: a legitimate block will never reach the cap
         // because the height bound already limits how many nodes are reachable.
+        //
+        // Derivation: MAX_MERGESET_SIZE (1000) × MAX_BLOCK_PARENTS (64) = 64,000
+        // nodes per legitimate worst-case DAG window.  500,000 gives an 8×
+        // safety margin over that bound before the cap fires.
         static constexpr size_t MAX_ANCESTOR_BFS_NODES = 500000;
 
         std::vector<const CBlockIndex*> queue;

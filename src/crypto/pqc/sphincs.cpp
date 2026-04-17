@@ -33,6 +33,11 @@ namespace pqc {
  * CONSENSUS NOTE: The same prefix MUST be used in both Sign() and Verify().
  * Changing this string is a consensus-breaking change and must be coordinated
  * with an activation height.  The ML-DSA equivalent is MLDSA_CTX in dilithium.cpp.
+ *
+ * Both context strings intentionally live in their respective .cpp files so
+ * they are close to the code that uses them and cannot be silently overridden
+ * via a header include.  Any future refactoring that moves them to a shared
+ * header must update this comment and dilithium.cpp in lockstep.
  */
 static constexpr char   SLHDSA_CTX[]    = "QuantBTC-SLH-DSA-v1";
 static constexpr size_t SLHDSA_CTX_LEN  = sizeof(SLHDSA_CTX) - 1; // exclude NUL terminator
