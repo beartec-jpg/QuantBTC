@@ -4668,11 +4668,12 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                     pindex->vDagParents.push_back(&miPar->second);
                 } else {
                     LogPrint(BCLog::VALIDATION,
-                             "AcceptBlock: DAG parent %s not yet known for block %s, deferring block\n",
+                             "AcceptBlock: DAG parent %s not yet known for block %s, deferring block "
+                             "(ensure parent block is received and processed first)\n",
                              par_hash.ToString(), block.GetHash().ToString());
                     return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV,
                                          "dag-parent-not-found",
-                                         strprintf("DAG parent %s not yet known", par_hash.ToString()));
+                                         strprintf("DAG parent %s not yet known; ensure parent block is received first", par_hash.ToString()));
                 }
             }
         }
@@ -4688,7 +4689,7 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                 if (!provider.GetGhostdagData(parent_hash)) {
                     return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV,
                                          "dag-parent-context-missing",
-                                         strprintf("Missing GHOSTDAG context for parent %s", parent_hash.ToString()));
+                                         strprintf("Parent %s exists but is missing GHOSTDAG context (header/body may be incomplete)", parent_hash.ToString()));
                 }
             }
             std::optional<dag::GhostdagData> dag_result =

@@ -80,6 +80,9 @@ bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
     uint256 seed_hash = hasher.GetHash();
     memory_cleanse(ecdsa_secret.data(), ecdsa_secret.size());
 
+    if (pqc::Dilithium::SEED_SIZE != 32) {
+        return false;
+    }
     std::vector<unsigned char> seed(pqc::Dilithium::SEED_SIZE);
     std::copy(seed_hash.begin(), seed_hash.begin() + seed.size(), seed.begin());
 

@@ -273,8 +273,7 @@ bool WalletBatch::WriteCryptedDescriptorPQCKey(const uint256& desc_id, const CPu
                  std::make_pair(pqc_pubkey, crypted_pqc_privkey), false)) {
         return false;
     }
-    EraseIC(std::make_pair(DBKeys::WALLETDESCRIPTORPQCKEY, std::make_pair(desc_id, pubkey)));
-    return true;
+    return EraseIC(std::make_pair(DBKeys::WALLETDESCRIPTORPQCKEY, std::make_pair(desc_id, pubkey)));
 }
 
 bool WalletBatch::WriteDescriptor(const uint256& desc_id, const WalletDescriptor& descriptor)

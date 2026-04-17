@@ -217,10 +217,11 @@ std::optional<GhostdagData> GhostdagManager::ComputeGhostdag(
 
     // 3. Inherit selected-parent chain blue context. Missing ancestry data is
     // treated as incomplete context and must not be approximated.
+    const size_t max_inherited_depth = 2 * static_cast<size_t>(m_k) + 1;
     std::vector<uint256> inherited_blues;
-    inherited_blues.reserve(2 * static_cast<size_t>(m_k) + 1);
+    inherited_blues.reserve(max_inherited_depth);
     uint256 cur = result.selected_parent;
-    while (!cur.IsNull() && inherited_blues.size() < (2 * static_cast<size_t>(m_k) + 1)) {
+    while (!cur.IsNull() && inherited_blues.size() < max_inherited_depth) {
         inherited_blues.push_back(cur);
         const GhostdagData* d = provider.GetGhostdagData(cur);
         if (!d) {
