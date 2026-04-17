@@ -140,6 +140,10 @@ bool PQCManager::GenerateHybridKeys(std::vector<unsigned char>& publicKey,
 bool PQCManager::HybridEncapsulate(const std::vector<unsigned char>& publicKey,
                                  std::vector<unsigned char>& ciphertext,
                                  std::vector<unsigned char>& sharedSecret) {
+    if (m_enabledAlgorithms.empty()) {
+        LogPrintf("PQCManager::HybridEncapsulate: no KEM algorithms enabled; cannot encapsulate\n");
+        return false;
+    }
     size_t offset = 0;
     std::vector<unsigned char> combinedSecret;
 
@@ -195,6 +199,10 @@ bool PQCManager::HybridEncapsulate(const std::vector<unsigned char>& publicKey,
 bool PQCManager::HybridDecapsulate(const std::vector<unsigned char>& privateKey,
                                  const std::vector<unsigned char>& ciphertext,
                                  std::vector<unsigned char>& sharedSecret) {
+    if (m_enabledAlgorithms.empty()) {
+        LogPrintf("PQCManager::HybridDecapsulate: no KEM algorithms enabled; cannot decapsulate\n");
+        return false;
+    }
     size_t sk_offset = 0;
     size_t ct_offset = 0;
     std::vector<unsigned char> combinedSecret;

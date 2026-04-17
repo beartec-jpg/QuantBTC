@@ -15,6 +15,21 @@ static_assert(pqc::Dilithium::SIGNATURE_SIZE   == CRYPTO_BYTES,          "Dilith
 
 namespace pqc {
 
+/**
+ * ML-DSA-44 application context string for domain separation (FIPS 204 §5.2).
+ *
+ * Using a non-empty, application-specific context ensures that QuantBTC
+ * Dilithium signatures are structurally distinguishable from signatures
+ * produced by any other application that uses ML-DSA-44 with the same key.
+ * This prevents cross-protocol signature replay attacks if a Dilithium key
+ * is ever reused across software stacks.
+ *
+ * The same string MUST be used in both Sign() and Verify(); changing it is a
+ * consensus-breaking change and must be coordinated with an activation height.
+ */
+static constexpr char   MLDSA_CTX[] = "QuantBTC-MLDSA-v1";
+static constexpr size_t MLDSA_CTX_LEN = sizeof(MLDSA_CTX) - 1; // exclude NUL terminator
+
 Dilithium::Dilithium() {}
 Dilithium::~Dilithium() {}
 
@@ -74,7 +89,7 @@ bool Dilithium::Sign(const std::vector<uint8_t>& message,
     size_t sig_len = 0;
     if (crypto_sign_signature(signature.data(), &sig_len,
                               message.data(), message.size(),
-                              nullptr, 0,
+                              reinterpret_cast<const uint8_t*>(MLDSA_CTX), MLDSA_CTX_LEN,
                               private_key.data()) != 0) {
         LogPrintf("Dilithium::Sign: crypto_sign_signature failed\n");
         signature.clear();
@@ -104,7 +119,7 @@ bool Dilithium::Verify(const std::vector<uint8_t>& message,
 
     return crypto_sign_verify(signature.data(), signature.size(),
                               message.data(), message.size(),
-                              nullptr, 0,
+                              reinterpret_cast<const uint8_t*>(MLDSA_CTX), MLDSA_CTX_LEN,
                               public_key.data()) == 0;
 }
 

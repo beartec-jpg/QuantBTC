@@ -72,13 +72,15 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidat
     return true;
 }
 
-bool IsPQCActivated(int nHeight) {
-    (void)nHeight;
+// NOTE: These functions are runtime configuration checks only.  They do NOT
+// consult the BIP9 DEPLOYMENT_PQC soft-fork state.  The canonical consensus
+// activation path is GetBlockScriptFlags() in validation.cpp, which calls
+// DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_PQC).
+bool IsPQCGloballyEnabled() {
     return pqc::PQCConfig::GetInstance().enable_pqc;
 }
-
-bool IsPQCRequired(int nHeight) {
-    return IsPQCActivated(nHeight);
+bool IsPQCGloballyRequired() {
+    return IsPQCGloballyEnabled();
 }
 
 } // namespace Consensus

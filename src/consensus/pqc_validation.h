@@ -44,16 +44,23 @@ bool HasPQCSignatures(const CTransaction& tx);
 bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidationState& state);
 
 /**
- * Check if PQC is activated for a given height.
+ * Check if PQC is globally enabled via the runtime configuration flag.
+ *
+ * NOTE: This is a runtime configuration check only.  It does NOT consult the
+ * BIP9 DEPLOYMENT_PQC soft-fork state and is NOT height-sensitive.  For
+ * consensus-level activation (the canonical source of truth), use
+ * DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_PQC) in
+ * validation.cpp / GetBlockScriptFlags().
  */
-bool IsPQCActivated(int nHeight);
+bool IsPQCGloballyEnabled();
 
 /**
- * Check if block height requires PQC signatures
- * @param[in]   nHeight         Block height to check
- * @return true if PQC signatures are required at this height
+ * Check if PQC signatures are globally required via the runtime configuration.
+ *
+ * NOTE: This is a runtime configuration check only (same caveat as
+ * IsPQCGloballyEnabled).  It does NOT enforce a block-height policy.
  */
-bool IsPQCRequired(int nHeight);
+bool IsPQCGloballyRequired();
 
 } // namespace Consensus
 

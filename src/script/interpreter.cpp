@@ -1962,6 +1962,28 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 const valtype& pqc_pubkey = SpanPopBack(stack);
                 const valtype& pqc_sig = SpanPopBack(stack);
 
+                // IMPORTANT: PQC elements are intentionally removed from the witness
+                // stack *before* ExecuteWitnessScript is called.  ExecuteWitnessScript
+                // enforces the MAX_SCRIPT_ELEMENT_SIZE (520-byte) limit on every
+                // remaining stack item, but Dilithium signatures (2420 bytes) and
+                // SPHINCS+ signatures (17088 bytes) legitimately exceed that limit.
+                // By popping them here we validate them in-place using dedicated PQC
+                // checkers below, bypassing the 520-byte limit in a documented and
+                // explicit way.  This path MUST NOT be entered from a P2WSH script
+                // context where size enforcement would be applied after the fact.
+                static_assert(pqc::Dilithium::SIGNATURE_SIZE > MAX_SCRIPT_ELEMENT_SIZE,
+                              "Dilithium sig size sanity: must exceed MAX_SCRIPT_ELEMENT_SIZE");
+                static_assert(pqc::SPHINCS::SIGNATURE_SIZE > MAX_SCRIPT_ELEMENT_SIZE,
+                              "SPHINCS+ sig size sanity: must exceed MAX_SCRIPT_ELEMENT_SIZE");
+                // Enforce expected PQC element sizes explicitly before use.
+                const bool is_dilithium = (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
+                                           pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE);
+                const bool is_sphincs   = (pqc_sig.size() == pqc::SPHINCS::SIGNATURE_SIZE &&
+                                           pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE);
+                if (!is_dilithium && !is_sphincs) {
+                    return set_error(serror, SCRIPT_ERR_PQC_SIG_SIZE);
+                }
+
                 // stack now has [ecdsa_sig, ecdsa_pubkey]
                 if (stack.size() != 2 || stack[0].empty() || stack[1].empty()) {
                     return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
@@ -1987,21 +2009,19 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 pqc_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
 
                 // Verify PQC signature over the BIP143 sighash.
-                if (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
-                    pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                // (is_dilithium / is_sphincs were determined at element-pop time above.)
+                if (is_dilithium) {
                     const int nHashType = stack[0].back();
                     if (!checker.CheckPQCSignature(pqc_sig, pqc_pubkey, pqc_scriptCode,
                                                    SigVersion::WITNESS_V0, nHashType)) {
                         return set_error(serror, SCRIPT_ERR_PQC_SIG);
                     }
-                } else if (pqc_sig.size() == pqc::SPHINCS::SIGNATURE_SIZE &&
-                           pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
+                } else {
+                    // is_sphincs (already validated above)
                     if (!checker.CheckSPHINCSSignature(pqc_sig, pqc_pubkey, stack[0],
                                                        pqc_scriptCode, SigVersion::WITNESS_V0)) {
                         return set_error(serror, SCRIPT_ERR_PQC_SIG);
                     }
-                } else {
-                    return set_error(serror, SCRIPT_ERR_PQC_SIG_SIZE);
                 }
 
                 LogDebug(BCLog::VALIDATION,

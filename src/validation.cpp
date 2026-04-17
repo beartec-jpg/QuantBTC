@@ -2421,11 +2421,14 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
 
     // QuantumBTC: enable PQC signature verification when deployment active.
     // SCRIPT_VERIFY_PQC validates PQC sigs when present (4-element witness).
-    // SCRIPT_VERIFY_HYBRID_SIG rejects ECDSA-only (2-element) witnesses — disabled
-    // to allow dual-mode: hot wallet (ECDSA-only) + vault (PQC hybrid).
+    // SCRIPT_VERIFY_HYBRID_SIG rejects ECDSA-only (2-element) witnesses; it is
+    // activated at nHybridSigHeight, giving users a migration window to upgrade
+    // their wallets to hybrid (ECDSA+PQC) signing before the deadline.
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_PQC)) {
         flags |= Consensus::SCRIPT_VERIFY_PQC;
-        // flags |= Consensus::SCRIPT_VERIFY_HYBRID_SIG;  // disabled: allow ECDSA-only sends
+        if (block_index.nHeight >= consensusparams.nHybridSigHeight) {
+            flags |= Consensus::SCRIPT_VERIFY_HYBRID_SIG;
+        }
     }
 
     return flags;
