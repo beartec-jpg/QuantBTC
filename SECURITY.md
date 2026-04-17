@@ -42,16 +42,31 @@ The current swap server generates the 32-byte HTLC preimage (secret) and stores 
 
 **Recommended fix:** Adopt the standard Lightning/submarine-swap pattern: the *seller* generates the 32-byte secret locally and posts only `secretHash = SHA-256(secret)` to the server.  The server stores only the hash; the secret is never held server-side.  See `ATOMIC-SWAP-REPORT.md §3.2` for full details.  No changes to the QBTC node or on-chain scripts are required.
 
-### EVM HTLC Contract — Testnet Only, No Independent Audit (Low)
+### EVM HTLC Contract — Testnet Only; External Audit Required Before Mainnet (Low)
 
-**Affected component:** Solidity HTLC contract at `0xaF898a5F565c0cAE1746122ad475c0B7F160A3eb` (Ethereum Sepolia).
+**Affected component:** Solidity HTLC contract (to be redeployed on Ethereum Sepolia before testnet reset).
 
-The EVM HTLC contract is currently deployed on Ethereum Sepolia (testnet).  Before any mainnet deployment the contract bytecode **must** be independently audited by a qualified Solidity security firm.  Areas of particular interest:
+An internal audit (2026-04-17) identified and fixed the following issues in the
+contract source.  The fixed contract is at `contrib/evm-htlc/contracts/QBTCUSDCHTLC.sol`.
+The previous deployment (`0xaF898a5F565c0cAE1746122ad475c0B7F160A3eb`) is superseded;
+redeploy with `npm run deploy:sepolia` from `contrib/evm-htlc/` before the next testnet cycle.
 
-- Reentrancy protection in `withdraw()` and `refund()`
-- Correct SHA-256 hashlock verification (not keccak256)
-- ERC-20 approval/transfer ordering
-- Integer overflow in timelock comparisons
+**Fixes applied (internal audit 2026-04-17):**
+
+| ID  | Severity | Finding                                       | Fix                                         |
+|-----|----------|-----------------------------------------------|---------------------------------------------|
+| H-1 | HIGH     | CEI violation — reentrancy in withdraw/refund | CEI order enforced + `ReentrancyGuard`      |
+| H-2 | HIGH     | Must use `sha256()` not `keccak256()`         | Explicit `sha256()` with cross-chain comment|
+| M-1 | MEDIUM   | approve/transferFrom race window              | `initiateWithPermit()` (EIP-2612)           |
+| M-2 | MEDIUM   | No minimum timelock — immediate expiry attack | `MIN_LOCKTIME = 1 hours` enforced           |
+| M-3 | MEDIUM   | contractId collision on identical params      | Per-sender nonce in contractId hash         |
+| L-1 | LOW      | No zero-address / zero-amount checks          | Guards in `_initiate()`                     |
+| L-2 | LOW      | Unchecked ERC-20 return values                | `SafeERC20` throughout                      |
+| L-3 | LOW      | Arbitrary ERC-20 token accepted               | Immutable `TOKEN` (single-token deploy)     |
+
+Before any **mainnet** deployment the fixed contract **must** be independently
+audited by a qualified Solidity security firm.  See the mainnet checklist in
+`contrib/evm-htlc/README.md`.
 
 ## Completed Audits
 
@@ -72,4 +87,14 @@ A comprehensive audit of consensus (GHOSTDAG), PQC integration, and atomic swap 
 - **2 LOW** — DAG IBD provisional blue score documentation; EVM HTLC mainnet audit warning (documented above)
 
 Full details in [TESTREPORT-2026-04-10-SECURITY-AUDIT-FINAL.md](TESTREPORT-2026-04-10-SECURITY-AUDIT-FINAL.md).
+
+### EVM HTLC Solidity Audit — April 17, 2026
+
+Internal audit of the EVM HTLC contract identified and fixed:
+- **2 HIGH** — CEI violation in `withdraw()`/`refund()` (reentrancy); explicit `sha256()` requirement
+- **3 MEDIUM** — ERC-20 approve race window; no minimum timelock; contractId collision
+- **3 LOW** — Missing zero-address/amount guards; unchecked ERC-20 return values; arbitrary-token attack surface
+
+Fixed contract source: `contrib/evm-htlc/contracts/QBTCUSDCHTLC.sol`.
+Deploy with `npm run deploy:sepolia` from `contrib/evm-htlc/` before next testnet cycle.
 
