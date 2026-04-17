@@ -52,42 +52,31 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
         else if (arg.rfind("-pqcsig=", 0) == 0) {
             std::string sigList = arg.substr(8);
             enabled_signatures.clear();
-            
+
             size_t pos = 0;
+            bool saw_falcon = false;
             while ((pos = sigList.find(',')) != std::string::npos) {
                 std::string sig = sigList.substr(0, pos);
-                if (sig == "dilithium") {
-                    enabled_signatures.push_back(PQCSignatureScheme::DILITHIUM);
-                }
-                else if (sig == "sphincs") {
-                    enabled_signatures.push_back(PQCSignatureScheme::SPHINCS_PLUS);
-                }
-                else if (sig == "falcon") {
-                    enabled_signatures.push_back(PQCSignatureScheme::FALCON);
-                }
-                else if (sig == "sqisign") {
-                    LogPrintf("PQC WARNING: sqisign signature scheme is not yet implemented, ignoring\n");
+                if (sig == "falcon") {
+                    saw_falcon = true;
+                } else if (!sig.empty()) {
+                    LogPrintf("PQC WARNING: signature scheme '%s' is not permitted by policy, ignoring\n", sig);
                 }
                 sigList.erase(0, pos + 1);
             }
-            
+
             // Handle last signature scheme
-            if (sigList == "dilithium") {
-                enabled_signatures.push_back(PQCSignatureScheme::DILITHIUM);
+            if (sigList == "falcon") {
+                saw_falcon = true;
+            } else if (!sigList.empty()) {
+                LogPrintf("PQC WARNING: signature scheme '%s' is not permitted by policy, ignoring\n", sigList);
             }
-            else if (sigList == "sphincs") {
-                enabled_signatures.push_back(PQCSignatureScheme::SPHINCS_PLUS);
+
+            if (!saw_falcon) {
+                LogPrintf("PQC WARNING: no permitted -pqcsig value provided; forcing falcon\n");
             }
-            else if (sigList == "falcon") {
-                enabled_signatures.push_back(PQCSignatureScheme::FALCON);
-            }
-            else if (sigList == "sqisign") {
-                LogPrintf("PQC WARNING: sqisign signature scheme is not yet implemented, ignoring\n");
-            }
-            // Set preferred scheme to first entry
-            if (!enabled_signatures.empty()) {
-                preferred_sig_scheme = enabled_signatures.front();
-            }
+            enabled_signatures.push_back(PQCSignatureScheme::FALCON);
+            preferred_sig_scheme = PQCSignatureScheme::FALCON;
         }
     }
 }

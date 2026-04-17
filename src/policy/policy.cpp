@@ -11,6 +11,7 @@
 #include <consensus/amount.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
+#include <crypto/pqc/falcon.h>
 #include <policy/feerate.h>
 #include <primitives/transaction.h>
 #include <script/interpreter.h>
@@ -250,6 +251,22 @@ bool IsWitnessStandard(const CTransaction& tx, const CCoinsViewCache& mapInputs)
         // Non-witness program must not be associated with any witness
         if (!prevScript.IsWitnessProgram(witnessversion, witnessprogram))
             return false;
+
+        // QuantumBTC policy: enforce Falcon-512 witness element sizes for P2WPKH
+        // hybrid/classical-hybrid spends admitted to mempool relay.
+        if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_KEYHASH_SIZE) {
+            const auto& wstack = tx.vin[i].scriptWitness.stack;
+            if (wstack.size() == 4) {
+                if (wstack[2].size() != pqc::Falcon::SIGNATURE_SIZE ||
+                    wstack[3].size() != pqc::Falcon::PUBLIC_KEY_SIZE) {
+                    return false;
+                }
+            } else if (wstack.size() == 3) {
+                if (wstack[2].size() != pqc::Falcon::PUBLIC_KEY_SIZE) {
+                    return false;
+                }
+            }
+        }
 
         // Check P2WSH standard limits
         if (witnessversion == 0 && witnessprogram.size() == WITNESS_V0_SCRIPTHASH_SIZE) {

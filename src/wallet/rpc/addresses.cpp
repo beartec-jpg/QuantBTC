@@ -6,6 +6,7 @@
 
 #include <core_io.h>
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/falcon.h>
 #include <crypto/pqc/hybrid_key.h>
 #include <crypto/pqc/pqc_config.h>
 #include <crypto/pqc/sphincs.h>
@@ -678,7 +679,11 @@ RPCHelpMan getaddressinfo()
                 ret.pushKV("has_pqc_key", true);
                 const auto& pqc_pub = hybrid_key.GetPQCPublicKey();
                 // Determine algorithm from PQC public key size
-                if (pqc_pub.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+                if (pqc_pub.size() == pqc::Falcon::PUBLIC_KEY_SIZE) {
+                    ret.pushKV("pqc_algorithm", "falcon");
+                } else if (pqc_pub.size() == pqc::Falcon1024::PUBLIC_KEY_SIZE) {
+                    ret.pushKV("pqc_algorithm", "falcon1024");
+                } else if (pqc_pub.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
                     ret.pushKV("pqc_algorithm", "dilithium");
                 } else if (pqc_pub.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE) {
                     ret.pushKV("pqc_algorithm", "sphincs+");

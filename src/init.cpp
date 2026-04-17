@@ -523,8 +523,8 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-txindex", strprintf("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     // QuantumBTC: PQC and DAG runtime flags
     argsman.AddArg("-pqc", "Enable post-quantum cryptography extensions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-pqcmode=<mode>", "PQC signing mode: hybrid (ECDSA+Dilithium, default), classical (ECDSA only), pure (Dilithium only, future)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme for new keys: dilithium (default), falcon, falcon1024, sphincs. Use falcon1024 for 256-bit PQ (NIST Level 5) vault outputs.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcmode=<mode>", "PQC signing mode: hybrid (ECDSA+Falcon-512, default), classical (ECDSA only), pure (future)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme policy target for new keys (Falcon-512 only; default: falcon). Non-falcon values are ignored and forced to falcon.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqcalgo=<algo>", "PQC KEM algorithms to enable (comma-separated)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqchybridkeys", "Enable hybrid PQC+ECDSA keys (default: 1 when -pqc=1)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqchybridsig", "Require hybrid PQC signatures for all transactions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -782,23 +782,15 @@ void InitParameterInteraction(ArgsManager& args)
         if (pqcconf.enable_pqc) {
             LogPrintf("QuantumBTC: PQC enabled, mode=%s\n", pqcmode);
         }
-        // Wire -pqcsig= to preferred_sig_scheme
-        std::string pqcsig = args.GetArg("-pqcsig", "dilithium");
-        if (pqcsig == "falcon") {
-            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
-            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON);
-            LogPrintf("QuantumBTC: PQC signature scheme set to Falcon-padded-512 (128-bit PQ)\n");
-        } else if (pqcsig == "falcon1024") {
-            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON1024;
-            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON1024);
-            LogPrintf("QuantumBTC: PQC signature scheme set to Falcon-padded-1024 (256-bit PQ, NIST Level 5)\n");
-        } else if (pqcsig == "sphincs") {
-            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::SPHINCS_PLUS;
-            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::SPHINCS_PLUS);
-        } else {
-            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::DILITHIUM;
-            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::DILITHIUM);
+        // Wire -pqcsig= to preferred_sig_scheme; enforce Falcon-512 policy for new signing.
+        std::string pqcsig = args.GetArg("-pqcsig", "falcon");
+        pqcconf.enabled_signatures.clear();
+        if (pqcsig != "falcon") {
+            LogPrintf("WARNING: -pqcsig=%s is not permitted by policy; forcing Falcon-padded-512\n", pqcsig);
         }
+        pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
+        pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON);
+        LogPrintf("QuantumBTC: PQC signature scheme set to Falcon-padded-512 (128-bit PQ)\n");
     }
 
     // when specifying an explicit binding address, you want to listen on it
