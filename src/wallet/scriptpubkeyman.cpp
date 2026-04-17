@@ -132,6 +132,21 @@ bool DeriveDeterministicFalconKeyPair(const CKey& ecdsa_key,
     return ok;
 }
 
+// Derive only the Falcon public key (no private key stored). Used during TopUp
+// so IsMine/hybrid address hashing works without the expensive full keygen.
+// Internally calls the full keygen but immediately cleanses the private key.
+bool DeriveDeterministicFalconPubKey(const CKey& ecdsa_key,
+                                     const uint256& descriptor_id,
+                                     int32_t index,
+                                     const CPubKey& pubkey,
+                                     std::vector<unsigned char>& pqc_pub)
+{
+    std::vector<unsigned char> pqc_priv;
+    const bool ok = DeriveDeterministicFalconKeyPair(ecdsa_key, descriptor_id, index, pubkey, pqc_pub, pqc_priv);
+    memory_cleanse(pqc_priv.data(), pqc_priv.size());
+    return ok;
+}
+
 /**
  * This is an enum that tracks the execution context of a script, similar to
  * SigVersion in script/interpreter. It is separate however because we want to
@@ -1730,7 +1745,13 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
     if (size > 0) {
         target_size = size;
     } else {
-        target_size = m_keypool_size;
+        // When Falcon is active, pre-generating hundreds of keypairs (~100ms each)
+        // would make wallet creation unusable. Cap at 1 so keys are derived
+        // on-demand as addresses are consumed; signing always re-derives from the
+        // ECDSA child key anyway.
+        const bool falcon_active = pqc::PQCConfig::GetInstance().enable_hybrid_signatures &&
+                                   pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON;
+        target_size = falcon_active ? 1 : m_keypool_size;
     }
 
     // Calculate the new range_end
@@ -1803,18 +1824,26 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                     std::vector<unsigned char> pqc_priv;
                     const bool use_falcon = (pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON);
                     if (use_falcon) {
-                        if (!DeriveDeterministicFalconKeyPair(ecdsa_key, id, i, pubkey, pqc_pub, pqc_priv)) {
-                            WalletLogPrintf("PQC: deterministic Falcon derivation failed for %s (index %d)\n",
+                        // For Falcon: derive only the public key during TopUp.
+                        // The private key is re-derived on-demand at signing time in
+                        // GetSigningProvider(), avoiding ~100ms keygen × keypool_size
+                        // at wallet creation while preserving full determinism from the HD seed.
+                        if (!DeriveDeterministicFalconPubKey(ecdsa_key, id, i, pubkey, pqc_pub)) {
+                            WalletLogPrintf("PQC: deterministic Falcon pubkey derivation failed for %s (index %d)\n",
                                             keyid.ToString(), i);
-                            continue; // Skip rather than abort
+                            continue;
                         }
+                        // Store only pubkey in m_map_pqc_keys (private key left empty).
+                        pqc::HybridKey hybrid;
+                        hybrid.SetPQCPublicKey(pqc_pub);
+                        m_map_pqc_keys[keyid] = std::move(hybrid);
+                        // No DB write for the private key — it's always re-derived.
                     } else {
                         if (!DeriveDeterministicDilithiumKeyPair(ecdsa_key, id, i, pubkey, pqc_pub, pqc_priv)) {
                             WalletLogPrintf("PQC: deterministic Dilithium derivation failed for %s (index %d)\n",
                                             keyid.ToString(), i);
                             continue; // Skip rather than abort
                         }
-                    }
 
                     if (m_storage.HasEncryptionKeys()) {
                         CKeyingMaterial plain{pqc_priv.begin(), pqc_priv.end()};
@@ -1842,6 +1871,7 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                         }
                         memory_cleanse(pqc_priv.data(), pqc_priv.size());
                     }
+                    } // end !use_falcon
 
                     // Register hybrid P2WPKH scriptPubKey for IsMine detection
                     {
@@ -1855,7 +1885,7 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                         new_spks.insert(hybrid_spk);
                     }
 
-                    WalletLogPrintf("PQC: derived deterministic %s keypair for %s (index %d, scheme=v1)\n",
+                    WalletLogPrintf("PQC: registered deterministic %s pubkey for %s (index %d, scheme=v1)\n",
                                     use_falcon ? "Falcon" : "Dilithium",
                                     keyid.ToString(), i);
                 }
@@ -2098,14 +2128,36 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
 
         // QuantumBTC: populate plaintext PQC keys for signing.
         for (const auto& [keyid, pqckey] : m_map_pqc_keys) {
-            if (out_keys->keys.count(keyid)) {
-                out_keys->pqc_keys[keyid] = pqckey;
+            if (!out_keys->keys.count(keyid)) continue;
 
-                // Also index PQC keys by hybrid hash for signing
-                const auto hybrid_keyid = get_hybrid_keyid(keyid, pqckey.GetPQCPublicKey());
-                if (hybrid_keyid.has_value()) {
-                    out_keys->pqc_keys[*hybrid_keyid] = pqckey;
+            if (pqckey.HasPQCPrivateKey()) {
+                // Dilithium path: private key already stored, use directly.
+                out_keys->pqc_keys[keyid] = pqckey;
+            } else {
+                // Falcon path: pubkey-only stored; re-derive private key on demand.
+                const CKey& ecdsa_key = out_keys->keys.at(keyid);
+                auto pk_it = out_keys->pubkeys.find(keyid);
+                if (pk_it == out_keys->pubkeys.end()) continue;
+                const CPubKey& pubkey = pk_it->second;
+                std::vector<unsigned char> pqc_pub;
+                std::vector<unsigned char> pqc_priv;
+                if (!DeriveDeterministicFalconKeyPair(ecdsa_key, GetID(), index, pubkey, pqc_pub, pqc_priv)) {
+                    WalletLogPrintf("PQC: on-demand Falcon key derivation failed at signing for %s\n", keyid.ToString());
+                    memory_cleanse(pqc_priv.data(), pqc_priv.size());
+                    continue;
                 }
+                pqc::HybridKey full_hybrid;
+                full_hybrid.SetPQCKey(pqc_pub, pqc_priv);
+                memory_cleanse(pqc_priv.data(), pqc_priv.size());
+                out_keys->pqc_keys[keyid] = std::move(full_hybrid);
+            }
+
+            // Also index PQC keys by hybrid hash for signing
+            const auto hybrid_keyid = get_hybrid_keyid(keyid, out_keys->pqc_keys.count(keyid)
+                                                        ? out_keys->pqc_keys.at(keyid).GetPQCPublicKey()
+                                                        : pqckey.GetPQCPublicKey());
+            if (hybrid_keyid.has_value() && out_keys->pqc_keys.count(keyid)) {
+                out_keys->pqc_keys[*hybrid_keyid] = out_keys->pqc_keys.at(keyid);
             }
         }
 
