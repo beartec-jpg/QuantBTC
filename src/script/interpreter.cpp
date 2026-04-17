@@ -2022,6 +2022,39 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 // Legacy address: fall through to implied P2PKH script execution
                 // which verifies Hash160(ecdsa_pk) == program and checks ECDSA sig.
             }
+            if (stack.size() == 3) {
+                // QuantBTC classical-with-hybrid-address: [ecdsa_sig, ecdsa_pubkey, pqc_pubkey]
+                // PQC pubkey included for address matching but NO PQC signature — ECDSA only.
+                const valtype& pqc_pubkey = SpanPopBack(stack);
+
+                // stack now has [ecdsa_sig, ecdsa_pubkey]
+                if (stack.size() != 2 || stack[0].empty() || stack[1].empty()) {
+                    return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+                }
+
+                // Verify address binding: Hash160(ecdsa_pk || pqc_pk) must match program
+                valtype combined_hash(20);
+                CHash160().Write(stack[1]).Write(pqc_pubkey).Finalize(combined_hash);
+                if (!std::equal(combined_hash.begin(), combined_hash.end(), program.begin())) {
+                    // Not a hybrid address with this pqc key — reject
+                    return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
+                }
+
+                // Build scriptCode for ECDSA verification
+                CScript ecdsa_scriptCode;
+                ecdsa_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
+
+                // Verify ECDSA signature only (no PQC sig verification)
+                if (!CheckSignatureEncoding(stack[0], flags, serror)) return false;
+                if (!CheckPubKeyEncoding(stack[1], flags, SigVersion::WITNESS_V0, serror)) return false;
+                if (!checker.CheckECDSASignature(stack[0], stack[1], ecdsa_scriptCode, SigVersion::WITNESS_V0)) {
+                    return set_error(serror, SCRIPT_ERR_CHECKSIGVERIFY);
+                }
+
+                LogDebug(BCLog::VALIDATION,
+                         "PQC: classical spend of hybrid address (3-element witness, ECDSA only) for P2WPKH input\n");
+                return set_success(serror);
+            }
             if (stack.size() != 2) {
                 return set_error(serror, SCRIPT_ERR_WITNESS_PROGRAM_MISMATCH);
             }

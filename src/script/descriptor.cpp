@@ -904,8 +904,11 @@ public:
         const auto sig_size = use_max_sig ? 72 : 71;
         int64_t size = 1 + sig_size + 1 + 33; // compactsize + ecdsa_sig + compactsize + ec_pubkey
         if (pqc::PQCConfig::GetInstance().ShouldSignPQC()) {
-            // PQC witness adds: compactsize(2420) + dilithium_sig + compactsize(1312) + dilithium_pk
+            // Full hybrid: compactsize(2420) + dilithium_sig + compactsize(1312) + dilithium_pk
             size += 3 + pqc::Dilithium::SIGNATURE_SIZE + 3 + pqc::Dilithium::PUBLIC_KEY_SIZE;
+        } else if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
+            // Classical-with-hybrid-address (3-elem): compactsize(1312) + dilithium_pk only
+            size += 3 + pqc::Dilithium::PUBLIC_KEY_SIZE;
         }
         return size;
     }
@@ -915,7 +918,9 @@ public:
     }
 
     std::optional<int64_t> MaxSatisfactionElems() const override {
-        return pqc::PQCConfig::GetInstance().ShouldSignPQC() ? 4 : 2;
+        if (pqc::PQCConfig::GetInstance().ShouldSignPQC()) return 4;
+        if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures) return 3;
+        return 2;
     }
 };
 

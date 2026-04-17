@@ -553,16 +553,27 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
         sigdata.scriptWitness.stack = result;
         sigdata.witness = true;
 
-        // QuantumBTC: append Dilithium PQC signature + pubkey for hybrid P2WPKH witness
-        // Witness becomes [ecdsa_sig, pubkey, pqc_sig, pqc_pubkey] (4 elements)
+        // QuantumBTC: append PQC elements for hybrid P2WPKH witness.
+        // Full hybrid (pqc=true):    [ecdsa_sig, pubkey, pqc_sig, pqc_pubkey] (4 elements)
+        // Classical  (pqc=false):    [ecdsa_sig, pubkey, pqc_pubkey]          (3 elements)
+        //   — includes PQC pubkey so verifier can match Hash160(ecdsa||pqc) address,
+        //     but omits PQC signature for speed.
         if (solved && sigdata.scriptWitness.stack.size() == 2) {
             CPubKey ecpub(sigdata.scriptWitness.stack[1]);
             if (ecpub.IsValid()) {
                 CKeyID keyid = ecpub.GetID();
                 std::vector<unsigned char> pqcSig, pqcPubKey;
                 if (creator.CreatePQCSig(provider, pqcSig, pqcPubKey, keyid, witnessscript, SigVersion::WITNESS_V0)) {
+                    // Full hybrid: push both sig and pubkey (4 elements)
                     sigdata.scriptWitness.stack.push_back(std::move(pqcSig));
                     sigdata.scriptWitness.stack.push_back(std::move(pqcPubKey));
+                } else {
+                    // Classical-with-hybrid-address: push only pqc pubkey (3 elements)
+                    // so verifier can compute Hash160(ecdsa_pub || pqc_pub) to match address.
+                    pqc::HybridKey hybridKey;
+                    if (provider.GetHybridKey(keyid, hybridKey) && !hybridKey.GetPQCPublicKey().empty()) {
+                        sigdata.scriptWitness.stack.push_back(hybridKey.GetPQCPublicKey());
+                    }
                 }
             }
         }
@@ -834,6 +845,11 @@ public:
         pqcSig.assign(pqc::Dilithium::SIGNATURE_SIZE, '\000');
         pqcPubKey.assign(pqc::Dilithium::PUBLIC_KEY_SIZE, '\000');
         return true;
+    }
+    // For fee-estimation: check if a HybridKey exists (even when PQC signing is off)
+    bool HasPQCPubKey(const SigningProvider& provider, const CKeyID& keyid) const {
+        pqc::HybridKey hk;
+        return provider.GetHybridKey(keyid, hk) && !hk.GetPQCPublicKey().empty();
     }
 };
 

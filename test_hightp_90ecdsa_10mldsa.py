@@ -145,7 +145,7 @@ def build_node_list(num_nodes):
             "id": i,
             "p2p_port": 29333 + i * 100,
             "rpc_port": 29332 + i * 100,
-            "datadir": f"/tmp/qbtc-htp-{i}",
+            "datadir": os.path.join(os.environ.get("TMPDIR", "/tmp"), f"qbtc-htp-{i}"),
             # Node 0 = ML-DSA hybrid; rest = classical ECDSA
             "pqcmode": "hybrid" if i == 0 else "classical",
         })
