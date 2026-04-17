@@ -854,8 +854,9 @@ public:
         // ever verified, providing an additional safety barrier against
         // accidental broadcast.
         if (!pqc::PQCConfig::GetInstance().ShouldSignPQC()) return false;
-        pqcSig.assign(pqc::Dilithium::SIGNATURE_SIZE, '\000');
-        pqcPubKey.assign(pqc::Dilithium::PUBLIC_KEY_SIZE, '\000');
+        const bool falcon = (pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON);
+        pqcSig.assign(falcon ? pqc::Falcon::SIGNATURE_SIZE : pqc::Dilithium::SIGNATURE_SIZE, '\000');
+        pqcPubKey.assign(falcon ? pqc::Falcon::PUBLIC_KEY_SIZE : pqc::Dilithium::PUBLIC_KEY_SIZE, '\000');
         return true;
     }
     // For fee-estimation: check if a HybridKey exists (even when PQC signing is off)
