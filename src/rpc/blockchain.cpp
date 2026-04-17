@@ -3097,6 +3097,59 @@ static RPCHelpMan getpqcsigcachestats()
 }
 
 
+static RPCHelpMan getpqcinfo()
+{
+    return RPCHelpMan{"getpqcinfo",
+        "Returns information about the post-quantum cryptography configuration.\n"
+        "Reports the active PQC scheme, key/signature sizes, and security properties.\n",
+        {},
+        RPCResult{RPCResult::Type::OBJ, "", "",
+        {
+            {RPCResult::Type::STR, "scheme", "Active PQC scheme (e.g. 'falcon')"},
+            {RPCResult::Type::STR, "standard", "NIST standard identifier"},
+            {RPCResult::Type::NUM, "pubkey_size", "Public key size in bytes"},
+            {RPCResult::Type::NUM, "sig_size", "Signature size in bytes (fixed/padded)"},
+            {RPCResult::Type::NUM, "privkey_size", "Private key size in bytes"},
+            {RPCResult::Type::NUM, "seed_size", "Deterministic derivation seed size in bytes"},
+            {RPCResult::Type::NUM, "security_bits_classical", "Classical security level in bits"},
+            {RPCResult::Type::NUM, "security_bits_quantum", "Post-quantum security level in bits (Grover-reduced)"},
+            {RPCResult::Type::STR, "nist_level", "NIST security category (1–5)"},
+            {RPCResult::Type::STR, "implementation", "Underlying C implementation used"},
+            {RPCResult::Type::BOOL, "constant_time", "Whether the implementation uses constant-time primitives"},
+            {RPCResult::Type::STR, "constant_time_note", "Notes on CT scope and limitations"},
+        }},
+        RPCExamples{
+            HelpExampleCli("getpqcinfo", "")
+            + HelpExampleRpc("getpqcinfo", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+        {
+            // The node currently mandates Falcon-padded-512 (FN-DSA) for all
+            // post-quantum signing.  These constants match the vendored
+            // PQClean FALCONPADDED512_CLEAN implementation in
+            // src/crypto/pqc/falcon-padded/.
+            UniValue obj(UniValue::VOBJ);
+            obj.pushKV("scheme",                  "falcon");
+            obj.pushKV("standard",                "FIPS 206 (FN-DSA) / FALCON-padded-512");
+            obj.pushKV("pubkey_size",             (uint64_t)897);
+            obj.pushKV("sig_size",                (uint64_t)666);
+            obj.pushKV("privkey_size",            (uint64_t)1281);
+            obj.pushKV("seed_size",               (uint64_t)48);
+            obj.pushKV("security_bits_classical", (uint64_t)256);
+            obj.pushKV("security_bits_quantum",   (uint64_t)128);
+            obj.pushKV("nist_level",              "1");
+            obj.pushKV("implementation",          "PQClean FALCONPADDED512_CLEAN (portable constant-time C)");
+            obj.pushKV("constant_time",           true);
+            obj.pushKV("constant_time_note",
+                "Sign and verify paths use hash_to_point_ct() exclusively. "
+                "CT covers software timing channels; power/EM side-channels "
+                "on hardware signers are outside scope for a software node.");
+            return obj;
+        },
+    };
+}
+
+
 void RegisterBlockchainRPCCommands(CRPCTable& t)
 {
     static const CRPCCommand commands[]{
@@ -3124,6 +3177,7 @@ void RegisterBlockchainRPCCommands(CRPCTable& t)
         {"blockchain", &loadtxoutset},
         {"blockchain", &getchainstates},
         {"blockchain", &getpqcsigcachestats},
+        {"blockchain", &getpqcinfo},
         {"hidden", &invalidateblock},
         {"hidden", &reconsiderblock},
         {"hidden", &waitfornewblock},

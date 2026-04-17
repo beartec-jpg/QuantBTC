@@ -68,6 +68,24 @@ Before any **mainnet** deployment the fixed contract **must** be independently
 audited by a qualified Solidity security firm.  See the mainnet checklist in
 `contrib/evm-htlc/README.md`.
 
+## Falcon / FN-DSA Implementation Security Assessment
+
+The following table documents known security considerations for the Falcon-padded-512
+(FN-DSA) implementation used as the mandatory PQC scheme from genesis.
+
+| # | Concern | Status | Detail |
+|---|---------|--------|--------|
+| 1 | **Constant-time implementation** | ✅ Covered | PQClean mandates CT as an acceptance requirement. The `CLEAN` variant enforces no data-dependent branches or memory patterns on secret material. Both sign and verify call `hash_to_point_ct()` exclusively; the `vartime` variant in `common.c` is never reachable from any public API path. |
+| 2 | **Side-channel (power/EM — hardware)** | ℹ️ Out of scope | Power-analysis and electromagnetic attacks require physical access to the signing device. A software full-node is not subject to these attacks. Users deploying Falcon in HSMs or smartcards must evaluate hardware-layer masking independently. |
+| 3 | **Key and signature sizes** | ✅ Fixed-size | Falcon-padded-512 produces constant-size signatures (666 B) regardless of the message, preventing oracle attacks based on signature-length leakage. Public key is 897 B. Sizes are consensus-enforced constants. |
+| 4 | **Key reuse and address migration** | ✅ N/A | QuantumBTC enforces Falcon hybrid witness from block 1. There are no legacy ECDSA-only UTXOs to migrate. Each address encodes a unique Falcon public key hash; key reuse is prevented by the standard wallet keypool. |
+| 5 | **Consensus change requirement** | ✅ N/A | Falcon is mandated from genesis, not via a soft-fork activation. There is no flag-day period during which old rules and new rules coexist. Consensus safety is equivalent to any rule enforced from block 1. |
+| 6 | **Quantum security level** | ✅ 128-bit PQ | Falcon-512 provides NIST Level 1 security (128-bit post-quantum, 256-bit classical). This matches the security level of AES-128 and is considered adequate for the foreseeable near-term quantum threat. A future `-pqcsig=falcon1024` flag (NIST Level 5, 256-bit PQ) is planned for high-value vault outputs and will vendor PQClean `FALCONPADDED1024_CLEAN`. |
+| 7 | **Implementation correctness** | ✅ Reviewed | The vendored code is PQClean `FALCONPADDED512_CLEAN` — the community-reviewed reference submission. PQClean applies automated CT-checking (valgrind ct-verif), ASAN, and UBSAN in CI. Additionally, `DeriveKeyPair` uses the deterministic `crypto_sign_seed_keypair` API for reproducible key derivation from a 48-byte HD seed, eliminating keygen randomness as an attack surface. |
+
+The `getpqcinfo` RPC returns a machine-readable summary of these properties for
+automated tooling and monitoring.
+
 ## Completed Audits
 
 ### Internal Code Review — April 9, 2026
