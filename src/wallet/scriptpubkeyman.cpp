@@ -57,7 +57,7 @@ typedef std::vector<unsigned char> valtype;
 
 namespace {
 
-static constexpr const char* INTERNAL_PQC_DERIVATION_DOMAIN_V1 = "qbtc.pqc.dilithium.v1";
+static const std::string INTERNAL_PQC_DERIVATION_DOMAIN_V1{"qbtc.pqc.dilithium.v1"};
 static_assert(pqc::Dilithium::SEED_SIZE == 32, "Dilithium deterministic derivation expects a 32-byte seed");
 
 bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
@@ -73,7 +73,7 @@ bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
 
     std::vector<unsigned char> ecdsa_secret{ecdsa_key.begin(), ecdsa_key.end()};
     CHashWriter hasher(SER_GETHASH, 0);
-    hasher << std::string{INTERNAL_PQC_DERIVATION_DOMAIN_V1};
+    hasher << INTERNAL_PQC_DERIVATION_DOMAIN_V1;
     hasher << descriptor_id;
     hasher << index;
     hasher << pubkey;
@@ -2680,17 +2680,24 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
         m_map_signing_providers[index] = *out_keys;
     }
 
+    auto get_hybrid_keyid = [&](const CKeyID& keyid, const std::vector<unsigned char>& pqc_pub) -> std::optional<CKeyID> {
+        auto pk_it = out_keys->pubkeys.find(keyid);
+        if (pk_it == out_keys->pubkeys.end() || pqc_pub.empty()) {
+            return std::nullopt;
+        }
+        valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
+        std::vector<unsigned char> combined_hash(20);
+        CHash160().Write(ecdsa_bytes).Write(pqc_pub).Finalize(combined_hash);
+        uint160 hybrid_hash;
+        std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
+        return CKeyID(hybrid_hash);
+    };
+
     // QuantumBTC: index pubkeys by hybrid hash so solving/signing works for hybrid addresses.
     auto add_hybrid_pubkey_index = [&](const CKeyID& keyid, const std::vector<unsigned char>& pqc_pub) {
-        auto pk_it = out_keys->pubkeys.find(keyid);
-        if (pk_it != out_keys->pubkeys.end() && !pqc_pub.empty()) {
-            valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
-            std::vector<unsigned char> combined_hash(20);
-            CHash160().Write(ecdsa_bytes).Write(pqc_pub).Finalize(combined_hash);
-            uint160 hybrid_hash;
-            std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
-            CKeyID hybrid_keyid(hybrid_hash);
-            out_keys->pubkeys[hybrid_keyid] = pk_it->second;
+        const auto hybrid_keyid = get_hybrid_keyid(keyid, pqc_pub);
+        if (hybrid_keyid.has_value()) {
+            out_keys->pubkeys[*hybrid_keyid] = out_keys->pubkeys.at(keyid);
         }
     };
     for (const auto& [keyid, pqckey] : m_map_pqc_keys) {
@@ -2711,15 +2718,9 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
                 out_keys->pqc_keys[keyid] = pqckey;
 
                 // Also index PQC keys by hybrid hash for signing
-                auto pk_it = out_keys->pubkeys.find(keyid);
-                if (pk_it != out_keys->pubkeys.end() && !pqckey.GetPQCPublicKey().empty()) {
-                    valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
-                    std::vector<unsigned char> combined_hash(20);
-                    CHash160().Write(ecdsa_bytes).Write(pqckey.GetPQCPublicKey()).Finalize(combined_hash);
-                    uint160 hybrid_hash;
-                    std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
-                    CKeyID hybrid_keyid(hybrid_hash);
-                    out_keys->pqc_keys[hybrid_keyid] = pqckey;
+                const auto hybrid_keyid = get_hybrid_keyid(keyid, pqckey.GetPQCPublicKey());
+                if (hybrid_keyid.has_value()) {
+                    out_keys->pqc_keys[*hybrid_keyid] = pqckey;
                 }
             }
         }
@@ -2750,14 +2751,9 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
             memory_cleanse(pqc_priv.data(), pqc_priv.size());
             out_keys->pqc_keys[keyid] = hybrid;
 
-            if (!enc_pair.first.empty()) {
-                valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
-                std::vector<unsigned char> combined_hash(20);
-                CHash160().Write(ecdsa_bytes).Write(enc_pair.first).Finalize(combined_hash);
-                uint160 hybrid_hash;
-                std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
-                CKeyID hybrid_keyid(hybrid_hash);
-                out_keys->pqc_keys[hybrid_keyid] = hybrid;
+            const auto hybrid_keyid = get_hybrid_keyid(keyid, enc_pair.first);
+            if (hybrid_keyid.has_value()) {
+                out_keys->pqc_keys[*hybrid_keyid] = hybrid;
             }
         }
     }
