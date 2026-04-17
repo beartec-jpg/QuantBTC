@@ -7,6 +7,7 @@
 #include <consensus/validation.h>
 #include <crypto/pqc/pqc_config.h>
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/falcon.h>
 #include <crypto/pqc/sphincs.h>
 #include <tinyformat.h>
 
@@ -19,6 +20,14 @@ static bool IsPQCWitness(const std::vector<unsigned char>& sig_elem,
     // Dilithium (ML-DSA-44): sig=2420, pk=1312
     if (sig_elem.size() == pqc::Dilithium::SIGNATURE_SIZE &&
         pk_elem.size() == pqc::Dilithium::PUBLIC_KEY_SIZE)
+        return true;
+    // Falcon-padded-512: sig=666, pk=897
+    if (sig_elem.size() == pqc::Falcon::SIGNATURE_SIZE &&
+        pk_elem.size() == pqc::Falcon::PUBLIC_KEY_SIZE)
+        return true;
+    // Falcon-padded-1024: sig=1280, pk=1793
+    if (sig_elem.size() == pqc::Falcon1024::SIGNATURE_SIZE &&
+        pk_elem.size() == pqc::Falcon1024::PUBLIC_KEY_SIZE)
         return true;
     // SPHINCS+ (SLH-DSA-SHA2-128f): sig==17088, pk=32
     if (sig_elem.size() == pqc::SPHINCS::SIGNATURE_SIZE &&

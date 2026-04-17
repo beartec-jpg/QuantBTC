@@ -73,7 +73,6 @@ def start_node():
         "-rpcpassword=test",
         "-pqc=1",
         "-pqcsig=falcon",          # <-- use Falcon for key generation
-        "-keypool=5",              # small keypool so Falcon TopUp is fast
         "-fallbackfee=0.0001",
         "-maxtxfee=1.0",
         "-txindex=1",
