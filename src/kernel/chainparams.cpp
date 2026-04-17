@@ -149,9 +149,9 @@ public:
         consensus.nDagTargetSpacingMs = 1000;
         consensus.nMaxDagParents = 32;
         consensus.nMaxBlockWeightPQC = 4 * 4000000;
-        // HYBRID_SIG not yet scheduled on mainnet; std::numeric_limits<int>::max()
-        // keeps it disabled until a specific height is chosen by governance.
-        // consensus.nHybridSigHeight = <TBD after community migration window>;
+        // HYBRID_SIG not yet scheduled on mainnet; keep disabled until a specific
+        // height is chosen by governance after the community migration window.
+        consensus.nHybridSigHeight = std::numeric_limits<int>::max();
 
         // QuantumBTC: Early protection OFF by default on mainnet
         consensus.fEarlyProtection = false;
@@ -646,8 +646,8 @@ public:
         consensus.nDagTargetSpacingMs = 10000; // 10-second blocks
         consensus.nMaxDagParents = 64;         // max parent refs per block (≥ K for burst headroom)
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MW — accommodates PQC witness overhead
-        // HYBRID_SIG not yet scheduled on QBTC testnet; inherit disabled default.
-        // consensus.nHybridSigHeight = <TBD>;
+        // HYBRID_SIG not yet scheduled on QBTC testnet; keep disabled.
+        consensus.nHybridSigHeight = std::numeric_limits<int>::max();
 
         // DAG difficulty window: 128 blocks (~21 min at 10 s/block).
         // Short window for fast convergence to the 10-second target.
@@ -753,8 +753,8 @@ public:
         consensus.nDagTargetSpacingMs = 1000;  // 1-second blocks
         consensus.nMaxDagParents = 32;
         consensus.nMaxBlockWeightPQC = 4 * 4000000; // 16 MB
-        // HYBRID_SIG not yet scheduled on QBTC mainnet signet; inherit disabled default.
-        // consensus.nHybridSigHeight = <TBD>;
+        // HYBRID_SIG not yet scheduled on QBTC mainnet signet; keep disabled.
+        consensus.nHybridSigHeight = std::numeric_limits<int>::max();
 
         // Transaction-load-aware difficulty: activate multiplier above 200 tx/block
         // (200 TPS = a comfortably busy network at 1-second block targets).
