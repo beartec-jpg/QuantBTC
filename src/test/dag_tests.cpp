@@ -351,6 +351,34 @@ BOOST_AUTO_TEST_CASE(ghostdag_virtual)
     BOOST_CHECK_EQUAL(vd.blue_score, 1U);
 }
 
+BOOST_AUTO_TEST_CASE(ghostdag_requires_selected_parent_context)
+{
+    dag::GhostdagManager mgr(18);
+    TestBlockProvider provider;
+
+    // Parent hash exists in the candidate list but has no ghostdag context.
+    uint256 unknown_parent = MakeHash(99);
+    auto result_opt = mgr.ComputeGhostdag({unknown_parent}, provider);
+    BOOST_CHECK(!result_opt.has_value());
+}
+
+BOOST_AUTO_TEST_CASE(ghostdag_requires_selected_parent_chain_context)
+{
+    dag::GhostdagManager mgr(18);
+    TestBlockProvider provider;
+
+    uint256 missing_ancestor = MakeHash(199);
+    uint256 parent = MakeHash(200);
+    dag::GhostdagData parent_data;
+    parent_data.blue_score = 5;
+    parent_data.blue_work = 5;
+    parent_data.selected_parent = missing_ancestor; // context intentionally incomplete
+    provider.AddBlock(parent, {}, parent_data);
+
+    auto result_opt = mgr.ComputeGhostdag({parent}, provider);
+    BOOST_CHECK(!result_opt.has_value());
+}
+
 BOOST_AUTO_TEST_CASE(virtual_selected_parent_chain)
 {
     TestBlockProvider provider;

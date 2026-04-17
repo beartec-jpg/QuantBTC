@@ -231,7 +231,7 @@ bool HybridKey::Encapsulate(std::vector<unsigned char>& ciphertext,
 }
 
 bool HybridKey::Decapsulate(const std::vector<unsigned char>& ciphertext,
-                           std::vector<unsigned char>& shared_secret) const {
+                            std::vector<unsigned char>& shared_secret) const {
     if (!m_is_valid || m_pqc_private_key.empty()) {
         return false;
     }
@@ -245,6 +245,15 @@ bool HybridKey::Decapsulate(const std::vector<unsigned char>& ciphertext,
         memory_cleanse(private_key.data(), private_key.size());
     }
     return ok;
+}
+
+bool HybridKey::GetPQCPrivateKey(std::vector<unsigned char>& out_private_key) const
+{
+    if (m_pqc_private_key.empty()) {
+        return false;
+    }
+    out_private_key.assign(m_pqc_private_key.begin(), m_pqc_private_key.end());
+    return true;
 }
 
 } // namespace pqc

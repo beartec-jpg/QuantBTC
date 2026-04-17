@@ -209,11 +209,25 @@ std::optional<GhostdagData> GhostdagManager::ComputeGhostdag(
 
     // 2. Get selected parent's GHOSTDAG data
     const GhostdagData* sp_data = provider.GetGhostdagData(result.selected_parent);
-    uint64_t sp_blue_score = sp_data ? sp_data->blue_score : 0;
-    uint64_t sp_blue_work = sp_data ? sp_data->blue_work : 0;
+    if (!sp_data) {
+        return std::nullopt;
+    }
+    uint64_t sp_blue_score = sp_data->blue_score;
+    uint64_t sp_blue_work = sp_data->blue_work;
 
-    // 3. Inherit the full selected-parent chain blue context.
-    std::vector<uint256> inherited_blues = SelectedParentChain(result.selected_parent, provider);
+    // 3. Inherit selected-parent chain blue context. Missing ancestry data is
+    // treated as incomplete context and must not be approximated.
+    std::vector<uint256> inherited_blues;
+    inherited_blues.reserve(2 * static_cast<size_t>(m_k) + 1);
+    uint256 cur = result.selected_parent;
+    while (!cur.IsNull() && inherited_blues.size() < (2 * static_cast<size_t>(m_k) + 1)) {
+        inherited_blues.push_back(cur);
+        const GhostdagData* d = provider.GetGhostdagData(cur);
+        if (!d) {
+            return std::nullopt;
+        }
+        cur = d->selected_parent;
+    }
 
     // 4. Compute the mergeset; fail fast if it exceeds the safety cap.
     std::vector<uint256> mergeset;

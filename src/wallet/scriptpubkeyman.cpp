@@ -17,6 +17,7 @@
 #include <util/string.h>
 #include <util/time.h>
 #include <util/translation.h>
+#include <support/cleanse.h>
 #include <wallet/scriptpubkeyman.h>
 #include <crypto/pqc/dilithium.h>
 #include <crypto/pqc/hybrid_key.h>
@@ -55,6 +56,38 @@ util::Result<CTxDestination> LegacyScriptPubKeyMan::GetNewDestination(const Outp
 typedef std::vector<unsigned char> valtype;
 
 namespace {
+
+static constexpr const char* PQC_DERIVATION_DOMAIN_V1 = "qbtc.pqc.dilithium.v1";
+
+bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
+                                         const uint256& descriptor_id,
+                                         int32_t index,
+                                         const CPubKey& pubkey,
+                                         std::vector<unsigned char>& pqc_pub,
+                                         std::vector<unsigned char>& pqc_priv)
+{
+    if (!ecdsa_key.IsValid()) {
+        return false;
+    }
+
+    std::vector<unsigned char> ecdsa_secret{ecdsa_key.begin(), ecdsa_key.end()};
+    CHashWriter hasher(SER_GETHASH, 0);
+    hasher << std::string{PQC_DERIVATION_DOMAIN_V1};
+    hasher << descriptor_id;
+    hasher << index;
+    hasher << pubkey;
+    hasher << ecdsa_secret;
+    uint256 seed_hash = hasher.GetHash();
+    memory_cleanse(ecdsa_secret.data(), ecdsa_secret.size());
+
+    std::vector<unsigned char> seed(pqc::Dilithium::SEED_SIZE);
+    std::copy(seed_hash.begin(), seed_hash.begin() + seed.size(), seed.begin());
+
+    pqc::Dilithium dilithium;
+    const bool ok = dilithium.DeriveKeyPair(seed, pqc_pub, pqc_priv);
+    memory_cleanse(seed.data(), seed.size());
+    return ok;
+}
 
 /**
  * This is an enum that tracks the execution context of a script, similar to
@@ -2139,6 +2172,67 @@ bool DescriptorScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master
     if (keyFail || !keyPass) {
         return false;
     }
+
+    bool pqc_pass = m_map_crypted_pqc_keys.empty();
+    bool pqc_fail = false;
+    for (const auto& [keyid, enc_pair] : m_map_crypted_pqc_keys) {
+        auto pub_it = std::find_if(m_map_pubkeys.begin(), m_map_pubkeys.end(),
+                                   [&](const auto& pub_index_pair) {
+                                       return pub_index_pair.first.GetID() == keyid;
+                                   });
+        if (pub_it == m_map_pubkeys.end()) {
+            pqc_fail = true;
+            break;
+        }
+        CKeyingMaterial plain;
+        if (!DecryptSecret(master_key, enc_pair.second, pub_it->first.GetHash(), plain)) {
+            pqc_fail = true;
+            break;
+        }
+        if (!plain.empty()) {
+            memory_cleanse(plain.data(), plain.size());
+        }
+        pqc_pass = true;
+        if (m_decryption_thoroughly_checked) {
+            break;
+        }
+    }
+    if (pqc_fail || !pqc_pass) {
+        return false;
+    }
+
+    if (m_storage.HasEncryptionKeys() && !m_map_pqc_keys.empty()) {
+        WalletBatch batch(m_storage.GetDatabase());
+        for (const auto& [keyid, hybrid] : m_map_pqc_keys) {
+            std::vector<unsigned char> pqc_priv;
+            if (!hybrid.GetPQCPrivateKey(pqc_priv)) {
+                return false;
+            }
+            auto pub_it = std::find_if(m_map_pubkeys.begin(), m_map_pubkeys.end(),
+                                       [&](const auto& pub_index_pair) {
+                                           return pub_index_pair.first.GetID() == keyid;
+                                       });
+            if (pub_it == m_map_pubkeys.end()) {
+                memory_cleanse(pqc_priv.data(), pqc_priv.size());
+                return false;
+            }
+            CKeyingMaterial plain{pqc_priv.begin(), pqc_priv.end()};
+            std::vector<unsigned char> crypted_pqc_priv;
+            const bool enc_ok = EncryptSecret(master_key, plain, pub_it->first.GetHash(), crypted_pqc_priv);
+            memory_cleanse(plain.data(), plain.size());
+            memory_cleanse(pqc_priv.data(), pqc_priv.size());
+            if (!enc_ok) {
+                return false;
+            }
+            if (!batch.WriteCryptedDescriptorPQCKey(GetID(), pub_it->first, hybrid.GetPQCPublicKey(), crypted_pqc_priv)) {
+                return false;
+            }
+            m_map_crypted_pqc_keys[keyid] = std::make_pair(hybrid.GetPQCPublicKey(), crypted_pqc_priv);
+        }
+        m_map_pqc_keys.clear();
+        WalletLogPrintf("PQC: migrated legacy plaintext descriptor PQC keys to encrypted records\n");
+    }
+
     m_decryption_thoroughly_checked = true;
     return true;
 }
@@ -2146,7 +2240,7 @@ bool DescriptorScriptPubKeyMan::CheckDecryptionKey(const CKeyingMaterial& master
 bool DescriptorScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, WalletBatch* batch)
 {
     LOCK(cs_desc_man);
-    if (!m_map_crypted_keys.empty()) {
+    if (!m_map_crypted_keys.empty() || !m_map_crypted_pqc_keys.empty()) {
         return false;
     }
 
@@ -2163,6 +2257,34 @@ bool DescriptorScriptPubKeyMan::Encrypt(const CKeyingMaterial& master_key, Walle
         batch->WriteCryptedDescriptorKey(GetID(), pubkey, crypted_secret);
     }
     m_map_keys.clear();
+
+    for (const auto& [keyid, hybrid] : m_map_pqc_keys) {
+        std::vector<unsigned char> pqc_priv;
+        if (!hybrid.GetPQCPrivateKey(pqc_priv)) {
+            return false;
+        }
+        auto pub_it = std::find_if(m_map_pubkeys.begin(), m_map_pubkeys.end(),
+                                   [&](const auto& pub_index_pair) {
+                                       return pub_index_pair.first.GetID() == keyid;
+                                   });
+        if (pub_it == m_map_pubkeys.end()) {
+            memory_cleanse(pqc_priv.data(), pqc_priv.size());
+            return false;
+        }
+        CKeyingMaterial secret{pqc_priv.begin(), pqc_priv.end()};
+        std::vector<unsigned char> crypted_pqc_secret;
+        const bool enc_ok = EncryptSecret(master_key, secret, pub_it->first.GetHash(), crypted_pqc_secret);
+        memory_cleanse(secret.data(), secret.size());
+        memory_cleanse(pqc_priv.data(), pqc_priv.size());
+        if (!enc_ok) {
+            return false;
+        }
+        m_map_crypted_pqc_keys[keyid] = std::make_pair(hybrid.GetPQCPublicKey(), crypted_pqc_secret);
+        if (!batch->WriteCryptedDescriptorPQCKey(GetID(), pub_it->first, hybrid.GetPQCPublicKey(), crypted_pqc_secret)) {
+            return false;
+        }
+    }
+    m_map_pqc_keys.clear();
     return true;
 }
 
@@ -2293,18 +2415,48 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
             // QuantumBTC: generate PQC (Dilithium) key for each new ECDSA pubkey
             if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
                 CKeyID keyid = pubkey.GetID();
-                if (m_map_pqc_keys.find(keyid) == m_map_pqc_keys.end()) {
-                    pqc::Dilithium dilithium;
-                    std::vector<unsigned char> pqc_pub(pqc::Dilithium::PUBLIC_KEY_SIZE);
-                    std::vector<unsigned char> pqc_priv(pqc::Dilithium::PRIVATE_KEY_SIZE);
-                    dilithium.GenerateKeyPair(pqc_pub, pqc_priv);
+                if (m_map_pqc_keys.find(keyid) == m_map_pqc_keys.end() &&
+                    m_map_crypted_pqc_keys.find(keyid) == m_map_crypted_pqc_keys.end()) {
+                    const auto ecdsa_key_opt = GetKey(keyid);
+                    if (!ecdsa_key_opt.has_value()) {
+                        WalletLogPrintf("PQC: deterministic key derivation requires unlocked private key for %s (index %d)\n",
+                                        keyid.ToString(), i);
+                        return false;
+                    }
 
-                    pqc::HybridKey hybrid;
-                    hybrid.SetPQCKey(pqc_pub, pqc_priv);
-                    m_map_pqc_keys[keyid] = std::move(hybrid);
+                    std::vector<unsigned char> pqc_pub;
+                    std::vector<unsigned char> pqc_priv;
+                    if (!DeriveDeterministicDilithiumKeyPair(*ecdsa_key_opt, id, i, pubkey, pqc_pub, pqc_priv)) {
+                        WalletLogPrintf("PQC: deterministic Dilithium derivation failed for %s (index %d)\n",
+                                        keyid.ToString(), i);
+                        return false;
+                    }
 
-                    if (!batch.WriteDescriptorPQCKey(id, pubkey, pqc_pub, pqc_priv)) {
-                        throw std::runtime_error(std::string(__func__) + ": writing PQC key failed");
+                    if (m_storage.HasEncryptionKeys()) {
+                        CKeyingMaterial plain{pqc_priv.begin(), pqc_priv.end()};
+                        std::vector<unsigned char> crypted_pqc_priv;
+                        const bool enc_ok = m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                            return EncryptSecret(encryption_key, plain, pubkey.GetHash(), crypted_pqc_priv);
+                        });
+                        memory_cleanse(plain.data(), plain.size());
+                        memory_cleanse(pqc_priv.data(), pqc_priv.size());
+                        if (!enc_ok) {
+                            WalletLogPrintf("PQC: failed to encrypt deterministic PQC key for %s (index %d)\n",
+                                            keyid.ToString(), i);
+                            return false;
+                        }
+                        m_map_crypted_pqc_keys[keyid] = std::make_pair(pqc_pub, crypted_pqc_priv);
+                        if (!batch.WriteCryptedDescriptorPQCKey(id, pubkey, pqc_pub, crypted_pqc_priv)) {
+                            throw std::runtime_error(std::string(__func__) + ": writing encrypted PQC key failed");
+                        }
+                    } else {
+                        pqc::HybridKey hybrid;
+                        hybrid.SetPQCKey(pqc_pub, pqc_priv);
+                        m_map_pqc_keys[keyid] = std::move(hybrid);
+                        if (!batch.WriteDescriptorPQCKey(id, pubkey, pqc_pub, pqc_priv)) {
+                            throw std::runtime_error(std::string(__func__) + ": writing PQC key failed");
+                        }
+                        memory_cleanse(pqc_priv.data(), pqc_priv.size());
                     }
 
                     // Register hybrid P2WPKH scriptPubKey for IsMine detection
@@ -2319,7 +2471,7 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                         new_spks.insert(hybrid_spk);
                     }
 
-                    WalletLogPrintf("PQC: generated Dilithium keypair for %s (index %d)\n",
+                    WalletLogPrintf("PQC: derived deterministic Dilithium keypair for %s (index %d, scheme=v1)\n",
                                     keyid.ToString(), i);
                 }
             }
@@ -2527,18 +2679,24 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
         m_map_signing_providers[index] = *out_keys;
     }
 
-    // QuantumBTC: index pubkeys by hybrid hash so solving/signing works for hybrid addresses
-    for (const auto& [keyid, pqckey] : m_map_pqc_keys) {
+    // QuantumBTC: index pubkeys by hybrid hash so solving/signing works for hybrid addresses.
+    auto add_hybrid_pubkey_index = [&](const CKeyID& keyid, const std::vector<unsigned char>& pqc_pub) {
         auto pk_it = out_keys->pubkeys.find(keyid);
-        if (pk_it != out_keys->pubkeys.end() && !pqckey.GetPQCPublicKey().empty()) {
+        if (pk_it != out_keys->pubkeys.end() && !pqc_pub.empty()) {
             valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
             std::vector<unsigned char> combined_hash(20);
-            CHash160().Write(ecdsa_bytes).Write(pqckey.GetPQCPublicKey()).Finalize(combined_hash);
+            CHash160().Write(ecdsa_bytes).Write(pqc_pub).Finalize(combined_hash);
             uint160 hybrid_hash;
             std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
             CKeyID hybrid_keyid(hybrid_hash);
             out_keys->pubkeys[hybrid_keyid] = pk_it->second;
         }
+    };
+    for (const auto& [keyid, pqckey] : m_map_pqc_keys) {
+        add_hybrid_pubkey_index(keyid, pqckey.GetPQCPublicKey());
+    }
+    for (const auto& [keyid, enc_pair] : m_map_crypted_pqc_keys) {
+        add_hybrid_pubkey_index(keyid, enc_pair.first);
     }
 
     if (HavePrivateKeys() && include_private) {
@@ -2546,7 +2704,7 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
         master_provider.keys = GetKeys();
         m_wallet_descriptor.descriptor->ExpandPrivate(index, master_provider, *out_keys);
 
-        // QuantumBTC: populate PQC keys for signing
+        // QuantumBTC: populate plaintext PQC keys for signing.
         for (const auto& [keyid, pqckey] : m_map_pqc_keys) {
             if (out_keys->keys.count(keyid)) {
                 out_keys->pqc_keys[keyid] = pqckey;
@@ -2562,6 +2720,43 @@ std::unique_ptr<FlatSigningProvider> DescriptorScriptPubKeyMan::GetSigningProvid
                     CKeyID hybrid_keyid(hybrid_hash);
                     out_keys->pqc_keys[hybrid_keyid] = pqckey;
                 }
+            }
+        }
+
+        // QuantumBTC: populate encrypted PQC keys for signing by decrypting on demand.
+        for (const auto& [keyid, enc_pair] : m_map_crypted_pqc_keys) {
+            if (!out_keys->keys.count(keyid)) {
+                continue;
+            }
+            auto pk_it = out_keys->pubkeys.find(keyid);
+            if (pk_it == out_keys->pubkeys.end()) {
+                continue;
+            }
+            CKeyingMaterial plain;
+            const bool dec_ok = m_storage.WithEncryptionKey([&](const CKeyingMaterial& encryption_key) {
+                return DecryptSecret(encryption_key, enc_pair.second, pk_it->second.GetHash(), plain);
+            });
+            if (!dec_ok) {
+                continue;
+            }
+            std::vector<unsigned char> pqc_priv{plain.begin(), plain.end()};
+            memory_cleanse(plain.data(), plain.size());
+            pqc::HybridKey hybrid;
+            if (!hybrid.SetPQCKey(enc_pair.first, pqc_priv)) {
+                memory_cleanse(pqc_priv.data(), pqc_priv.size());
+                continue;
+            }
+            memory_cleanse(pqc_priv.data(), pqc_priv.size());
+            out_keys->pqc_keys[keyid] = hybrid;
+
+            if (!enc_pair.first.empty()) {
+                valtype ecdsa_bytes(pk_it->second.begin(), pk_it->second.end());
+                std::vector<unsigned char> combined_hash(20);
+                CHash160().Write(ecdsa_bytes).Write(enc_pair.first).Finalize(combined_hash);
+                uint160 hybrid_hash;
+                std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
+                CKeyID hybrid_keyid(hybrid_hash);
+                out_keys->pqc_keys[hybrid_keyid] = hybrid;
             }
         }
     }
@@ -2788,6 +2983,7 @@ bool DescriptorScriptPubKeyMan::AddCryptedKey(const CKeyID& key_id, const CPubKe
 bool DescriptorScriptPubKeyMan::AddPQCKey(const CKeyID& key_id, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& pqc_privkey)
 {
     LOCK(cs_desc_man);
+    m_map_crypted_pqc_keys.erase(key_id);
     pqc::HybridKey hybrid;
     hybrid.SetPQCKey(pqc_pubkey, pqc_privkey);
     m_map_pqc_keys[key_id] = std::move(hybrid);
@@ -2815,10 +3011,36 @@ bool DescriptorScriptPubKeyMan::AddPQCKey(const CKeyID& key_id, const std::vecto
     return true;
 }
 
+bool DescriptorScriptPubKeyMan::AddCryptedPQCKey(const CKeyID& key_id, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& crypted_pqc_privkey)
+{
+    LOCK(cs_desc_man);
+    m_map_pqc_keys.erase(key_id);
+    m_map_crypted_pqc_keys[key_id] = std::make_pair(pqc_pubkey, crypted_pqc_privkey);
+
+    // Register hybrid P2WPKH scriptPubKey for IsMine detection on wallet reload.
+    for (const auto& [pubkey, index] : m_map_pubkeys) {
+        if (pubkey.GetID() == key_id) {
+            valtype ecdsa_bytes(pubkey.begin(), pubkey.end());
+            std::vector<unsigned char> combined_hash(20);
+            CHash160().Write(ecdsa_bytes).Write(pqc_pubkey).Finalize(combined_hash);
+            uint160 hybrid_hash;
+            std::copy(combined_hash.begin(), combined_hash.end(), hybrid_hash.begin());
+            CScript hybrid_spk = GetScriptForDestination(WitnessV0KeyHash(hybrid_hash));
+            m_map_script_pub_keys[hybrid_spk] = index;
+            std::set<CScript> new_spks;
+            new_spks.insert(hybrid_spk);
+            m_storage.TopUpCallback(new_spks, this);
+            break;
+        }
+    }
+
+    return true;
+}
+
 size_t DescriptorScriptPubKeyMan::GetPQCKeyCount() const
 {
     LOCK(cs_desc_man);
-    return m_map_pqc_keys.size();
+    return m_map_pqc_keys.size() + m_map_crypted_pqc_keys.size();
 }
 
 bool DescriptorScriptPubKeyMan::HasWalletDescriptor(const WalletDescriptor& desc) const

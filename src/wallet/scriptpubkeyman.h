@@ -586,6 +586,7 @@ private:
     using ScriptPubKeyMap = std::map<CScript, int32_t>; // Map of scripts to descriptor range index
     using PubKeyMap = std::map<CPubKey, int32_t>; // Map of pubkeys involved in scripts to descriptor range index
     using CryptedKeyMap = std::map<CKeyID, std::pair<CPubKey, std::vector<unsigned char>>>;
+    using CryptedPQCKeyMap = std::map<CKeyID, std::pair<std::vector<unsigned char>, std::vector<unsigned char>>>;
     using KeyMap = std::map<CKeyID, CKey>;
     using PQCKeyMap = std::map<CKeyID, pqc::HybridKey>; // QuantumBTC: PQC Dilithium keys by ECDSA key ID
 
@@ -596,6 +597,7 @@ private:
     KeyMap m_map_keys GUARDED_BY(cs_desc_man);
     CryptedKeyMap m_map_crypted_keys GUARDED_BY(cs_desc_man);
     PQCKeyMap m_map_pqc_keys GUARDED_BY(cs_desc_man); // QuantumBTC: PQC keys
+    CryptedPQCKeyMap m_map_crypted_pqc_keys GUARDED_BY(cs_desc_man); // Encrypted PQC private keys
 
     //! keeps track of whether Unlock has run a thorough check before
     bool m_decryption_thoroughly_checked = false;
@@ -686,6 +688,7 @@ public:
     bool AddKey(const CKeyID& key_id, const CKey& key);
     bool AddCryptedKey(const CKeyID& key_id, const CPubKey& pubkey, const std::vector<unsigned char>& crypted_key);
     bool AddPQCKey(const CKeyID& key_id, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& pqc_privkey);
+    bool AddCryptedPQCKey(const CKeyID& key_id, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& crypted_pqc_privkey);
     size_t GetPQCKeyCount() const;
 
     bool HasWalletDescriptor(const WalletDescriptor& desc) const;

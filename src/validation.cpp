@@ -4651,11 +4651,8 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         dag::BlockIndexGhostdagProvider provider(m_blockman);
         dag::GhostdagManager ghostdag_mgr(GetConsensus().ghostdag_k);
 
-        // Re-resolve vDagParents from the raw block header.  During IBD,
-        // DAG parents on fork branches may not exist in the block index
-        // because headers-first sync only fetches best-chain headers.
-        // Skip unknown parents gracefully — GHOSTDAG scoring will use
-        // whatever parents ARE available and is corrected on reindex.
+        // Re-resolve vDagParents from the raw block header.
+        // GHOSTDAG scoring must use a complete parent set.
         if (block.IsDagBlock() && pindex->vDagParents.size() < block.hashParents.size()) {
             pindex->vDagParents.clear();
             for (const uint256& par_hash : block.hashParents) {
@@ -4670,18 +4667,12 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                     }
                     pindex->vDagParents.push_back(&miPar->second);
                 } else {
-                    // During IBD, fork-branch parents may not be available yet.
-                    // Skip — the block is valid on its selected parent chain.
-                    // IMPORTANT: The blue score computed for this block is
-                    // provisional (based on an incomplete parent set).  It will
-                    // be corrected the next time -reindex is run once all headers
-                    // have been downloaded.  The provisional score does not affect
-                    // long-term consensus but may temporarily influence tip
-                    // selection during this IBD window.
                     LogPrint(BCLog::VALIDATION,
-                             "AcceptBlock: DAG parent %s not yet known for block %s, skipping "
-                             "(blue score will be provisional until reindex)\n",
+                             "AcceptBlock: DAG parent %s not yet known for block %s, deferring block\n",
                              par_hash.ToString(), block.GetHash().ToString());
+                    return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV,
+                                         "dag-parent-not-found",
+                                         strprintf("DAG parent %s not yet known", par_hash.ToString()));
                 }
             }
         }
@@ -4693,15 +4684,22 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         }
 
         if (!all_parents.empty()) {
+            for (const uint256& parent_hash : all_parents) {
+                if (!provider.GetGhostdagData(parent_hash)) {
+                    return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV,
+                                         "dag-parent-context-missing",
+                                         strprintf("Missing GHOSTDAG context for parent %s", parent_hash.ToString()));
+                }
+            }
             std::optional<dag::GhostdagData> dag_result =
                 ghostdag_mgr.ComputeGhostdag(all_parents, provider);
             if (!dag_result) {
-                // Mergeset overflow: adversarially crafted DAG topology.
-                LogError("AcceptBlock: GHOSTDAG mergeset overflow for block %s\n",
+                // Mergeset overflow or incomplete selected-parent context.
+                LogError("AcceptBlock: GHOSTDAG computation failed for block %s\n",
                          block.GetHash().ToString());
                 return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
                                      "bad-dag-mergeset-overflow",
-                                     "DAG block mergeset exceeded maximum size");
+                                     "DAG block GHOSTDAG computation failed");
             }
             pindex->dagData = *dag_result;
         } else {

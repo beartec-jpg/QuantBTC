@@ -49,6 +49,7 @@ public:
     const CKey& GetClassicalKey() const { return m_classical_key; }
     const std::vector<unsigned char>& GetPQCPublicKey() const { return m_pqc_public_key; }
     bool HasPQCPrivateKey() const { return !m_pqc_private_key.empty(); }
+    bool GetPQCPrivateKey(std::vector<unsigned char>& out_private_key) const;
 
 private:
     bool m_is_valid;
