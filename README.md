@@ -8,19 +8,27 @@
 
 > A quantum-resistant, high-throughput blockchain built on Bitcoin Core v28.0.0.
 >
-> qBTC is an independent fork maintained by [beartec](https://github.com/beartec-jpg), derived from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin). It combines **post-quantum cryptographic signatures** with **BlockDAG consensus (GHOSTDAG)** to create a network that is secure against both classical and quantum adversaries — not as a future upgrade, but as a consensus requirement from genesis.
+> qBTC is an independent fork maintained by [beartec](https://github.com/beartec-jpg), derived from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin). It combines **post-quantum cryptographic signatures** with **BlockDAG consensus (GHOSTDAG)** to create a network that can run efficiently for daily payments today while offering an opt-in quantum-safe path for high-value storage and settlement.
 
 ---
 
 ## What is qBTC?
 
-qBTC (QuantumBTC) transforms Bitcoin Core into a quantum-safe, high-throughput blockchain while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW). Every transaction carries a **hybrid witness**: a classical ECDSA signature paired with a lattice-based ML-DSA-44 (Dilithium2) signature, providing dual-layer cryptographic protection.
+qBTC (QuantumBTC) transforms Bitcoin Core into a high-throughput blockchain with an incremental post-quantum migration path while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW). The network currently runs an **ECDSA-first policy** for most transactions, with **opt-in hybrid witnesses** (ECDSA + ML-DSA-44) for high-value and vault use cases.
+
+### Operational Policy (Current)
+
+- **Small everyday payments:** classical ECDSA path (lower witness weight and lower fees)
+- **High-value custody / vault flows:** hybrid signatures (ECDSA + Dilithium) enforced by vault policy
+- **Network goal:** avoid unnecessary witness bloat while preserving a production-ready quantum-safe path today
+- **Migration strategy:** move from ECDSA-first to stronger PQC enforcement as quantum risk rises, with planned Falcon soft-fork transition
+- **Current test mix:** approximately **90% standard (ECDSA)** and **10% hybrid** scenarios
 
 ### Key Capabilities
 
 | Capability | Status |
 |------------|--------|
-| PQC hybrid transactions (ECDSA + ML-DSA-44) | ✅ |
+| PQC hybrid transactions (ECDSA + ML-DSA-44, opt-in) | ✅ |
 | BlockDAG parallel block production (GHOSTDAG) | ✅ |
 | Solo mining via `generatetoaddress` | ✅ |
 | P2P node sync with PQC transactions | ✅ |
@@ -64,7 +72,7 @@ Replaced the upstream HMAC-based placeholder stubs with production NIST referenc
 Hardened the consensus layer for real cryptographic verification:
 
 - **`CheckPQCSignature()`** in the script interpreter performs real Dilithium verification
-- **4-element PQC witness format** validated at consensus: `[ECDSA sig, EC pubkey, Dilithium sig (2420B), Dilithium pubkey (1312B)]`
+- **4-element PQC witness format** validated when hybrid witnesses are present: `[ECDSA sig, EC pubkey, Dilithium sig (2420B), Dilithium pubkey (1312B)]`
 - **Dedicated error codes**: `SCRIPT_ERR_PQC_VERIFY_FAILED`, `SCRIPT_ERR_PQC_WITNESS_MALFORMED`, `SCRIPT_ERR_PQC_ALGO_UNSUPPORTED`, `SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH`
 - **Unique chain identity** — distinct magic bytes, ports, and genesis block hashes per chain
 
@@ -97,7 +105,25 @@ Fixed a critical bug where the wallet calculated fees based on ECDSA-only virtua
 - 0.83333333 QBTC block reward (83,333,333 qSats), 12,600,000 block halving interval (~4 years), ~21M supply cap
 - Launch script and config template at `contrib/qbtc-testnet/`
 
-### PQC Transaction Anatomy
+### Transaction Signature Modes
+
+qBTC currently supports two operational signature modes:
+
+```
+Standard P2WPKH Input Witness (2 elements):
+  [0] ECDSA signature        ~71 bytes
+  [1] EC public key            33 bytes
+
+Hybrid P2WPKH Input Witness (4 elements):
+  [0] ECDSA signature        ~71 bytes
+  [1] EC public key            33 bytes
+  [2] Dilithium signature   2,420 bytes
+  [3] Dilithium public key  1,312 bytes
+```
+
+Hybrid mode is reserved for high-value transfers and vault workflows where quantum-safe guarantees are prioritized over transaction size.
+
+### Hybrid Witness Anatomy (Reference)
 
 ```
 P2WPKH Input Witness (4 elements):
@@ -141,7 +167,7 @@ PQC is enabled by default on qBTC chains. For manual configuration:
 |--------|-------------|---------|
 | `-pqc=0\|1` | Enable/disable PQC features | `1` |
 | `-pqchybridkeys=0\|1` | Enable/disable hybrid key generation | `1` |
-| `-pqchybridsig=0\|1` | Enable/disable hybrid signatures | `1` |
+| `-pqchybridsig=0\|1` | Enable/disable hybrid signatures | `1` (policy-gated by deployment profile) |
 | `-pqcalgo=algo1,algo2,...` | KEM algorithms | `kyber,frodo,ntru` |
 | `-pqcsig=sig1,sig2,...` | Signature schemes | `sphincs,dilithium` |
 

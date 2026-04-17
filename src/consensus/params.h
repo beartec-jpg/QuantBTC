@@ -186,6 +186,20 @@ struct Params {
      */
     uint32_t nMaxBlockWeightPQC{4 * 4000000};
 
+    /**
+     * Block height at which SCRIPT_VERIFY_HYBRID_SIG becomes enforced, requiring
+     * all P2WPKH inputs to carry a PQC (4-element) witness rather than an
+     * ECDSA-only (2-element) witness.
+     *
+     * This gives users a migration window after DEPLOYMENT_PQC activates: wallets
+     * can continue sending ECDSA-only transactions until this height is reached,
+     * after which only hybrid (ECDSA + PQC) witnesses are accepted.
+     *
+     * std::numeric_limits<int>::max() means "not yet scheduled" (effectively
+     * disabled).  Each chain class sets its own height below.
+     */
+    int nHybridSigHeight{std::numeric_limits<int>::max()};
+
     // -------------------------------------------------------------------------
     // QuantumBTC Transaction-Load-Aware Difficulty (DAG mode only)
     // -------------------------------------------------------------------------

@@ -3,9 +3,16 @@
 
 ## What Is QuantumBTC?
 
-QuantumBTC (QBTC) is a Bitcoin Core v28.0.0 fork that combines **post-quantum cryptographic signatures** with **BlockDAG consensus** (GHOSTDAG) to create a quantum-resistant, high-throughput blockchain network while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW).
+QuantumBTC (QBTC) is a Bitcoin Core v28.0.0 fork that combines **post-quantum cryptographic capabilities** with **BlockDAG consensus** (GHOSTDAG) to create a high-throughput blockchain network with a staged quantum-migration strategy, while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW).
 
-Every transaction on the network carries a **hybrid witness**: a classical ECDSA signature paired with a lattice-based ML-DSA-44 (Dilithium2) signature, providing cryptographic security against both classical and quantum adversaries today — not as a future upgrade, but as a consensus requirement from genesis.
+Current network policy is **ECDSA-first for day-to-day payments** and **hybrid signatures for high-value/vault transactions**. This keeps transaction weight and memory overhead low while enabling quantum-safe custody today and preserving a smooth migration path toward stricter PQC enforcement as the threat landscape evolves.
+
+### Current Signature Policy
+
+- **Standard wallet / small payments:** ECDSA witness path
+- **Vault / high-value flows:** hybrid witness path (ECDSA + ML-DSA-44)
+- **Current validation profile:** ~90% standard test scenarios and ~10% hybrid scenarios
+- **Future direction:** soft-fork migration from ECDSA baseline to Falcon-backed post-quantum enforcement when quantum threat justifies network-wide activation
 
 ---
 
@@ -134,7 +141,7 @@ Brought up a standalone QuantumBTC testnet network:
 | Capability | Status | Details |
 |------------|--------|---------|
 | **Solo mining** | ✅ | `generatetoaddress` produces DAG-mode blocks with trivial difficulty |
-| **PQC transactions** | ✅ | Every spend carries hybrid ECDSA + ML-DSA-44 witness |
+| **PQC transactions** | ✅ | Hybrid ECDSA + ML-DSA-44 witness available for vault/high-value use |
 | **Peer-to-peer sync** | ✅ | Nodes discover, connect, and sync full chain including PQC txs |
 | **Wallet operations** | ✅ | Create, load, encrypt, send, receive with PQC keys |
 | **Fee estimation** | ✅ | Correctly accounts for PQC witness size (~1075 vB per input) |
@@ -239,7 +246,7 @@ See [TESTREPORT-2026-04-09.md](TESTREPORT-2026-04-09.md) for the full migration 
 First-ever cross-chain atomic swap between a post-quantum blockchain and an EVM stablecoin, executed April 14, 2026:
 
 - [x] EVM HTLC smart contract deployed on Ethereum Sepolia (`0xaF898a5F565c0cAE1746122ad475c0B7F160A3eb`)
-- [x] QBTC P2WSH HTLC script — hash-only claim path (secret = proof, no private key needed)
+- [x] QBTC P2WSH HTLC script — buyer-pubkey-bound claim path (`OP_SHA256 <secretHash> OP_EQUALVERIFY <buyerPubKey> OP_CHECKSIG`); secret alone is not sufficient — prevents mempool front-running
 - [x] Swap coordination server (Node.js/Express/PostgreSQL) — secret generation, state tracking, claim verification
 - [x] Web wallet integration — HTLC construction, EVM interaction, order book UI
 - [x] Timelock safety: QBTC 48h (seller refund) > EVM 24h (buyer refund)
@@ -258,6 +265,19 @@ Systematic throughput and resilience testing at scale:
 - [x] 7-phase stress test (baseline → ramp → sustained → burst → recovery → multi-output → cooldown)
 - [x] Max-TPS blast test: 60 wallets, 3 nodes, 180s blast → 87 tx/s confirmed, 894 tx/block peak
 - [x] 30–60 minute sustained run at 15–20 tx/s with 50+ wallets (endurance test)
+
+### Phase 9: Adaptive PQC Activation Path
+
+**Status: 🚧 In Progress**
+
+Align protocol activation with practical risk and network economics:
+
+- [x] Document ECDSA-first + hybrid-vault operating model
+- [x] Adopt mixed validation profile: 90% standard, 10% hybrid regression lanes
+- [ ] Define objective quantum-risk trigger criteria for stronger default PQC enforcement
+- [ ] Integrate production Falcon implementation (replace current stub path)
+- [ ] Draft and test soft-fork rules for ECDSA-to-Falcon migration
+- [ ] Publish migration guidance for wallets, exchanges, and custodians
 - [x] True GHOSTDAG parallelism test: 8–12 miners to force simultaneous blocks and verify blue/red scoring under contention
 - [x] 50,000-tx high-throughput test: 10 nodes, 90% ECDSA / 10% ML-DSA, 61.2 tx/s, 100% success, 29.2% multi-parent blocks
 - [x] 72-hour surge endurance: ~417,000 txs, 25,736 blocks, 0 consensus splits, 0 data loss

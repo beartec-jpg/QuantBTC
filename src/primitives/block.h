@@ -47,11 +47,15 @@ public:
      * hashParents holds the remaining referenced tips (up to MAX_BLOCK_PARENTS-1).
      * All parent hashes together define the block's position in the DAG.
      *
-     * NOTE: hashParents is serialized AFTER the standard PoW header, so
-     * SHA-256 mining hardware covers the 80-byte base header as usual.
-     * GetHash() hashes ONLY the 80-byte base header (for PoW & block id).
-     * hashParents are committed via network serialization & DAG validation.
+     * hashParentsRoot = SHA256d(concat(hashParents[0], ..., hashParents[n])),
+     * or all-zeros when hashParents is empty.  It is placed BEFORE the nonce
+     * in the 112-byte DAG block header so that PoW covers the entire DAG
+     * topology and an adversary cannot replace hashParents after mining.
+     *
+     * hashParents itself follows the base header in serialization (not PoW-
+     * covered) and is validated against hashParentsRoot by consensus nodes.
      */
+    uint256 hashParentsRoot{};      //!< Commitment to hashParents; part of PoW for DAG blocks
     std::vector<uint256> hashParents;
 
     CBlockHeader()
@@ -60,15 +64,28 @@ public:
     }
 
     /**
-     * Serialization: standard 80-byte fields first, then optional DAG parents.
-     * The PoW hash (GetHash()) covers only the first 80 bytes.
-     * hashParents are included in serialization for P2P relay and
-     * persistent storage, but not in the block-identity hash.
+     * Compute the parents root commitment from a list of extra parent hashes.
+     * Returns all-zeros when the list is empty (no extra parents beyond
+     * the selected parent already in hashPrevBlock).
+     */
+    static uint256 ComputeParentsRoot(const std::vector<uint256>& parents);
+
+    /**
+     * Serialization for DAG blocks:
+     *   [nVersion | hashPrevBlock | hashMerkleRoot | nTime | nBits | hashParentsRoot | nNonce]  ← PoW-covered
+     *   [hashParents (variable-length vector)]  ← after nonce, not PoW-covered but validated against hashParentsRoot
+     *
+     * Serialization for non-DAG blocks:
+     *   [nVersion | hashPrevBlock | hashMerkleRoot | nTime | nBits | nNonce]  ← standard 80 bytes
      */
     SERIALIZE_METHODS(CBlockHeader, obj)
     {
         READWRITE(obj.nVersion, obj.hashPrevBlock, obj.hashMerkleRoot,
-                  obj.nTime, obj.nBits, obj.nNonce);
+                  obj.nTime, obj.nBits);
+        if (obj.nVersion & BLOCK_VERSION_DAGMODE) {
+            READWRITE(obj.hashParentsRoot);
+        }
+        READWRITE(obj.nNonce);
         if (obj.nVersion & BLOCK_VERSION_DAGMODE) {
             READWRITE(obj.hashParents);
         }
@@ -81,6 +98,7 @@ public:
         hashMerkleRoot.SetNull();
         nTime = 0;
         nBits = 0;
+        hashParentsRoot.SetNull();
         nNonce = 0;
         hashParents.clear();
     }
@@ -167,6 +185,7 @@ public:
         block.hashMerkleRoot = hashMerkleRoot;
         block.nTime          = nTime;
         block.nBits          = nBits;
+        block.hashParentsRoot = hashParentsRoot;
         block.nNonce         = nNonce;
         block.hashParents    = hashParents;
         return block;

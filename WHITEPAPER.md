@@ -16,13 +16,22 @@
 
 ## Abstract
 
-qBTC (QuantumBTC) is a post-quantum-secure, high-throughput blockchain protocol built as an independent fork of Bitcoin Core v28.0.0, itself derived from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin). It combines two major innovations: a hybrid cryptographic signature scheme resistant to quantum attack, and a BlockDAG consensus mechanism that enables parallel block production.
+qBTC (QuantumBTC) is a high-throughput blockchain protocol with a staged post-quantum migration path, built as an independent fork of Bitcoin Core v28.0.0, itself derived from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin). It combines two major innovations: post-quantum-capable signature infrastructure and a BlockDAG consensus mechanism that enables parallel block production.
 
-Every transaction on the qBTC network carries a **hybrid witness**: a classical ECDSA (secp256k1) signature paired with a lattice-based ML-DSA-44 (Dilithium2) signature standardised under NIST FIPS 204. This dual-signature design ensures that the network remains secure even if one of the two cryptographic assumptions is broken — whether by a classical adversary exploiting ECDSA weaknesses or by a quantum adversary running Shor's algorithm against elliptic-curve discrete logarithms. Quantum resistance is enforced as a **consensus rule from genesis**, not deferred as a future upgrade.
+qBTC supports a **dual-mode signature model**: an ECDSA path for low-value/high-frequency transactions and an opt-in hybrid path (ECDSA + ML-DSA-44) for high-value and vault transactions. This design enables quantum-safe storage today while minimizing network bloat and memory pressure for routine payments. Network-wide mandatory migration is deferred until objective quantum-risk thresholds are met.
 
 The protocol replaces Bitcoin's linear chain model with a Directed Acyclic Graph (DAG) consensus layer based on the GHOSTDAG/PHANTOM protocol (Sompolinsky & Zohar, 2018). Blocks reference multiple concurrent tips, enabling parallel block production at a 10-second target interval with up to 64 parent references per block and a GHOSTDAG k-parameter of 32 (testnet) / 18 (mainnet). This yields 60× faster confirmations than Bitcoin while preserving Bitcoin's economic model: a 21,000,000 QBTC supply cap with SHA-256 proof-of-work and a halving schedule calibrated to the same ~4-year cadence.
 
 As of April 2026, qBTC operates a live testnet with 3 public seed nodes, over **154,000 blocks**, over **417,000 transactions**, and approximately **12,800 QBTC** mined. A public block explorer ([beartec.uk/qbtc-scan](https://beartec.uk/qbtc-scan)) and testnet faucet ([beartec.uk/qbtc-faucet](https://beartec.uk/qbtc-faucet)) are operational. Mainnet has not yet been launched.
+
+### Operational Policy Update (April 2026)
+
+The active deployment profile is:
+
+- ECDSA-first for everyday payments and low-value transfers
+- Hybrid signatures for vault and high-value flows
+- Current test profile: ~90% standard (ECDSA) and ~10% hybrid regression lanes
+- Planned future transition: soft-fork migration from ECDSA baseline toward Falcon-backed post-quantum enforcement when quantum risk materially increases
 
 ---
 
@@ -38,7 +47,7 @@ The threat is not hypothetical in the long term. Advances in quantum hardware ha
 
 Existing proposals to add post-quantum security to Bitcoin (e.g., via soft fork or script upgrade) face significant coordination challenges: they require consensus among miners, nodes, and the broader Bitcoin developer community, and they cannot be activated retroactively. Retrofitting quantum resistance onto a live, trillion-dollar network without disrupting existing UTXOs is an extraordinarily difficult problem.
 
-qBTC takes a different approach: **a clean-slate fork** that enforces hybrid quantum-resistant signatures as a consensus rule from the genesis block. There are no legacy ECDSA-only UTXOs to protect. Every address on the network has been provisioned with both classical and post-quantum key material from creation.
+qBTC takes a different approach: **a clean-slate fork** with post-quantum capability built in from inception and activated in stages. There are no legacy Bitcoin UTXOs to migrate, and wallets can provision post-quantum key material from creation while still supporting efficient ECDSA operation for routine throughput.
 
 ### 1.3 Design Philosophy
 
@@ -46,7 +55,7 @@ qBTC is designed around three principles:
 
 1. **Preserve Bitcoin's economic model.** The 21M supply cap, SHA-256 proof-of-work, and halving schedule are preserved. Users familiar with Bitcoin's monetary properties will find qBTC's tokenomics immediately recognisable.
 
-2. **Enforce quantum resistance at the protocol level.** Hybrid ECDSA + ML-DSA-44 signatures are a consensus requirement, not an optional feature. A transaction without a valid Dilithium signature is invalid on the qBTC network.
+2. **Adopt adaptive quantum migration.** Keep ECDSA efficient for everyday use, enforce hybrid signatures in vault/high-value policy domains, and move to stronger protocol-level PQC enforcement as quantum risk reaches defined operational thresholds.
 
 3. **Enable high throughput via BlockDAG.** The GHOSTDAG consensus layer allows parallel block production, increasing transaction throughput without increasing block size limits to unworkable levels.
 
@@ -73,7 +82,7 @@ qBTC uses a **hybrid signature scheme** combining two cryptographic systems:
 
 A transaction is valid only if **both** signatures verify correctly. This approach provides a **dual-failure model**: security is maintained if either system is unbroken. An adversary must simultaneously break ECDSA (classically hard) and ML-DSA-44 (quantum-hard) to forge a signature. Conversely, if ML-DSA-44 is later found to have a classical weakness, ECDSA still provides the classical security guarantee.
 
-The hybrid design is implemented by vendoring the official pq-crystals ML-DSA-44 reference implementation at `src/crypto/pqc/ml-dsa/`, using Bitcoin Core's `GetStrongRandBytes()` as the entropy source for all key generation and signing operations.
+The hybrid design is implemented by vendoring the official pq-crystals ML-DSA-44 reference implementation at `src/crypto/pqc/ml-dsa/`, using Bitcoin Core's `GetStrongRandBytes()` as the entropy source for all key generation and signing operations. In the current profile, hybrid signing is used selectively for high-value and vault flows rather than being mandatory for all transactions.
 
 ### 2.3 Transaction Witness Format
 

@@ -841,6 +841,16 @@ public:
                       std::vector<unsigned char>& pqcPubKey, const CKeyID& keyid,
                       const CScript& scriptCode, SigVersion sigversion) const override
     {
+        // DummySignatureCreator is used exclusively for fee estimation (via
+        // DUMMY_SIGNATURE_CREATOR / DUMMY_MAXIMUM_SIGNATURE_CREATOR).  It must
+        // never be used to produce signatures for real broadcast transactions.
+        //
+        // When PQC signing is active we return correctly-sized all-zero
+        // placeholders so that fee estimation accounts for the full 4-element
+        // witness weight [ecdsa_sig, ecdsa_pk, pqc_sig(2420 B), pqc_pk(1312 B)].
+        // The placeholders are intentionally invalid and will be rejected if
+        // ever verified, providing an additional safety barrier against
+        // accidental broadcast.
         if (!pqc::PQCConfig::GetInstance().ShouldSignPQC()) return false;
         pqcSig.assign(pqc::Dilithium::SIGNATURE_SIZE, '\000');
         pqcPubKey.assign(pqc::Dilithium::PUBLIC_KEY_SIZE, '\000');

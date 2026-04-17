@@ -232,7 +232,9 @@ BOOST_AUTO_TEST_CASE(ghostdag_genesis)
     dag::GhostdagManager mgr(18);
     TestBlockProvider provider;
 
-    dag::GhostdagData result = mgr.ComputeGhostdag({}, provider);
+    auto result_opt = mgr.ComputeGhostdag({}, provider);
+    BOOST_REQUIRE(result_opt.has_value());
+    const dag::GhostdagData& result = *result_opt;
     BOOST_CHECK_EQUAL(result.blue_score, 0U);
     BOOST_CHECK(result.selected_parent.IsNull());
 }
@@ -248,7 +250,9 @@ BOOST_AUTO_TEST_CASE(ghostdag_single_parent)
     gen_data.blue_work = 0;
     provider.AddBlock(genesis, {}, gen_data);
 
-    dag::GhostdagData result = mgr.ComputeGhostdag({genesis}, provider);
+    auto result_opt = mgr.ComputeGhostdag({genesis}, provider);
+    BOOST_REQUIRE(result_opt.has_value());
+    const dag::GhostdagData& result = *result_opt;
     BOOST_CHECK(result.selected_parent == genesis);
     BOOST_CHECK_EQUAL(result.blue_score, 1U); // genesis blue_score + 0 blues in mergeset + 1
     BOOST_CHECK(result.mergeset_blues.empty());
@@ -311,7 +315,9 @@ BOOST_AUTO_TEST_CASE(ghostdag_mergeset_classification)
     provider.AddBlock(b, {genesis}, data_b);
 
     // Block C with parents A and B
-    dag::GhostdagData result = mgr.ComputeGhostdag({a, b}, provider);
+    auto result_opt = mgr.ComputeGhostdag({a, b}, provider);
+    BOOST_REQUIRE(result_opt.has_value());
+    const dag::GhostdagData& result = *result_opt;
 
     // The selected parent should be whichever has the lower hash (tie on score=1)
     uint256 expected_sp = (a < b) ? a : b;
@@ -338,12 +344,66 @@ BOOST_AUTO_TEST_CASE(ghostdag_virtual)
     provider.AddBlock(genesis, {}, gen_data);
 
     // ComputeVirtual with single tip = same as ComputeGhostdag
-    dag::GhostdagData vd = mgr.ComputeVirtual({genesis}, provider);
+    auto vd_opt = mgr.ComputeVirtual({genesis}, provider);
+    BOOST_REQUIRE(vd_opt.has_value());
+    const dag::GhostdagData& vd = *vd_opt;
     BOOST_CHECK(vd.selected_parent == genesis);
     BOOST_CHECK_EQUAL(vd.blue_score, 1U);
 }
 
+BOOST_AUTO_TEST_CASE(ghostdag_requires_selected_parent_context)
+{
+    dag::GhostdagManager mgr(18);
+    TestBlockProvider provider;
+
+    // Parent hash exists in the candidate list but has no ghostdag context.
+    uint256 unknown_parent = MakeHash(99);
+    auto result_opt = mgr.ComputeGhostdag({unknown_parent}, provider);
+    BOOST_CHECK(!result_opt.has_value());
+}
+
+BOOST_AUTO_TEST_CASE(ghostdag_requires_selected_parent_chain_context)
+{
+    dag::GhostdagManager mgr(18);
+    TestBlockProvider provider;
+
+    uint256 missing_ancestor = MakeHash(199);
+    uint256 parent = MakeHash(200);
+    dag::GhostdagData parent_data;
+    parent_data.blue_score = 5;
+    parent_data.blue_work = 5;
+    parent_data.selected_parent = missing_ancestor; // context intentionally incomplete
+    provider.AddBlock(parent, {}, parent_data);
+
+    auto result_opt = mgr.ComputeGhostdag({parent}, provider);
+    BOOST_CHECK(!result_opt.has_value());
+}
+
 BOOST_AUTO_TEST_CASE(virtual_selected_parent_chain)
+{
+    TestBlockProvider provider;
+
+    uint256 genesis = MakeHash(0);
+    dag::GhostdagData gen_data;
+    gen_data.blue_score = 0;
+    // genesis has no selected parent (IsNull())
+    provider.AddBlock(genesis, {}, gen_data);
+
+    uint256 a = MakeHash(1);
+    dag::GhostdagData data_a;
+    data_a.blue_score = 1;
+    data_a.selected_parent = genesis;
+    provider.AddBlock(a, {genesis}, data_a);
+
+    auto chain = dag::ComputeVirtualSelectedParentChain({a}, provider, 18);
+    // The virtual block's selected parent is 'a'; 'a's selected parent is
+    // genesis; genesis has no selected parent.  The full chain is [a, genesis].
+    BOOST_REQUIRE_EQUAL(chain.size(), 2U);
+    BOOST_CHECK(chain[0] == a);      // virtual's selected parent
+    BOOST_CHECK(chain[1] == genesis); // a's selected parent
+}
+
+BOOST_AUTO_TEST_CASE(virtual_selected_parent_chain_max_depth)
 {
     TestBlockProvider provider;
 
@@ -358,8 +418,8 @@ BOOST_AUTO_TEST_CASE(virtual_selected_parent_chain)
     data_a.selected_parent = genesis;
     provider.AddBlock(a, {genesis}, data_a);
 
-    auto chain = dag::ComputeVirtualSelectedParentChain({a}, provider, 18);
-    // Should return {a} (the selected parent of the virtual block)
+    // max_depth=1 should cap the walk at one entry
+    auto chain = dag::ComputeVirtualSelectedParentChain({a}, provider, 18, /*max_depth=*/1);
     BOOST_REQUIRE_EQUAL(chain.size(), 1U);
     BOOST_CHECK(chain[0] == a);
 }

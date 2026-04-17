@@ -62,9 +62,24 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidat
                                  "missing-pqc-sig",
                                  strprintf("Input %u: missing required PQC signature (2-element witness)", i));
         } else if (witness_stack.size() != 2) {
-            // Witness has >4 or ==3 elements — likely a P2WSH or P2TR script-path
-            // spend.  The script interpreter in VerifyScript() fully validates
-            // these, so we just skip the PQC-specific structural check here.
+            // Witness has a stack size that is neither 2 (ECDSA-only P2WPKH) nor
+            // 4 (PQC hybrid).  Common examples that legitimately reach this branch:
+            //
+            //   3-element — P2WSH HTLC claim: [buyer_sig, secret, htlcScript]
+            //                P2WSH HTLC refund: [seller_sig, 0x00, htlcScript]
+            //   5-element — P2WSH multi-sig or other complex script-path spends
+            //
+            // For all of these the PQC structural precheck is not applicable; the
+            // full script interpreter (VerifyScript / interpreter.cpp) already
+            // validates them on their own terms, so we skip the PQC-specific check.
+            //
+            // *** MAINTENANCE NOTE ***
+            // If a future PQC upgrade introduces a hybrid witness format whose
+            // stack depth is *not* 2 or 4 (e.g. a 3-element PQC-Tapscript path),
+            // that format MUST be handled with an explicit `if` branch ABOVE this
+            // `else` block — DO NOT rely on this pass-through to validate it.
+            // Failing to do so would silently skip PQC signature verification for
+            // that input type.
             continue;
         }
     }
@@ -72,13 +87,12 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidat
     return true;
 }
 
-bool IsPQCActivated(int nHeight) {
-    (void)nHeight;
+// NOTE: This function is a runtime configuration check only.  It does NOT
+// consult the BIP9 DEPLOYMENT_PQC soft-fork state.  The canonical consensus
+// activation path is GetBlockScriptFlags() in validation.cpp, which calls
+// DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_PQC).
+bool IsPQCGloballyEnabled() {
     return pqc::PQCConfig::GetInstance().enable_pqc;
-}
-
-bool IsPQCRequired(int nHeight) {
-    return IsPQCActivated(nHeight);
 }
 
 } // namespace Consensus

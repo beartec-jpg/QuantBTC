@@ -8,17 +8,30 @@
 #include <hash.h>
 #include <tinyformat.h>
 
+uint256 CBlockHeader::ComputeParentsRoot(const std::vector<uint256>& parents)
+{
+    if (parents.empty()) return uint256{};
+    // Double-SHA256 of the concatenated parent hashes, consistent with
+    // Bitcoin's hash-of-data convention (e.g. merkle root computation).
+    HashWriter h{};
+    for (const uint256& p : parents) {
+        h << p;
+    }
+    return h.GetHash();
+}
+
 uint256 CBlockHeader::GetHash() const
 {
-    // Hash only the standard 80-byte base header.
-    // DAG parent hashes (hashParents) are serialized over the wire and
-    // validated by consensus, but are NOT part of the PoW / block-id hash.
-    // This keeps block identification stable across restarts (where
-    // CDiskBlockIndex may not yet have resolved parent pointers) and
-    // matches standard SHA-256 mining hardware expectations.
+    // For non-DAG blocks: hash the standard 80-byte header.
+    // For DAG blocks: include hashParentsRoot (placed between nBits and nNonce)
+    // so that miners commit to the entire DAG parent set.  This prevents an
+    // adversary from stripping or replacing hashParents after a block is mined.
     HashWriter hasher{};
-    hasher << nVersion << hashPrevBlock << hashMerkleRoot
-           << nTime << nBits << nNonce;
+    hasher << nVersion << hashPrevBlock << hashMerkleRoot << nTime << nBits;
+    if (IsDagBlock()) {
+        hasher << hashParentsRoot;
+    }
+    hasher << nNonce;
     return hasher.GetHash();
 }
 

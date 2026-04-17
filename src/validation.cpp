@@ -2421,11 +2421,14 @@ static unsigned int GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
 
     // QuantumBTC: enable PQC signature verification when deployment active.
     // SCRIPT_VERIFY_PQC validates PQC sigs when present (4-element witness).
-    // SCRIPT_VERIFY_HYBRID_SIG rejects ECDSA-only (2-element) witnesses — disabled
-    // to allow dual-mode: hot wallet (ECDSA-only) + vault (PQC hybrid).
+    // SCRIPT_VERIFY_HYBRID_SIG rejects ECDSA-only (2-element) witnesses; it is
+    // activated at nHybridSigHeight, giving users a migration window to upgrade
+    // their wallets to hybrid (ECDSA+PQC) signing before the deadline.
     if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_PQC)) {
         flags |= Consensus::SCRIPT_VERIFY_PQC;
-        // flags |= Consensus::SCRIPT_VERIFY_HYBRID_SIG;  // disabled: allow ECDSA-only sends
+        if (block_index.nHeight >= consensusparams.nHybridSigHeight) {
+            flags |= Consensus::SCRIPT_VERIFY_HYBRID_SIG;
+        }
     }
 
     return flags;
@@ -4395,6 +4398,15 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
                     strprintf("block has %u DAG parents, max is %u",
                         block.hashParents.size(), GetConsensus().nMaxDagParents));
             }
+            // Verify that hashParentsRoot matches the declared hashParents.
+            // This check is cheap (single SHA256d) and prevents an adversary
+            // from replacing hashParents on a received block without invalidating
+            // the PoW (which now covers hashParentsRoot).
+            const uint256 expected_root = CBlockHeader::ComputeParentsRoot(block.hashParents);
+            if (block.hashParentsRoot != expected_root) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-dag-parents-root",
+                    "hashParentsRoot does not match hashParents commitment");
+            }
                         std::set<uint256> seen_extra_parents;
             for (const uint256& parent_hash : block.hashParents) {
                 // Extra parents must not equal the selected parent (redundant)
@@ -4639,11 +4651,8 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         dag::BlockIndexGhostdagProvider provider(m_blockman);
         dag::GhostdagManager ghostdag_mgr(GetConsensus().ghostdag_k);
 
-        // Re-resolve vDagParents from the raw block header.  During IBD,
-        // DAG parents on fork branches may not exist in the block index
-        // because headers-first sync only fetches best-chain headers.
-        // Skip unknown parents gracefully — GHOSTDAG scoring will use
-        // whatever parents ARE available and is corrected on reindex.
+        // Re-resolve vDagParents from the raw block header.
+        // GHOSTDAG scoring must use a complete parent set.
         if (block.IsDagBlock() && pindex->vDagParents.size() < block.hashParents.size()) {
             pindex->vDagParents.clear();
             for (const uint256& par_hash : block.hashParents) {
@@ -4658,11 +4667,13 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                     }
                     pindex->vDagParents.push_back(&miPar->second);
                 } else {
-                    // During IBD, fork-branch parents may not be available yet.
-                    // Skip — the block is valid on its selected parent chain.
                     LogPrint(BCLog::VALIDATION,
-                             "AcceptBlock: DAG parent %s not yet known for block %s, skipping\n",
+                             "AcceptBlock: DAG parent %s not yet known for block %s, deferring block "
+                             "(ensure parent block is received and processed first)\n",
                              par_hash.ToString(), block.GetHash().ToString());
+                    return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV,
+                                         "dag-parent-not-found",
+                                         strprintf("DAG parent %s not yet known; ensure parent block is received first", par_hash.ToString()));
                 }
             }
         }
@@ -4674,7 +4685,24 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         }
 
         if (!all_parents.empty()) {
-            pindex->dagData = ghostdag_mgr.ComputeGhostdag(all_parents, provider);
+            for (const uint256& parent_hash : all_parents) {
+                if (!provider.GetGhostdagData(parent_hash)) {
+                    return state.Invalid(BlockValidationResult::BLOCK_MISSING_PREV,
+                                         "dag-parent-context-missing",
+                                         strprintf("Parent %s exists but is missing GHOSTDAG context (header/body may be incomplete)", parent_hash.ToString()));
+                }
+            }
+            std::optional<dag::GhostdagData> dag_result =
+                ghostdag_mgr.ComputeGhostdag(all_parents, provider);
+            if (!dag_result) {
+                // Mergeset overflow or incomplete selected-parent context.
+                LogError("AcceptBlock: GHOSTDAG computation failed for block %s\n",
+                         block.GetHash().ToString());
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                                     "bad-dag-mergeset-overflow",
+                                     "DAG block GHOSTDAG computation failed");
+            }
+            pindex->dagData = *dag_result;
         } else {
             pindex->dagData.blue_score = 0;
             pindex->dagData.blue_work = 0;

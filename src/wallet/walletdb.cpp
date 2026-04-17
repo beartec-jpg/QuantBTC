@@ -63,6 +63,7 @@ const std::string WALLETDESCRIPTORLHCACHE{"walletdescriptorlhcache"};
 const std::string WALLETDESCRIPTORCKEY{"walletdescriptorckey"};
 const std::string WALLETDESCRIPTORKEY{"walletdescriptorkey"};
 const std::string WALLETDESCRIPTORPQCKEY{"walletdescriptorpqckey"};
+const std::string WALLETDESCRIPTORCPQCKEY{"walletdescriptorcpqckey"};
 const std::string WATCHMETA{"watchmeta"};
 const std::string WATCHS{"watchs"};
 const std::unordered_set<std::string> LEGACY_TYPES{CRYPTED_KEY, CSCRIPT, DEFAULTKEY, HDCHAIN, KEYMETA, KEY, OLD_KEY, POOL, WATCHMETA, WATCHS};
@@ -262,6 +263,17 @@ bool WalletBatch::WriteDescriptorPQCKey(const uint256& desc_id, const CPubKey& p
 {
     return WriteIC(std::make_pair(DBKeys::WALLETDESCRIPTORPQCKEY, std::make_pair(desc_id, pubkey)),
                    std::make_pair(pqc_pubkey, pqc_privkey), false);
+}
+
+bool WalletBatch::WriteCryptedDescriptorPQCKey(const uint256& desc_id, const CPubKey& pubkey,
+                                                const std::vector<unsigned char>& pqc_pubkey,
+                                                const std::vector<unsigned char>& crypted_pqc_privkey)
+{
+    if (!WriteIC(std::make_pair(DBKeys::WALLETDESCRIPTORCPQCKEY, std::make_pair(desc_id, pubkey)),
+                 std::make_pair(pqc_pubkey, crypted_pqc_privkey), false)) {
+        return false;
+    }
+    return EraseIC(std::make_pair(DBKeys::WALLETDESCRIPTORPQCKEY, std::make_pair(desc_id, pubkey)));
 }
 
 bool WalletBatch::WriteDescriptor(const uint256& desc_id, const WalletDescriptor& descriptor)
@@ -961,7 +973,7 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
         result = std::max(result, ckey_res.m_result);
         num_ckeys = ckey_res.m_records;
 
-        // Get PQC (Dilithium) keys
+        // Get plaintext PQC (Dilithium) keys (legacy format, migrated on unlock/encrypt).
         prefix = PrefixStream(DBKeys::WALLETDESCRIPTORPQCKEY, id);
         LoadResult pqc_res = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORPQCKEY, prefix,
             [&id, &spk_man] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
@@ -983,6 +995,29 @@ static DBErrors LoadDescriptorWalletRecords(CWallet* pwallet, DatabaseBatch& bat
             return DBErrors::LOAD_OK;
         });
         result = std::max(result, pqc_res.m_result);
+
+        // Get encrypted PQC (Dilithium) keys.
+        prefix = PrefixStream(DBKeys::WALLETDESCRIPTORCPQCKEY, id);
+        LoadResult cpqc_res = LoadRecords(pwallet, batch, DBKeys::WALLETDESCRIPTORCPQCKEY, prefix,
+            [&id, &spk_man] (CWallet* pwallet, DataStream& key, DataStream& value, std::string& err) {
+            uint256 desc_id;
+            CPubKey pubkey;
+            key >> desc_id;
+            assert(desc_id == id);
+            key >> pubkey;
+            if (!pubkey.IsValid())
+            {
+                err = "Error reading wallet database: descriptor encrypted PQC key CPubKey corrupt";
+                return DBErrors::CORRUPT;
+            }
+            std::vector<unsigned char> pqc_pub, crypted_pqc_priv;
+            value >> pqc_pub;
+            value >> crypted_pqc_priv;
+
+            spk_man->AddCryptedPQCKey(pubkey.GetID(), pqc_pub, crypted_pqc_priv);
+            return DBErrors::LOAD_OK;
+        });
+        result = std::max(result, cpqc_res.m_result);
 
         return result;
     });

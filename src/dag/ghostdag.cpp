@@ -70,18 +70,23 @@ std::vector<uint256> GhostdagManager::SelectedParentChain(
 // blocks that are in past(B) but NOT in past(P) ∪ {P}.
 // We compute this by starting from B's non-selected parents and doing a
 // BFS/DFS backward, stopping when we reach blocks that are ancestors of P.
+//
+// Returns false if the mergeset exceeds MAX_MERGESET_SIZE, which indicates
+// an adversarially crafted DAG topology.  The caller must reject the block.
 // ---------------------------------------------------------------------------
-std::vector<uint256> GhostdagManager::ComputeMergeset(
+bool GhostdagManager::ComputeMergeset(
     const std::vector<uint256>& block_parents,
     const uint256& selected_parent,
-    const IGhostdagBlockProvider& provider) const
+    const IGhostdagBlockProvider& provider,
+    std::vector<uint256>& out_mergeset) const
 {
-    std::vector<uint256> mergeset;
+    out_mergeset.clear();
     std::unordered_set<uint256, BlockHasher> visited;
     visited.insert(selected_parent);
 
     // DoS prevention: cap mergeset size to avoid unbounded memory/CPU
-    // consumption from adversarial DAG topologies.
+    // consumption from adversarial DAG topologies.  Exceeding the cap is
+    // a consensus violation; the block must be rejected (not silently truncated).
     static constexpr size_t MAX_MERGESET_SIZE = 1000;
 
     // BFS queue: start from all parents except the selected parent
@@ -89,13 +94,12 @@ std::vector<uint256> GhostdagManager::ComputeMergeset(
     for (const uint256& p : block_parents) {
         if (p != selected_parent && visited.find(p) == visited.end()) {
             visited.insert(p);
-            mergeset.push_back(p);
+            out_mergeset.push_back(p);
             q.push(p);
         }
     }
 
     while (!q.empty()) {
-        if (mergeset.size() >= MAX_MERGESET_SIZE) break;
         uint256 cur = q.front();
         q.pop();
 
@@ -110,15 +114,22 @@ std::vector<uint256> GhostdagManager::ComputeMergeset(
                 visited.insert(p);
                 // Only add to mergeset if not an ancestor of selected_parent
                 if (!provider.IsAncestorOf(p, selected_parent)) {
-                    mergeset.push_back(p);
+                    out_mergeset.push_back(p);
                 }
                 q.push(p);
             }
         }
+        // Check after each node's children are processed — multiple elements
+        // can be added in the inner loop above, so checking here catches every
+        // new addition and keeps memory bounded.
+        if (out_mergeset.size() >= MAX_MERGESET_SIZE) {
+            // Mergeset overflow: adversarial topology, caller must reject block.
+            return false;
+        }
     }
 
     // Sort mergeset in topological order (by blue score ascending, then hash)
-    std::sort(mergeset.begin(), mergeset.end(),
+    std::sort(out_mergeset.begin(), out_mergeset.end(),
         [&](const uint256& a, const uint256& b) {
             const GhostdagData* da = provider.GetGhostdagData(a);
             const GhostdagData* db = provider.GetGhostdagData(b);
@@ -128,7 +139,7 @@ std::vector<uint256> GhostdagManager::ComputeMergeset(
             return a < b;
         });
 
-    return mergeset;
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +191,7 @@ void GhostdagManager::ClassifyMergeset(
 // ---------------------------------------------------------------------------
 // GhostdagManager::ComputeGhostdag
 // ---------------------------------------------------------------------------
-GhostdagData GhostdagManager::ComputeGhostdag(
+std::optional<GhostdagData> GhostdagManager::ComputeGhostdag(
     const std::vector<uint256>& parents,
     const IGhostdagBlockProvider& provider) const
 {
@@ -198,14 +209,35 @@ GhostdagData GhostdagManager::ComputeGhostdag(
 
     // 2. Get selected parent's GHOSTDAG data
     const GhostdagData* sp_data = provider.GetGhostdagData(result.selected_parent);
-    uint64_t sp_blue_score = sp_data ? sp_data->blue_score : 0;
-    uint64_t sp_blue_work = sp_data ? sp_data->blue_work : 0;
+    if (!sp_data) {
+        return std::nullopt;
+    }
+    uint64_t sp_blue_score = sp_data->blue_score;
+    uint64_t sp_blue_work = sp_data->blue_work;
 
-    // 3. Inherit the full selected-parent chain blue context.
-    std::vector<uint256> inherited_blues = SelectedParentChain(result.selected_parent, provider);
+    // 3. Inherit selected-parent chain blue context. Missing ancestry data is
+    // treated as incomplete context and must not be approximated.
+    // The inherited context depth is capped at 2*K+1, matching the same
+    // bounded anti-cone relevance window used by SelectedParentChain().
+    const size_t max_inherited_depth = 2 * static_cast<size_t>(m_k) + 1;
+    std::vector<uint256> inherited_blues;
+    inherited_blues.reserve(max_inherited_depth);
+    uint256 cur = result.selected_parent;
+    while (!cur.IsNull() && inherited_blues.size() < max_inherited_depth) {
+        inherited_blues.push_back(cur);
+        const GhostdagData* d = provider.GetGhostdagData(cur);
+        if (!d) {
+            return std::nullopt;
+        }
+        cur = d->selected_parent;
+    }
 
-    // 4. Compute the mergeset
-    std::vector<uint256> mergeset = ComputeMergeset(parents, result.selected_parent, provider);
+    // 4. Compute the mergeset; fail fast if it exceeds the safety cap.
+    std::vector<uint256> mergeset;
+    if (!ComputeMergeset(parents, result.selected_parent, provider, mergeset)) {
+        // Adversarial topology: mergeset overflow.  Caller must reject block.
+        return std::nullopt;
+    }
 
     // 5. Classify mergeset into blues and reds
     ClassifyMergeset(mergeset, inherited_blues, result.mergeset_blues, result.mergeset_reds, provider);
@@ -225,7 +257,7 @@ GhostdagData GhostdagManager::ComputeGhostdag(
 // ---------------------------------------------------------------------------
 // GhostdagManager::ComputeVirtual
 // ---------------------------------------------------------------------------
-GhostdagData GhostdagManager::ComputeVirtual(
+std::optional<GhostdagData> GhostdagManager::ComputeVirtual(
     const std::vector<uint256>& tips,
     const IGhostdagBlockProvider& provider) const
 {
@@ -296,14 +328,28 @@ std::vector<uint256> GhostdagManager::TopologicalOrder(
 std::vector<uint256> ComputeVirtualSelectedParentChain(
     const std::vector<uint256>& tips,
     const IGhostdagBlockProvider& provider,
-    uint32_t k)
+    uint32_t k,
+    size_t max_depth)
 {
     GhostdagManager mgr(k);
-    GhostdagData vd = mgr.ComputeVirtual(tips, provider);
-    if (vd.selected_parent.IsNull()) {
+    std::optional<GhostdagData> vd = mgr.ComputeVirtual(tips, provider);
+    if (!vd || vd->selected_parent.IsNull()) {
         return {};
     }
-    return {vd.selected_parent};
+
+    // Walk the selected-parent chain from the virtual block's direct selected
+    // parent back to genesis.  Each step follows GhostdagData::selected_parent
+    // retrieved from the provider.
+    std::vector<uint256> chain;
+    uint256 cur = vd->selected_parent;
+    while (!cur.IsNull()) {
+        chain.push_back(cur);
+        if (max_depth > 0 && chain.size() >= max_depth) break;
+        const GhostdagData* data = provider.GetGhostdagData(cur);
+        if (!data || data->selected_parent.IsNull()) break;
+        cur = data->selected_parent;
+    }
+    return chain;
 }
 
 } // namespace dag

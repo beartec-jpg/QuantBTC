@@ -28,7 +28,7 @@ Step 2 — ACCEPT:  Buyer accepts, providing their QBTC + EVM addresses
 
 Step 3 — QBTC LOCK (Seller):
                    Seller creates a P2WSH HTLC on the QBTC blockchain
-                   Locked to: secretHash, seller pubkey (refund), 48h timelock
+                   Locked to: secretHash, buyerPubKey (claim), seller pubkey (refund), 48h timelock
                    Broadcast via QBTC RPC → confirmed in DAG blocks
 
 Step 4 — USDC LOCK (Buyer):
@@ -43,8 +43,8 @@ Step 5 — CLAIM USDC (Seller):
 
 Step 6 — CLAIM QBTC (Buyer):
                    Buyer uses the revealed secret to spend from QBTC HTLC
-                   Hash-only witness: [secret, OP_TRUE, htlcScript]
-                   No private key needed — the secret is the proof
+                   Witness: [buyer_sig, secret, htlcScript]
+                   Both the secret and the buyer's ECDSA signature are required
                    Broadcast via QBTC RPC → confirmed in DAG block
 
 SWAP COMPLETE — both parties have received their assets trustlessly
@@ -77,14 +77,16 @@ The QBTC timelock is always longer than the EVM timelock, ensuring the seller ca
 ```
 OP_IF
   OP_SHA256 <secretHash> OP_EQUALVERIFY
-  OP_TRUE                              // Anyone can spend with the secret
+  <buyerPubKey> OP_CHECKSIG            // Buyer must sign AND know the secret
 OP_ELSE
   <locktime> OP_CHECKLOCKTIMEVERIFY OP_DROP
   <sellerPubKey> OP_CHECKSIG           // Only seller can refund after timeout
 OP_ENDIF
 ```
 
-The QBTC HTLC uses a **hash-only claim path** — the buyer doesn't need a private key to claim. Knowledge of the 32-byte secret (preimage of the SHA-256 hash) is sufficient proof. This simplifies the cross-chain bridge since the buyer's QBTC address only needs to receive the output, not sign for it.
+The QBTC HTLC claim path requires **both** the 32-byte secret (preimage of the SHA-256 hash) **and** a valid ECDSA signature from the buyer's key. The buyer's public key is embedded in the HTLC script at lock time (Step 3), binding the claim path to the intended recipient.
+
+> **Security note:** An earlier iteration used `OP_TRUE` in the claim branch, making the secret alone sufficient to spend. This created a **front-running risk**: once the buyer broadcast a claim transaction, any mempool observer (including miners) could extract the secret and redirect the QBTC to themselves before the buyer's transaction confirmed. Adding `<buyerPubKey> OP_CHECKSIG` closes this attack surface — the secret is still necessary but no longer sufficient; the attacker also needs the buyer's private key.
 
 ### Swap Server
 
@@ -100,6 +102,14 @@ The server is a **coordination layer only** — it never holds keys or funds. It
 - Tracks swap state transitions
 - Reveals the secret to the seller after both sides are locked
 - Records claim transaction IDs
+
+> **Security note (Finding 3.2 — Medium):** The current design centralises secret generation on the server, introducing a coordinator trust assumption. Three risk vectors follow from this:
+>
+> 1. **Server compromise** — a compromised server learns the preimage before the buyer locks USDC. It can call `withdraw()` on the EVM HTLC to claim the USDC while the QBTC refund timelock is still live, stealing from the seller.
+> 2. **Database breach** — secrets are stored in Neon PostgreSQL. A breach exposes every pending swap's preimage simultaneously.
+> 3. **Server unavailability** — if the server is offline at reveal time the swap stalls; both parties must wait for their respective timelocks to expire before recovering funds.
+>
+> **Recommended fix:** Adopt the standard Lightning/submarine-swap pattern: the *seller* (initiator) generates the 32-byte secret locally (`crypto.getRandomValues()` in the web wallet) and posts only `secretHash = SHA-256(secret)` to the server when creating the offer. The server stores only the hash and forwards it to the buyer. The secret never leaves the seller's device until the seller calls `withdraw()` on the EVM HTLC, at which point it is revealed publicly on-chain for the buyer to use. The `secret` column can then be dropped from the database entirely. This change requires updates to the swap server and web wallet; the QBTC node and on-chain scripts are unaffected.
 
 ---
 
@@ -142,7 +152,7 @@ The server is a **coordination layer only** — it never holds keys or funds. It
 | Lock TXID | `ecf9ccab3d957531af04cadfc98799bccc0f427fd12e47b5f8fa514b13f462c0` |
 | Lock Timelock | 1776323603 (April 15, 2026 06:13:23 UTC) |
 | Claim TXID | `29381b708efe56edc592b156b906875b24b14ebcac8fd0341f3d06b2820ffae8` |
-| Claim Witness | `[secret, 0x01, htlcScript]` (hash-only, 3-element) |
+| Claim Witness | `[buyer_sig, secret, htlcScript]` (sig+secret, 3-element) |
 | Chain | QBTC Testnet (`qbtctestnet`) |
 | Consensus | PQC hybrid (ECDSA + ML-DSA-44) + GHOSTDAG BlockDAG |
 
@@ -213,7 +223,7 @@ All EVM HTLC contracts show `withdrawn: true`:
 
 ### 1. P2WSH Witness Validation Conflict
 
-**Problem:** QBTC's `pqc_validation.cpp` enforced a strict witness format: 2 elements (ECDSA-only) or 4 elements (PQC hybrid). The HTLC claim transaction uses a 3-element witness `[secret, OP_TRUE, htlcScript]`, which was rejected by the PQC validator, blocking all mining.
+**Problem:** QBTC's `pqc_validation.cpp` enforced a strict witness format: 2 elements (ECDSA-only) or 4 elements (PQC hybrid). The HTLC claim transaction uses a 3-element witness `[buyer_sig, secret, htlcScript]`, which was rejected by the PQC validator, blocking all mining.
 
 **Fix:** Changed the validator to `continue` (skip to the script interpreter) for non-2/non-4 element witnesses, letting Bitcoin Core's script interpreter handle P2WSH scripts natively. Applied to all 3 testnet nodes.
 
@@ -228,6 +238,24 @@ All EVM HTLC contracts show `withdrawn: true`:
 **Problem:** In a standard atomic swap, the seller reveals the secret by claiming on the buyer's chain. In this implementation, the seller claims USDC on Ethereum (revealing the secret on the EVM contract), and the buyer then uses that secret to claim QBTC.
 
 **Solution:** The swap server tracks state transitions and provides the secret to the seller via authenticated signature proof. The EVM contract stores the preimage on-chain after withdrawal, making it publicly verifiable.
+
+### 4. HTLC Claim Front-Running (Security Fix)
+
+**Problem:** The initial HTLC design used `OP_TRUE` as the sole condition in the claim branch — knowledge of the secret (preimage) was sufficient to spend the QBTC output. Once the buyer broadcast a claim transaction, the secret appeared in plaintext in the mempool. Any observer (and in particular a mining node) could extract the secret and construct a competing transaction redirecting the QBTC to a different address, racing the legitimate buyer.
+
+**Fix:** Replaced `OP_TRUE` with `<buyerPubKey> OP_CHECKSIG` in the claim branch:
+
+```
+OP_IF
+  OP_SHA256 <secretHash> OP_EQUALVERIFY
+  <buyerPubKey> OP_CHECKSIG            // secret + buyer signature required
+OP_ELSE
+  <locktime> OP_CHECKLOCKTIMEVERIFY OP_DROP
+  <sellerPubKey> OP_CHECKSIG
+OP_ENDIF
+```
+
+The buyer's public key is now embedded in the HTLC script at lock time (Step 3 — QBTC Lock). Claiming requires both the secret and a valid ECDSA signature from the buyer's key. An attacker who copies the secret from the mempool still cannot spend the output because they do not possess the buyer's private key. The witness format changes from `[secret, 0x01, htlcScript]` to `[buyer_sig, secret, htlcScript]` — both are 3-element witnesses, so the `pqc_validation.cpp` exemption for non-2/non-4 element P2WSH witnesses continues to apply.
 
 ---
 

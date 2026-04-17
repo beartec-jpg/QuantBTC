@@ -196,6 +196,9 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
                 }
             }
         }
+        // Commit to the extra parents via hashParentsRoot so miners cannot
+        // strip or replace hashParents after submitting a valid PoW solution.
+        pblock->hashParentsRoot = CBlockHeader::ComputeParentsRoot(pblock->hashParents);
 
         LogPrint(BCLog::VALIDATION, "QuantumBTC DAG block: selected_parent=%s parents=%u\n",
                  pindexPrev->GetBlockHash().ToString(),
