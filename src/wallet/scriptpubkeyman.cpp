@@ -20,6 +20,7 @@
 #include <support/cleanse.h>
 #include <wallet/scriptpubkeyman.h>
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/falcon.h>
 #include <crypto/pqc/hybrid_key.h>
 #include <crypto/pqc/pqc_config.h>
 
@@ -58,7 +59,9 @@ typedef std::vector<unsigned char> valtype;
 namespace {
 
 static const std::string INTERNAL_PQC_DERIVATION_DOMAIN_V1{"qbtc.pqc.dilithium.v1"};
+static const std::string INTERNAL_PQC_FALCON_DOMAIN_V1{"qbtc.pqc.falcon.v1"};
 static_assert(pqc::Dilithium::SEED_SIZE == 32, "Dilithium deterministic derivation expects a 32-byte seed");
+static_assert(pqc::Falcon::SEED_SIZE == 48, "Falcon deterministic derivation expects a 48-byte seed");
 
 bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
                                          const uint256& descriptor_id,
@@ -88,6 +91,43 @@ bool DeriveDeterministicDilithiumKeyPair(const CKey& ecdsa_key,
 
     pqc::Dilithium dilithium;
     const bool ok = dilithium.DeriveKeyPair(seed, pqc_pub, pqc_priv);
+    memory_cleanse(seed.data(), seed.size());
+    return ok;
+}
+
+bool DeriveDeterministicFalconKeyPair(const CKey& ecdsa_key,
+                                      const uint256& descriptor_id,
+                                      int32_t index,
+                                      const CPubKey& pubkey,
+                                      std::vector<unsigned char>& pqc_pub,
+                                      std::vector<unsigned char>& pqc_priv)
+{
+    if (!ecdsa_key.IsValid()) return false;
+
+    std::vector<unsigned char> ecdsa_secret(ecdsa_key.size());
+    std::transform(ecdsa_key.begin(), ecdsa_key.end(), ecdsa_secret.begin(),
+                   [](std::byte b) { return static_cast<unsigned char>(b); });
+    HashWriter hasher{};
+    hasher << INTERNAL_PQC_FALCON_DOMAIN_V1;
+    hasher << descriptor_id;
+    hasher << index;
+    hasher << pubkey;
+    hasher << ecdsa_secret;
+    uint256 seed_hash = hasher.GetHash();
+    memory_cleanse(ecdsa_secret.data(), ecdsa_secret.size());
+
+    // Expand 32-byte hash to 48-byte Falcon seed via a second hash pass.
+    HashWriter hasher2{};
+    hasher2 << INTERNAL_PQC_FALCON_DOMAIN_V1;
+    hasher2 << seed_hash;
+    uint256 seed_hash2 = hasher2.GetHash();
+
+    std::vector<unsigned char> seed(pqc::Falcon::SEED_SIZE);
+    std::copy(seed_hash.begin(), seed_hash.end(), seed.begin());  // 32 bytes
+    std::copy(seed_hash2.begin(), seed_hash2.begin() + 16, seed.begin() + 32); // 16 more bytes
+
+    pqc::Falcon falcon;
+    const bool ok = falcon.DeriveKeyPair(seed, pqc_pub, pqc_priv);
     memory_cleanse(seed.data(), seed.size());
     return ok;
 }
@@ -1720,6 +1760,13 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
         for (const CScript& script : scripts_temp) {
             m_map_script_pub_keys[script] = i;
         }
+        // QuantumBTC: for HD descriptor wallets, use ExpandPrivate to derive child private keys.
+        // out_keys from Expand() only has pubkeys; ExpandPrivate fills in private keys.
+        FlatSigningProvider out_keys_priv;
+        if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures && HavePrivateKeys()) {
+            m_wallet_descriptor.descriptor->ExpandPrivate(i, provider, out_keys_priv);
+        }
+
         for (const auto& pk_pair : out_keys.pubkeys) {
             const CPubKey& pubkey = pk_pair.second;
             if (m_map_pubkeys.count(pubkey) != 0) {
@@ -1734,19 +1781,39 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                 CKeyID keyid = pubkey.GetID();
                 if (m_map_pqc_keys.find(keyid) == m_map_pqc_keys.end() &&
                     m_map_crypted_pqc_keys.find(keyid) == m_map_crypted_pqc_keys.end()) {
-                    const auto ecdsa_key_opt = GetKey(keyid);
-                    if (!ecdsa_key_opt.has_value()) {
-                        WalletLogPrintf("PQC: deterministic key derivation requires unlocked private key for %s (index %d)\n",
-                                        keyid.ToString(), i);
-                        return false;
+                    // For HD descriptor wallets, use out_keys_priv (from ExpandPrivate).
+                    // Fall back to GetKey() for non-HD paths.
+                    CKey ecdsa_key;
+                    {
+                        const auto it = out_keys_priv.keys.find(keyid);
+                        if (it != out_keys_priv.keys.end()) {
+                            ecdsa_key = it->second;
+                        } else {
+                            const auto key_opt = GetKey(keyid);
+                            if (!key_opt.has_value()) {
+                                WalletLogPrintf("PQC: deterministic key derivation requires unlocked private key for %s (index %d), skipping\n",
+                                                keyid.ToString(), i);
+                                continue; // Skip PQC for this key; don't abort entire TopUp
+                            }
+                            ecdsa_key = *key_opt;
+                        }
                     }
 
                     std::vector<unsigned char> pqc_pub;
                     std::vector<unsigned char> pqc_priv;
-                    if (!DeriveDeterministicDilithiumKeyPair(*ecdsa_key_opt, id, i, pubkey, pqc_pub, pqc_priv)) {
-                        WalletLogPrintf("PQC: deterministic Dilithium derivation failed for %s (index %d)\n",
-                                        keyid.ToString(), i);
-                        return false;
+                    const bool use_falcon = (pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON);
+                    if (use_falcon) {
+                        if (!DeriveDeterministicFalconKeyPair(ecdsa_key, id, i, pubkey, pqc_pub, pqc_priv)) {
+                            WalletLogPrintf("PQC: deterministic Falcon derivation failed for %s (index %d)\n",
+                                            keyid.ToString(), i);
+                            continue; // Skip rather than abort
+                        }
+                    } else {
+                        if (!DeriveDeterministicDilithiumKeyPair(ecdsa_key, id, i, pubkey, pqc_pub, pqc_priv)) {
+                            WalletLogPrintf("PQC: deterministic Dilithium derivation failed for %s (index %d)\n",
+                                            keyid.ToString(), i);
+                            continue; // Skip rather than abort
+                        }
                     }
 
                     if (m_storage.HasEncryptionKeys()) {
@@ -1788,7 +1855,8 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                         new_spks.insert(hybrid_spk);
                     }
 
-                    WalletLogPrintf("PQC: derived deterministic Dilithium keypair for %s (index %d, scheme=v1)\n",
+                    WalletLogPrintf("PQC: derived deterministic %s keypair for %s (index %d, scheme=v1)\n",
+                                    use_falcon ? "Falcon" : "Dilithium",
                                     keyid.ToString(), i);
                 }
             }

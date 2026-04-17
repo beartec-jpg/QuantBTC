@@ -49,6 +49,31 @@ bool Falcon::GenerateKeyPair(std::vector<uint8_t>& public_key,
     return true;
 }
 
+bool Falcon::DeriveKeyPair(const std::vector<uint8_t>& seed,
+                           std::vector<uint8_t>& public_key,
+                           std::vector<uint8_t>& private_key)
+{
+    if (seed.size() != SEED_SIZE) {
+        LogPrintf("Falcon::DeriveKeyPair: invalid seed size (%u, expected %u)\n",
+                  seed.size(), SEED_SIZE);
+        return false;
+    }
+
+    public_key.resize(PUBLIC_KEY_SIZE);
+    private_key.resize(PRIVATE_KEY_SIZE);
+
+    if (PQCLEAN_FALCONPADDED512_CLEAN_crypto_sign_seed_keypair(
+            public_key.data(), private_key.data(), seed.data()) != 0) {
+        LogPrintf("Falcon::DeriveKeyPair: seeded keypair generation failed\n");
+        memory_cleanse(public_key.data(), public_key.size());
+        memory_cleanse(private_key.data(), private_key.size());
+        public_key.clear();
+        private_key.clear();
+        return false;
+    }
+    return true;
+}
+
 bool Falcon::Sign(const std::vector<uint8_t>& message,
                   const std::vector<uint8_t>& private_key,
                   std::vector<uint8_t>& signature)

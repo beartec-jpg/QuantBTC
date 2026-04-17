@@ -63,7 +63,7 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
                     enabled_signatures.push_back(PQCSignatureScheme::SPHINCS_PLUS);
                 }
                 else if (sig == "falcon") {
-                    LogPrintf("PQC WARNING: falcon signature scheme is not yet implemented, ignoring\n");
+                    enabled_signatures.push_back(PQCSignatureScheme::FALCON);
                 }
                 else if (sig == "sqisign") {
                     LogPrintf("PQC WARNING: sqisign signature scheme is not yet implemented, ignoring\n");
@@ -79,10 +79,14 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
                 enabled_signatures.push_back(PQCSignatureScheme::SPHINCS_PLUS);
             }
             else if (sigList == "falcon") {
-                LogPrintf("PQC WARNING: falcon signature scheme is not yet implemented, ignoring\n");
+                enabled_signatures.push_back(PQCSignatureScheme::FALCON);
             }
             else if (sigList == "sqisign") {
                 LogPrintf("PQC WARNING: sqisign signature scheme is not yet implemented, ignoring\n");
+            }
+            // Set preferred scheme to first entry
+            if (!enabled_signatures.empty()) {
+                preferred_sig_scheme = enabled_signatures.front();
             }
         }
     }

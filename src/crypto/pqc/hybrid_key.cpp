@@ -23,12 +23,18 @@ bool HybridKey::Generate() {
     m_classical_key.MakeNewKey(true);
 
     if (PQCConfig::GetInstance().enable_pqc) {
-        // Generate Dilithium signature keypair (not KEM)
+        // Select algorithm based on configured preferred signature scheme
+        PQCAlgorithm keygen_algo = PQCAlgorithm::DILITHIUM;
+        if (PQCConfig::GetInstance().preferred_sig_scheme == PQCSignatureScheme::FALCON) {
+            keygen_algo = PQCAlgorithm::FALCON;
+        }
+        // Generate signature keypair
         PQCManager& manager = PQCManager::GetInstance();
         std::vector<unsigned char> pqc_private_key_tmp;
-        if (!manager.GenerateSignatureKeyPair(PQCAlgorithm::DILITHIUM,
+        if (!manager.GenerateSignatureKeyPair(keygen_algo,
                                               m_pqc_public_key, pqc_private_key_tmp)) {
-            LogPrintf("HybridKey::Generate: Dilithium keygen failed; PQC is enabled, aborting\n");
+            LogPrintf("HybridKey::Generate: %s keygen failed; PQC is enabled, aborting\n",
+                      keygen_algo == PQCAlgorithm::FALCON ? "Falcon" : "Dilithium");
             m_is_valid = false;
             return false;
         }
@@ -37,7 +43,8 @@ bool HybridKey::Generate() {
             memory_cleanse(pqc_private_key_tmp.data(), pqc_private_key_tmp.size());
             pqc_private_key_tmp.clear();
         }
-        LogPrintf("HybridKey::Generate: generated hybrid key (ECDSA + Dilithium, pqc_pk=%u bytes)\n",
+        LogPrintf("HybridKey::Generate: generated hybrid key (ECDSA + %s, pqc_pk=%u bytes)\n",
+                  keygen_algo == PQCAlgorithm::FALCON ? "Falcon" : "Dilithium",
                   m_pqc_public_key.size());
     }
     

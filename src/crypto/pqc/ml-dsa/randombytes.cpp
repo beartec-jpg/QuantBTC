@@ -13,6 +13,12 @@
 extern "C" {
 void randombytes(uint8_t *out, size_t outlen)
 {
-    GetStrongRandBytes(Span<unsigned char>(out, outlen));
+    // GetStrongRandBytes supports up to 32 bytes per call. Process in chunks.
+    while (outlen > 0) {
+        size_t chunk = outlen < 32 ? outlen : 32;
+        GetStrongRandBytes(Span<unsigned char>(out, chunk));
+        out += chunk;
+        outlen -= chunk;
+    }
 }
 } // extern "C"

@@ -524,6 +524,10 @@ void SetupServerArgs(ArgsManager& argsman)
     // QuantumBTC: PQC and DAG runtime flags
     argsman.AddArg("-pqc", "Enable post-quantum cryptography extensions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqcmode=<mode>", "PQC signing mode: hybrid (ECDSA+Dilithium, default), classical (ECDSA only), pure (Dilithium only, future)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme for new keys: dilithium (default), falcon, sphincs", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcalgo=<algo>", "PQC KEM algorithms to enable (comma-separated)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqchybridkeys", "Enable hybrid PQC+ECDSA keys (default: 1 when -pqc=1)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqchybridsig", "Require hybrid PQC signatures for all transactions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dag", "Enable BlockDAG (GHOSTDAG) consensus mode (default: per-chain)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-dagmaxparents=<n>", "Maximum number of DAG parent references per block (default: per-chain)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-earlyprotection", "Enable early-chain protections: activation delay, hashrate ramp-up, per-IP throttling (default: on for regtest/testnet, off for mainnet)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -777,6 +781,19 @@ void InitParameterInteraction(ArgsManager& args)
         }
         if (pqcconf.enable_pqc) {
             LogPrintf("QuantumBTC: PQC enabled, mode=%s\n", pqcmode);
+        }
+        // Wire -pqcsig= to preferred_sig_scheme
+        std::string pqcsig = args.GetArg("-pqcsig", "dilithium");
+        if (pqcsig == "falcon") {
+            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
+            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON);
+            LogPrintf("QuantumBTC: PQC signature scheme set to Falcon-padded-512\n");
+        } else if (pqcsig == "sphincs") {
+            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::SPHINCS_PLUS;
+            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::SPHINCS_PLUS);
+        } else {
+            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::DILITHIUM;
+            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::DILITHIUM);
         }
     }
 

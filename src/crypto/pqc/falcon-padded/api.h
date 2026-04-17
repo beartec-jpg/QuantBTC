@@ -21,6 +21,10 @@
 int PQCLEAN_FALCONPADDED512_CLEAN_crypto_sign_keypair(
     uint8_t *pk, uint8_t *sk);
 
+/* Deterministic seeded keygen (48-byte seed, bypasses randombytes). */
+int PQCLEAN_FALCONPADDED512_CLEAN_crypto_sign_seed_keypair(
+    uint8_t *pk, uint8_t *sk, const uint8_t *seed48);
+
 /*
  * Compute a signature on a provided message (m, mlen), with a given
  * private key (sk). Signature is written in sig[], with length written
