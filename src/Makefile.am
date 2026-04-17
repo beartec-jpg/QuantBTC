@@ -685,6 +685,21 @@ crypto_libbitcoin_crypto_base_la_SOURCES = \
   crypto/pqc/falcon-padded/rng.c \
   crypto/pqc/falcon-padded/sign.c \
   crypto/pqc/falcon-padded/vrfy.c \
+  crypto/pqc/falcon-padded-1024/api.h \
+  crypto/pqc/falcon-padded-1024/codec.c \
+  crypto/pqc/falcon-padded-1024/common.c \
+  crypto/pqc/falcon-padded-1024/fft.c \
+  crypto/pqc/falcon-padded-1024/fips202.c \
+  crypto/pqc/falcon-padded-1024/fips202.h \
+  crypto/pqc/falcon-padded-1024/fpr.c \
+  crypto/pqc/falcon-padded-1024/fpr.h \
+  crypto/pqc/falcon-padded-1024/inner.h \
+  crypto/pqc/falcon-padded-1024/keygen.c \
+  crypto/pqc/falcon-padded-1024/pqclean.c \
+  crypto/pqc/falcon-padded-1024/randombytes.h \
+  crypto/pqc/falcon-padded-1024/rng.c \
+  crypto/pqc/falcon-padded-1024/sign.c \
+  crypto/pqc/falcon-padded-1024/vrfy.c \
   crypto/pqc/sphincs.cpp \
   crypto/pqc/sphincs.h \
   crypto/pqc/sphincsplus/address.c \

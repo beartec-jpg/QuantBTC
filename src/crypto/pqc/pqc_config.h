@@ -12,6 +12,7 @@ namespace pqc {
 enum class PQCSignatureScheme {
     DILITHIUM,
     FALCON,
+    FALCON1024,
     SPHINCS_PLUS
 };
 

@@ -19,6 +19,7 @@
 #include <consensus/validation.h>
 #include <core_io.h>
 #include <crypto/pqc/pqc_config.h>
+#include <crypto/pqc/falcon.h>
 #include <deploymentinfo.h>
 #include <deploymentstatus.h>
 #include <flatfile.h>
@@ -3124,21 +3125,30 @@ static RPCHelpMan getpqcinfo()
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
         {
-            // The node currently mandates Falcon-padded-512 (FN-DSA) for all
-            // post-quantum signing.  These constants match the vendored
-            // PQClean FALCONPADDED512_CLEAN implementation in
-            // src/crypto/pqc/falcon-padded/.
+            const auto scheme = pqc::PQCConfig::GetInstance().preferred_sig_scheme;
+            const bool is1024 = (scheme == pqc::PQCSignatureScheme::FALCON1024);
+
             UniValue obj(UniValue::VOBJ);
-            obj.pushKV("scheme",                  "falcon");
-            obj.pushKV("standard",                "FIPS 206 (FN-DSA) / FALCON-padded-512");
-            obj.pushKV("pubkey_size",             (uint64_t)897);
-            obj.pushKV("sig_size",                (uint64_t)666);
-            obj.pushKV("privkey_size",            (uint64_t)1281);
+            obj.pushKV("scheme",                  is1024 ? "falcon1024" : "falcon");
+            obj.pushKV("standard",                is1024
+                ? "FIPS 206 (FN-DSA) / FALCON-padded-1024"
+                : "FIPS 206 (FN-DSA) / FALCON-padded-512");
+            obj.pushKV("pubkey_size",             is1024
+                ? (uint64_t)pqc::Falcon1024::PUBLIC_KEY_SIZE
+                : (uint64_t)pqc::Falcon::PUBLIC_KEY_SIZE);
+            obj.pushKV("sig_size",                is1024
+                ? (uint64_t)pqc::Falcon1024::SIGNATURE_SIZE
+                : (uint64_t)pqc::Falcon::SIGNATURE_SIZE);
+            obj.pushKV("privkey_size",            is1024
+                ? (uint64_t)pqc::Falcon1024::PRIVATE_KEY_SIZE
+                : (uint64_t)pqc::Falcon::PRIVATE_KEY_SIZE);
             obj.pushKV("seed_size",               (uint64_t)48);
             obj.pushKV("security_bits_classical", (uint64_t)256);
-            obj.pushKV("security_bits_quantum",   (uint64_t)128);
-            obj.pushKV("nist_level",              "1");
-            obj.pushKV("implementation",          "PQClean FALCONPADDED512_CLEAN (portable constant-time C)");
+            obj.pushKV("security_bits_quantum",   is1024 ? (uint64_t)256 : (uint64_t)128);
+            obj.pushKV("nist_level",              is1024 ? "5" : "1");
+            obj.pushKV("implementation",          is1024
+                ? "PQClean FALCONPADDED1024_CLEAN (portable constant-time C)"
+                : "PQClean FALCONPADDED512_CLEAN (portable constant-time C)");
             obj.pushKV("constant_time",           true);
             obj.pushKV("constant_time_note",
                 "Sign and verify paths use hash_to_point_ct() exclusively. "

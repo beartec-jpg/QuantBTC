@@ -17,6 +17,7 @@ enum class PQCAlgorithm {
     SPHINCS,
     DILITHIUM,
     FALCON,
+    FALCON1024,
     SQISIGN
 };
 

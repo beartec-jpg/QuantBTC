@@ -25,16 +25,24 @@ bool HybridKey::Generate() {
     if (PQCConfig::GetInstance().enable_pqc) {
         // Select algorithm based on configured preferred signature scheme
         PQCAlgorithm keygen_algo = PQCAlgorithm::DILITHIUM;
-        if (PQCConfig::GetInstance().preferred_sig_scheme == PQCSignatureScheme::FALCON) {
+        const auto scheme = PQCConfig::GetInstance().preferred_sig_scheme;
+        if (scheme == PQCSignatureScheme::FALCON) {
             keygen_algo = PQCAlgorithm::FALCON;
+        } else if (scheme == PQCSignatureScheme::FALCON1024) {
+            keygen_algo = PQCAlgorithm::FALCON1024;
         }
+        auto algo_name = [](PQCAlgorithm a) -> const char* {
+            if (a == PQCAlgorithm::FALCON) return "Falcon-512";
+            if (a == PQCAlgorithm::FALCON1024) return "Falcon-1024";
+            return "Dilithium";
+        };
         // Generate signature keypair
         PQCManager& manager = PQCManager::GetInstance();
         std::vector<unsigned char> pqc_private_key_tmp;
         if (!manager.GenerateSignatureKeyPair(keygen_algo,
                                               m_pqc_public_key, pqc_private_key_tmp)) {
             LogPrintf("HybridKey::Generate: %s keygen failed; PQC is enabled, aborting\n",
-                      keygen_algo == PQCAlgorithm::FALCON ? "Falcon" : "Dilithium");
+                      algo_name(keygen_algo));
             m_is_valid = false;
             return false;
         }
@@ -44,8 +52,7 @@ bool HybridKey::Generate() {
             pqc_private_key_tmp.clear();
         }
         LogPrintf("HybridKey::Generate: generated hybrid key (ECDSA + %s, pqc_pk=%u bytes)\n",
-                  keygen_algo == PQCAlgorithm::FALCON ? "Falcon" : "Dilithium",
-                  m_pqc_public_key.size());
+                  algo_name(keygen_algo), m_pqc_public_key.size());
     }
     
     m_is_valid = true;
@@ -92,21 +99,28 @@ bool HybridKey::SignPQCMessage(const std::vector<unsigned char>& message,
     PQCAlgorithm algo = PQCAlgorithm::DILITHIUM;
     if (m_pqc_private_key.size() == Falcon::PRIVATE_KEY_SIZE) {
         algo = PQCAlgorithm::FALCON;
+    } else if (m_pqc_private_key.size() == Falcon1024::PRIVATE_KEY_SIZE) {
+        algo = PQCAlgorithm::FALCON1024;
     }
 
+    auto algo_name = [](PQCAlgorithm a) -> const char* {
+        if (a == PQCAlgorithm::FALCON) return "Falcon-512";
+        if (a == PQCAlgorithm::FALCON1024) return "Falcon-1024";
+        return "Dilithium";
+    };
     const bool ok = manager.Sign(algo, message, privkey, signature);
     memory_cleanse(privkey.data(), privkey.size());
     memory_cleanse(privkey_secure.data(), privkey_secure.size());
     if (!ok) {
-        LogPrintf("HybridKey::SignPQCMessage: %s signing failed\n",
-                  algo == PQCAlgorithm::FALCON ? "Falcon" : "Dilithium");
+        LogPrintf("HybridKey::SignPQCMessage: %s signing failed\n", algo_name(algo));
     }
     return ok;
 }
 
 bool HybridKey::SetPQCPublicKey(const std::vector<unsigned char>& public_key) {
     if (public_key.size() != Dilithium::PUBLIC_KEY_SIZE &&
-        public_key.size() != Falcon::PUBLIC_KEY_SIZE) {
+        public_key.size() != Falcon::PUBLIC_KEY_SIZE &&
+        public_key.size() != Falcon1024::PUBLIC_KEY_SIZE) {
         return false;
     }
     // Reject trivially invalid keys (all-zero keys are not valid ML-DSA-44 keys

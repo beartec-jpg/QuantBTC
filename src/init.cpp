@@ -524,7 +524,7 @@ void SetupServerArgs(ArgsManager& argsman)
     // QuantumBTC: PQC and DAG runtime flags
     argsman.AddArg("-pqc", "Enable post-quantum cryptography extensions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqcmode=<mode>", "PQC signing mode: hybrid (ECDSA+Dilithium, default), classical (ECDSA only), pure (Dilithium only, future)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme for new keys: dilithium (default), falcon, sphincs", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme for new keys: dilithium (default), falcon, falcon1024, sphincs. Use falcon1024 for 256-bit PQ (NIST Level 5) vault outputs.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqcalgo=<algo>", "PQC KEM algorithms to enable (comma-separated)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqchybridkeys", "Enable hybrid PQC+ECDSA keys (default: 1 when -pqc=1)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqchybridsig", "Require hybrid PQC signatures for all transactions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -787,7 +787,11 @@ void InitParameterInteraction(ArgsManager& args)
         if (pqcsig == "falcon") {
             pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
             pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON);
-            LogPrintf("QuantumBTC: PQC signature scheme set to Falcon-padded-512\n");
+            LogPrintf("QuantumBTC: PQC signature scheme set to Falcon-padded-512 (128-bit PQ)\n");
+        } else if (pqcsig == "falcon1024") {
+            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON1024;
+            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON1024);
+            LogPrintf("QuantumBTC: PQC signature scheme set to Falcon-padded-1024 (256-bit PQ, NIST Level 5)\n");
         } else if (pqcsig == "sphincs") {
             pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::SPHINCS_PLUS;
             pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::SPHINCS_PLUS);

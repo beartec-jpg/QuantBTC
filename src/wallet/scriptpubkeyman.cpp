@@ -1745,12 +1745,14 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
     if (size > 0) {
         target_size = size;
     } else {
-        // When Falcon is active, pre-generating hundreds of keypairs (~100ms each)
+        // When Falcon-512 or Falcon-1024 is active, pre-generating hundreds of keypairs
         // would make wallet creation unusable. Cap at 1 so keys are derived
         // on-demand as addresses are consumed; signing always re-derives from the
         // ECDSA child key anyway.
+        const auto& pqcscheme = pqc::PQCConfig::GetInstance().preferred_sig_scheme;
         const bool falcon_active = pqc::PQCConfig::GetInstance().enable_hybrid_signatures &&
-                                   pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON;
+                                   (pqcscheme == pqc::PQCSignatureScheme::FALCON ||
+                                    pqcscheme == pqc::PQCSignatureScheme::FALCON1024);
         target_size = falcon_active ? 1 : m_keypool_size;
     }
 
@@ -1822,7 +1824,9 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
 
                     std::vector<unsigned char> pqc_pub;
                     std::vector<unsigned char> pqc_priv;
-                    const bool use_falcon = (pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON);
+                    const auto& _scheme = pqc::PQCConfig::GetInstance().preferred_sig_scheme;
+                    const bool use_falcon = (_scheme == pqc::PQCSignatureScheme::FALCON ||
+                                             _scheme == pqc::PQCSignatureScheme::FALCON1024);
                     if (use_falcon) {
                         // For Falcon: derive only the public key during TopUp.
                         // The private key is re-derived on-demand at signing time in

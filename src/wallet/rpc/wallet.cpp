@@ -211,6 +211,7 @@ static RPCHelpMan getpqcinfo()
         switch (sig) {
             case pqc::PQCSignatureScheme::DILITHIUM:   sigs.push_back("dilithium"); break;
             case pqc::PQCSignatureScheme::FALCON:      sigs.push_back("falcon"); break;
+            case pqc::PQCSignatureScheme::FALCON1024:  sigs.push_back("falcon1024"); break;
             case pqc::PQCSignatureScheme::SPHINCS_PLUS: sigs.push_back("sphincs+"); break;
         }
     }

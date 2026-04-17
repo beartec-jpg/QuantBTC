@@ -30,6 +30,10 @@ bool PQCManager::GenerateSignatureKeyPair(PQCAlgorithm algo,
             Falcon fal;
             return fal.GenerateKeyPair(publicKey, privateKey);
         }
+        case PQCAlgorithm::FALCON1024: {
+            Falcon1024 fal1024;
+            return fal1024.GenerateKeyPair(publicKey, privateKey);
+        }
         case PQCAlgorithm::SPHINCS: {
             SPHINCS sph;
             return sph.GenerateKeyPair(publicKey, privateKey);
@@ -56,6 +60,10 @@ bool PQCManager::Sign(PQCAlgorithm algo,
             Falcon fal;
             return fal.Sign(message, privateKey, signature);
         }
+        case PQCAlgorithm::FALCON1024: {
+            Falcon1024 fal1024;
+            return fal1024.Sign(message, privateKey, signature);
+        }
         case PQCAlgorithm::SPHINCS: {
             SPHINCS sph;
             return sph.Sign(message, privateKey, signature);
@@ -81,6 +89,10 @@ bool PQCManager::Verify(PQCAlgorithm algo,
         case PQCAlgorithm::FALCON: {
             Falcon fal;
             return fal.Verify(message, signature, publicKey);
+        }
+        case PQCAlgorithm::FALCON1024: {
+            Falcon1024 fal1024;
+            return fal1024.Verify(message, signature, publicKey);
         }
         case PQCAlgorithm::SPHINCS: {
             SPHINCS sph;

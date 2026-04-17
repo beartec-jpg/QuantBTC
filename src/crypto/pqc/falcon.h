@@ -44,10 +44,10 @@ namespace pqc {
  *
  * ─── Upgrade Path (Falcon-1024) ──────────────────────────────────────────────
  *
- * This implementation uses Falcon-512 (128-bit PQ).  NIST Level 5 security
- * (256-bit PQ) requires Falcon-1024 (pk=1793 B, sig=1280 B).  A future
- * release may vendor PQClean FALCONPADDED1024_CLEAN and expose it via a
- * `-pqcsig=falcon1024` runtime flag for high-value vault outputs.
+ * This implementation vendors both Falcon-512 (128-bit PQ, NIST Level 1)
+ * and Falcon-1024 (256-bit PQ, NIST Level 5).  Use `-pqcsig=falcon1024`
+ * to activate the higher-security scheme for vault outputs.
+ * Falcon-1024: pk=1793 B, sig=1280 B, sk=2305 B.
  */
 class Falcon {
 public:
@@ -58,6 +58,32 @@ public:
 
     Falcon();
     ~Falcon();
+
+    bool GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key);
+    bool DeriveKeyPair(const std::vector<uint8_t>& seed, std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key);
+    bool Sign(const std::vector<uint8_t>& message, const std::vector<uint8_t>& private_key, std::vector<uint8_t>& signature);
+    bool Verify(const std::vector<uint8_t>& message, const std::vector<uint8_t>& signature, const std::vector<uint8_t>& public_key);
+};
+
+/**
+ * Falcon-padded-1024 / FN-DSA-1024 — NIST Level 5 (256-bit post-quantum).
+ *
+ * Source: PQClean FALCONPADDED1024_CLEAN (src/crypto/pqc/falcon-padded-1024/).
+ * Sizes: pk=1793 B, sig=1280 B (fixed/padded), sk=2305 B.
+ * Use via -pqcsig=falcon1024 for high-value / vault outputs.
+ *
+ * Same constant-time and side-channel properties as Falcon-512 — see the
+ * security notes above.  Both sign and verify use hash_to_point_ct().
+ */
+class Falcon1024 {
+public:
+    static constexpr size_t PUBLIC_KEY_SIZE  = 1793;  // FN-DSA-padded-1024 public key
+    static constexpr size_t PRIVATE_KEY_SIZE = 2305;  // FN-DSA-padded-1024 secret key
+    static constexpr size_t SIGNATURE_SIZE   = 1280;  // FN-DSA-padded-1024 signature (fixed)
+    static constexpr size_t SEED_SIZE        = 48;    // seed for deterministic keygen
+
+    Falcon1024();
+    ~Falcon1024();
 
     bool GenerateKeyPair(std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key);
     bool DeriveKeyPair(const std::vector<uint8_t>& seed, std::vector<uint8_t>& public_key, std::vector<uint8_t>& private_key);
