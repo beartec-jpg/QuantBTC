@@ -4395,6 +4395,15 @@ bool ChainstateManager::AcceptBlockHeader(const CBlockHeader& block, BlockValida
                     strprintf("block has %u DAG parents, max is %u",
                         block.hashParents.size(), GetConsensus().nMaxDagParents));
             }
+            // Verify that hashParentsRoot matches the declared hashParents.
+            // This check is cheap (single SHA256d) and prevents an adversary
+            // from replacing hashParents on a received block without invalidating
+            // the PoW (which now covers hashParentsRoot).
+            const uint256 expected_root = CBlockHeader::ComputeParentsRoot(block.hashParents);
+            if (block.hashParentsRoot != expected_root) {
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-dag-parents-root",
+                    "hashParentsRoot does not match hashParents commitment");
+            }
                         std::set<uint256> seen_extra_parents;
             for (const uint256& parent_hash : block.hashParents) {
                 // Extra parents must not equal the selected parent (redundant)
@@ -4674,7 +4683,17 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
         }
 
         if (!all_parents.empty()) {
-            pindex->dagData = ghostdag_mgr.ComputeGhostdag(all_parents, provider);
+            std::optional<dag::GhostdagData> dag_result =
+                ghostdag_mgr.ComputeGhostdag(all_parents, provider);
+            if (!dag_result) {
+                // Mergeset overflow: adversarially crafted DAG topology.
+                LogError("AcceptBlock: GHOSTDAG mergeset overflow for block %s\n",
+                         block.GetHash().ToString());
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                                     "bad-dag-mergeset-overflow",
+                                     "DAG block mergeset exceeded maximum size");
+            }
+            pindex->dagData = *dag_result;
         } else {
             pindex->dagData.blue_score = 0;
             pindex->dagData.blue_work = 0;

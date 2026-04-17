@@ -232,7 +232,9 @@ BOOST_AUTO_TEST_CASE(ghostdag_genesis)
     dag::GhostdagManager mgr(18);
     TestBlockProvider provider;
 
-    dag::GhostdagData result = mgr.ComputeGhostdag({}, provider);
+    auto result_opt = mgr.ComputeGhostdag({}, provider);
+    BOOST_REQUIRE(result_opt.has_value());
+    const dag::GhostdagData& result = *result_opt;
     BOOST_CHECK_EQUAL(result.blue_score, 0U);
     BOOST_CHECK(result.selected_parent.IsNull());
 }
@@ -248,7 +250,9 @@ BOOST_AUTO_TEST_CASE(ghostdag_single_parent)
     gen_data.blue_work = 0;
     provider.AddBlock(genesis, {}, gen_data);
 
-    dag::GhostdagData result = mgr.ComputeGhostdag({genesis}, provider);
+    auto result_opt = mgr.ComputeGhostdag({genesis}, provider);
+    BOOST_REQUIRE(result_opt.has_value());
+    const dag::GhostdagData& result = *result_opt;
     BOOST_CHECK(result.selected_parent == genesis);
     BOOST_CHECK_EQUAL(result.blue_score, 1U); // genesis blue_score + 0 blues in mergeset + 1
     BOOST_CHECK(result.mergeset_blues.empty());
@@ -311,7 +315,9 @@ BOOST_AUTO_TEST_CASE(ghostdag_mergeset_classification)
     provider.AddBlock(b, {genesis}, data_b);
 
     // Block C with parents A and B
-    dag::GhostdagData result = mgr.ComputeGhostdag({a, b}, provider);
+    auto result_opt = mgr.ComputeGhostdag({a, b}, provider);
+    BOOST_REQUIRE(result_opt.has_value());
+    const dag::GhostdagData& result = *result_opt;
 
     // The selected parent should be whichever has the lower hash (tie on score=1)
     uint256 expected_sp = (a < b) ? a : b;
@@ -338,7 +344,9 @@ BOOST_AUTO_TEST_CASE(ghostdag_virtual)
     provider.AddBlock(genesis, {}, gen_data);
 
     // ComputeVirtual with single tip = same as ComputeGhostdag
-    dag::GhostdagData vd = mgr.ComputeVirtual({genesis}, provider);
+    auto vd_opt = mgr.ComputeVirtual({genesis}, provider);
+    BOOST_REQUIRE(vd_opt.has_value());
+    const dag::GhostdagData& vd = *vd_opt;
     BOOST_CHECK(vd.selected_parent == genesis);
     BOOST_CHECK_EQUAL(vd.blue_score, 1U);
 }
