@@ -311,14 +311,28 @@ std::vector<uint256> GhostdagManager::TopologicalOrder(
 std::vector<uint256> ComputeVirtualSelectedParentChain(
     const std::vector<uint256>& tips,
     const IGhostdagBlockProvider& provider,
-    uint32_t k)
+    uint32_t k,
+    size_t max_depth)
 {
     GhostdagManager mgr(k);
     std::optional<GhostdagData> vd = mgr.ComputeVirtual(tips, provider);
     if (!vd || vd->selected_parent.IsNull()) {
         return {};
     }
-    return {vd->selected_parent};
+
+    // Walk the selected-parent chain from the virtual block's direct selected
+    // parent back to genesis.  Each step follows GhostdagData::selected_parent
+    // retrieved from the provider.
+    std::vector<uint256> chain;
+    uint256 cur = vd->selected_parent;
+    while (!cur.IsNull()) {
+        chain.push_back(cur);
+        if (max_depth > 0 && chain.size() >= max_depth) break;
+        const GhostdagData* data = provider.GetGhostdagData(cur);
+        if (!data || data->selected_parent.IsNull()) break;
+        cur = data->selected_parent;
+    }
+    return chain;
 }
 
 } // namespace dag

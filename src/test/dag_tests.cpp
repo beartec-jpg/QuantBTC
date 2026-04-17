@@ -358,6 +358,7 @@ BOOST_AUTO_TEST_CASE(virtual_selected_parent_chain)
     uint256 genesis = MakeHash(0);
     dag::GhostdagData gen_data;
     gen_data.blue_score = 0;
+    // genesis has no selected parent (IsNull())
     provider.AddBlock(genesis, {}, gen_data);
 
     uint256 a = MakeHash(1);
@@ -367,7 +368,30 @@ BOOST_AUTO_TEST_CASE(virtual_selected_parent_chain)
     provider.AddBlock(a, {genesis}, data_a);
 
     auto chain = dag::ComputeVirtualSelectedParentChain({a}, provider, 18);
-    // Should return {a} (the selected parent of the virtual block)
+    // The virtual block's selected parent is 'a'; 'a's selected parent is
+    // genesis; genesis has no selected parent.  The full chain is [a, genesis].
+    BOOST_REQUIRE_EQUAL(chain.size(), 2U);
+    BOOST_CHECK(chain[0] == a);      // virtual's selected parent
+    BOOST_CHECK(chain[1] == genesis); // a's selected parent
+}
+
+BOOST_AUTO_TEST_CASE(virtual_selected_parent_chain_max_depth)
+{
+    TestBlockProvider provider;
+
+    uint256 genesis = MakeHash(0);
+    dag::GhostdagData gen_data;
+    gen_data.blue_score = 0;
+    provider.AddBlock(genesis, {}, gen_data);
+
+    uint256 a = MakeHash(1);
+    dag::GhostdagData data_a;
+    data_a.blue_score = 1;
+    data_a.selected_parent = genesis;
+    provider.AddBlock(a, {genesis}, data_a);
+
+    // max_depth=1 should cap the walk at one entry
+    auto chain = dag::ComputeVirtualSelectedParentChain({a}, provider, 18, /*max_depth=*/1);
     BOOST_REQUIRE_EQUAL(chain.size(), 1U);
     BOOST_CHECK(chain[0] == a);
 }
