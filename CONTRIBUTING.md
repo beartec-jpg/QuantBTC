@@ -81,8 +81,7 @@ facilitates social contribution, easy testing and peer review.
 
 To contribute a patch, the workflow is as follows:
 
-  1. Fork repository ([only for the first time](https://docs.github.com/en/get-started/quickstart/fork-a-repo))
-  1. Create topic branch
+  1. Clone the repository and create a topic branch
   1. Commit patches
 
 For GUI-related issues or pull requests, the https://github.com/bitcoin-core/gui repository should be used.
@@ -133,7 +132,7 @@ Commit messages should never contain any `@` mentions (usernames prefixed with "
 Please refer to the [Git manual](https://git-scm.com/doc) for more information
 about Git.
 
-  - Push changes to your fork
+  - Push changes to your branch
   - Create pull request
 
 ### Creating the Pull Request
@@ -170,8 +169,8 @@ mailing list discussions).
 
 The description for a new pull request should not contain any `@` mentions. The
 PR description will be included in the commit message when the PR is merged and
-any users mentioned in the description will be annoyingly notified each time a
-fork of Bitcoin Core copies the merge. Instead, make any username mentions in a
+any users mentioned in the description will be annoyingly notified each time
+the merge is copied. Instead, make any username mentions in a
 subsequent comment to the PR.
 
 ### Translation changes
@@ -190,7 +189,7 @@ in the body of the pull request to indicate tasks are pending.
 
 At this stage, one should expect comments and review from other contributors. You
 can add more commits to your pull request by committing them locally and pushing
-to your fork.
+to your branch.
 
 You are expected to reply to any review comments before your pull request is
 merged. You may update the code or reject the feedback if you do not agree with

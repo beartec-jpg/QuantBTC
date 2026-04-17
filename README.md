@@ -808,7 +808,7 @@ See [ROADMAP.md](ROADMAP.md) for the full development history and planned phases
 
 ## Contributing
 
-We welcome contributions to qBTC. Feel free to fork this repository and submit pull requests.
+We welcome contributions to qBTC. Please submit pull requests directly — do not fork this repository.
 
 For discussions and issues, please open an issue on the [GitHub repository](https://github.com/beartec-jpg/QuantBTC/issues).
 
