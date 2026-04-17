@@ -4,6 +4,7 @@
 #include <hash.h>
 #include <key.h>
 #include <logging.h>
+#include <algorithm>
 
 namespace pqc {
 
@@ -90,6 +91,14 @@ bool HybridKey::SetPQCPublicKey(const std::vector<unsigned char>& public_key) {
     if (public_key.size() != Dilithium::PUBLIC_KEY_SIZE) {
         return false;
     }
+    // Reject trivially invalid keys (all-zero keys are not valid ML-DSA-44 keys
+    // and would produce a misleading "valid" HybridKey that fails at Verify time).
+    const bool all_zero = std::all_of(public_key.begin(), public_key.end(),
+                                      [](unsigned char b) { return b == 0; });
+    if (all_zero) {
+        LogPrintf("HybridKey::SetPQCPublicKey: rejected all-zero public key\n");
+        return false;
+    }
     m_pqc_public_key = public_key;
     // Mark valid for verification-only use even without a classical key.
     m_is_valid = true;
@@ -157,8 +166,10 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
     }
 
     // Detect hybrid format from the signature itself: [1-byte len][ECDSA][PQC].
-    // If the signature is too short to contain a PQC component, treat as classical.
-    // This avoids silently downgrading hybrid-signed txs when config changes.
+    // When a PQC public key is present the key is a hybrid key; a classical-only
+    // signature MUST NOT be accepted — doing so would allow a signature-downgrade
+    // attack where an attacker strips the PQC component and the verifier silently
+    // falls back to ECDSA-only verification.
     if (m_pqc_public_key.empty()) {
         return m_classical_key.GetPubKey().Verify(hash, signature);
     }
@@ -172,7 +183,10 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
             looks_hybrid = (signature.size() >= static_cast<size_t>(1 + csig_len_peek + Dilithium::SIGNATURE_SIZE));
         }
         if (!looks_hybrid) {
-            return m_classical_key.GetPubKey().Verify(hash, signature);
+            // PQC public key is loaded but the signature is classical-only:
+            // reject to prevent signature-downgrade attacks.
+            LogPrintf("HybridKey::Verify: classical-only signature rejected for hybrid key\n");
+            return false;
         }
     }
 
