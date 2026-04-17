@@ -524,7 +524,7 @@ void SetupServerArgs(ArgsManager& argsman)
     // QuantumBTC: PQC and DAG runtime flags
     argsman.AddArg("-pqc", "Enable post-quantum cryptography extensions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqcmode=<mode>", "PQC signing mode: hybrid (ECDSA+Falcon-512, default), classical (ECDSA only), pure (future)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme policy target for new keys (Falcon-512 only; default: falcon). Non-falcon values are ignored and forced to falcon.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme policy target for new keys (Falcon-512 only; default: falcon). Any non-falcon value (including falcon1024) is ignored and forced to falcon.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqcalgo=<algo>", "PQC KEM algorithms to enable (comma-separated)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqchybridkeys", "Enable hybrid PQC+ECDSA keys (default: 1 when -pqc=1)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqchybridsig", "Require hybrid PQC signatures for all transactions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);

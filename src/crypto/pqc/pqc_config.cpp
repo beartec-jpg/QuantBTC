@@ -60,7 +60,7 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
                 if (sig == "falcon") {
                     saw_falcon = true;
                 } else if (!sig.empty()) {
-                    LogPrintf("PQC WARNING: signature scheme '%s' is not permitted by policy, ignoring\n", sig);
+                    LogPrintf("PQC WARNING: signature scheme '%s' is not permitted by policy (only 'falcon' is accepted), ignoring\n", sig);
                 }
                 sigList.erase(0, pos + 1);
             }
@@ -69,7 +69,7 @@ void PQCConfig::LoadFromArgs(const std::vector<std::string>& args) {
             if (sigList == "falcon") {
                 saw_falcon = true;
             } else if (!sigList.empty()) {
-                LogPrintf("PQC WARNING: signature scheme '%s' is not permitted by policy, ignoring\n", sigList);
+                LogPrintf("PQC WARNING: signature scheme '%s' is not permitted by policy (only 'falcon' is accepted), ignoring\n", sigList);
             }
 
             if (!saw_falcon) {
