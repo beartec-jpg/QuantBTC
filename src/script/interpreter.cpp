@@ -10,6 +10,7 @@
 #include <crypto/sha256.h>
 #include <consensus/pqc_validation.h>
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/falcon.h>
 #include <crypto/pqc/sphincs.h>
 #include <logging.h>
 #include <pubkey.h>
@@ -1724,6 +1725,22 @@ bool GenericTransactionSignatureChecker<T>::CheckDilithiumSignature(const std::v
 }
 
 template <class T>
+bool GenericTransactionSignatureChecker<T>::CheckFalconSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig_in, const CScript& scriptCode, SigVersion sigversion) const
+{
+    if (ecdsa_sig_in.empty())
+        return false;
+    int nHashType = ecdsa_sig_in.back();
+
+    if (sigversion == SigVersion::WITNESS_V0 && amount < 0) return HandleMissingData(m_mdb);
+
+    uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
+    std::vector<uint8_t> message(sighash.begin(), sighash.end());
+
+    pqc::Falcon falcon;
+    return falcon.Verify(message, pqc_sig, pqc_pubkey);
+}
+
+template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckSPHINCSSignature(const std::vector<unsigned char>& pqc_sig, const std::vector<unsigned char>& pqc_pubkey, const std::vector<unsigned char>& ecdsa_sig_in, const CScript& scriptCode, SigVersion sigversion) const
 {
     // The ECDSA signature has the hash type appended as its last byte.
@@ -1832,18 +1849,23 @@ bool GenericTransactionSignatureChecker<T>::CheckSequence(const CScriptNum& nSeq
 template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckPQCSignature(const std::vector<unsigned char>& pqcSig, const std::vector<unsigned char>& pqcPubKey, const CScript& scriptCode, SigVersion sigversion, int nHashType) const
 {
-    if (pqcSig.size() != pqc::Dilithium::SIGNATURE_SIZE ||
-        pqcPubKey.size() != pqc::Dilithium::PUBLIC_KEY_SIZE) {
-        return false;
-    }
-
     if (sigversion == SigVersion::WITNESS_V0 && amount < 0) return HandleMissingData(m_mdb);
 
     uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
-
-    pqc::Dilithium dilithium;
     std::vector<uint8_t> msg(sighash.begin(), sighash.end());
-    return dilithium.Verify(msg, pqcSig, pqcPubKey);
+
+    if (pqcSig.size() == pqc::Falcon::SIGNATURE_SIZE &&
+        pqcPubKey.size() == pqc::Falcon::PUBLIC_KEY_SIZE) {
+        pqc::Falcon falcon;
+        return falcon.Verify(msg, pqcSig, pqcPubKey);
+    }
+    if (pqcSig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
+        pqcPubKey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
+        pqc::Dilithium dilithium;
+        return dilithium.Verify(msg, pqcSig, pqcPubKey);
+    }
+    // Unknown PQC algorithm / size mismatch.
+    return false;
 }
 
 // explicit instantiation
@@ -1976,11 +1998,16 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 static_assert(pqc::SPHINCS::SIGNATURE_SIZE > MAX_SCRIPT_ELEMENT_SIZE,
                               "SPHINCS+ sig size sanity: must exceed MAX_SCRIPT_ELEMENT_SIZE");
                 // Enforce expected PQC element sizes explicitly before use.
+                // Falcon-padded-512: sig=666B, pk=897B (both below MAX_SCRIPT_ELEMENT_SIZE=520? No — 666>520)
+                static_assert(pqc::Falcon::SIGNATURE_SIZE > MAX_SCRIPT_ELEMENT_SIZE,
+                              "Falcon sig size sanity: must exceed MAX_SCRIPT_ELEMENT_SIZE");
                 const bool is_dilithium = (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
                                            pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE);
                 const bool is_sphincs   = (pqc_sig.size() == pqc::SPHINCS::SIGNATURE_SIZE &&
                                            pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE);
-                if (!is_dilithium && !is_sphincs) {
+                const bool is_falcon    = (pqc_sig.size() == pqc::Falcon::SIGNATURE_SIZE &&
+                                           pqc_pubkey.size() == pqc::Falcon::PUBLIC_KEY_SIZE);
+                if (!is_dilithium && !is_sphincs && !is_falcon) {
                     return set_error(serror, SCRIPT_ERR_PQC_SIG_SIZE);
                 }
 
@@ -2009,8 +2036,13 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 pqc_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
 
                 // Verify PQC signature over the BIP143 sighash.
-                // (is_dilithium / is_sphincs were determined at element-pop time above.)
-                if (is_dilithium) {
+                if (is_falcon) {
+                    const int nHashType = stack[0].back();
+                    if (!checker.CheckPQCSignature(pqc_sig, pqc_pubkey, pqc_scriptCode,
+                                                   SigVersion::WITNESS_V0, nHashType)) {
+                        return set_error(serror, SCRIPT_ERR_PQC_SIG);
+                    }
+                } else if (is_dilithium) {
                     const int nHashType = stack[0].back();
                     if (!checker.CheckPQCSignature(pqc_sig, pqc_pubkey, pqc_scriptCode,
                                                    SigVersion::WITNESS_V0, nHashType)) {
@@ -2024,10 +2056,10 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                     }
                 }
 
+                const char* pqc_algo = is_falcon ? "Falcon" : (is_dilithium ? "Dilithium" : "SPHINCS+");
                 LogDebug(BCLog::VALIDATION,
                          "PQC: verified %s signature (hybrid_addr=%d) for P2WPKH input\n",
-                         pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE ? "Dilithium" : "SPHINCS+",
-                         is_hybrid_addr);
+                         pqc_algo, is_hybrid_addr);
 
                 if (is_hybrid_addr) {
                     // Hybrid address: ECDSA pubkey is NOT Hash160-committed to program

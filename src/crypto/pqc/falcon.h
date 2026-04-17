@@ -1,14 +1,6 @@
 #ifndef BITCOIN_CRYPTO_PQC_FALCON_H
 #define BITCOIN_CRYPTO_PQC_FALCON_H
 
-// ============================================================================
-// NOT PRODUCTION — STUB ONLY
-// WARNING: THIS ALGORITHM IS NOT IMPLEMENTED
-// All methods return false. Do NOT use until a real implementation is integrated.
-// Do NOT deploy this file in production builds.
-// See TODO.md for implementation status.
-// ============================================================================
-
 #include <stdint.h>
 #include <cstddef>
 #include <vector>
@@ -16,20 +8,25 @@
 namespace pqc {
 
 /**
- * Falcon-padded-512 / FN-DSA digital signature scheme — STUB.
+ * Falcon-padded-512 / FN-DSA digital signature scheme.
  *
- * All operations return false. A real implementation will be wired in
- * when Falcon/FN-DSA support is enabled. The previous liboqs dependency
- * has been removed to allow builds without installing liboqs.
+ * Wraps the vendored PQClean Falcon-padded-512 reference implementation.
+ * The padded variant produces fixed-size 666-byte signatures, which is
+ * essential for deterministic witness size validation on-chain.
  *
- * Security level: NIST Level 1 (roughly equivalent to AES-128).
- * Based on NTRU lattices with fast Fourier sampling.
+ * Security level: NIST Level 1 (AES-128 equivalent).
+ * Standard: FIPS 206 (FN-DSA), finalized August 2024.
+ *
+ * Key advantage over Dilithium (ML-DSA-44):
+ *   Signature: 666 bytes vs 2420 bytes (3.6× smaller)
+ *   Public key: 897 bytes vs 1312 bytes (1.5× smaller)
  */
 class Falcon {
 public:
-    static constexpr size_t PUBLIC_KEY_SIZE = 897;    // Falcon-padded-512 public key
-    static constexpr size_t PRIVATE_KEY_SIZE = 1281;  // Falcon-padded-512 secret key
-    static constexpr size_t SIGNATURE_SIZE = 666;     // Falcon-padded-512 signature
+    static constexpr size_t PUBLIC_KEY_SIZE  = 897;   // FN-DSA-padded-512 public key
+    static constexpr size_t PRIVATE_KEY_SIZE = 1281;  // FN-DSA-padded-512 secret key
+    static constexpr size_t SIGNATURE_SIZE   = 666;   // FN-DSA-padded-512 signature (fixed)
+    static constexpr size_t SEED_SIZE        = 48;    // seed for deterministic keygen
 
     Falcon();
     ~Falcon();

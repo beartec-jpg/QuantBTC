@@ -9,6 +9,7 @@
 #include <crypto/pqc/pqc_config.h>
 #include <crypto/pqc/hybrid_key.h>
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/falcon.h>
 #include <util/translation.h>
 #include <util/vector.h>
 #include <logging.h>
@@ -104,13 +105,14 @@ bool MutableTransactionSignatureCreator::CreatePQCSig(const SigningProvider& pro
 
     // Create the detached PQC witness element without exposing the raw private key.
     if (!hybridKey.SignPQCMessage(std::vector<unsigned char>(hash.begin(), hash.end()), pqcSig)) {
-        LogPrintf("PQC: Dilithium signing failed for key %s\n", keyid.ToString());
+        LogPrintf("PQC: signing failed for key %s\n", keyid.ToString());
         return false;
     }
 
     pqcPubKey = hybridKey.GetPQCPublicKey();
-    LogPrintf("PQC: created Dilithium signature (%u-byte sig, %u-byte pk) for input %u\n",
-              pqcSig.size(), pqcPubKey.size(), nIn);
+    const char* algo = (pqcSig.size() == pqc::Falcon::SIGNATURE_SIZE) ? "Falcon" : "Dilithium";
+    LogPrintf("PQC: created %s signature (%u-byte sig, %u-byte pk) for input %u\n",
+              algo, pqcSig.size(), pqcPubKey.size(), nIn);
     return true;
 }
 
