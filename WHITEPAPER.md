@@ -16,9 +16,9 @@
 
 ## Abstract
 
-qBTC (QuantumBTC) is a high-throughput blockchain protocol with a staged post-quantum migration path, built as an independent fork of Bitcoin Core v28.0.0, itself derived from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin). It combines two major innovations: post-quantum-capable signature infrastructure and a BlockDAG consensus mechanism that enables parallel block production.
+qBTC (QuantumBTC) is a high-throughput, quantum-safe blockchain protocol built as an independent fork of Bitcoin Core v28.0.0, itself derived from [QBlockQ/pqc-bitcoin](https://github.com/QBlockQ/pqc-bitcoin). It combines two major innovations: mandatory post-quantum hybrid signatures and a BlockDAG consensus mechanism that enables parallel block production.
 
-qBTC supports a **dual-mode signature model**: an ECDSA path for low-value/high-frequency transactions and an opt-in hybrid path (ECDSA + ML-DSA-44) for high-value and vault transactions. This design enables quantum-safe storage today while minimizing network bloat and memory pressure for routine payments. Network-wide mandatory migration is deferred until objective quantum-risk thresholds are met.
+**Every transaction on qBTC carries a mandatory hybrid witness:** an ECDSA signature (classical security today) and a Falcon-padded-512 signature (quantum-safe permanently). Both must be valid for a transaction to be accepted by any node. This design is enforced from genesis — there is no ECDSA-only path, no opt-in period, and no migration soft-fork. Falcon (FN-DSA, NIST FIPS 206) was selected over ML-DSA-44 (Dilithium) for its 2.14× smaller witness size, yielding nearly twice the transaction throughput under the same block weight limit.
 
 The protocol replaces Bitcoin's linear chain model with a Directed Acyclic Graph (DAG) consensus layer based on the GHOSTDAG/PHANTOM protocol (Sompolinsky & Zohar, 2018). Blocks reference multiple concurrent tips, enabling parallel block production at a 10-second target interval with up to 64 parent references per block and a GHOSTDAG k-parameter of 32 (testnet) / 18 (mainnet). This yields 60× faster confirmations than Bitcoin while preserving Bitcoin's economic model: a 21,000,000 QBTC supply cap with SHA-256 proof-of-work and a halving schedule calibrated to the same ~4-year cadence.
 
@@ -26,12 +26,12 @@ As of April 2026, qBTC operates a live testnet with 3 public seed nodes, over **
 
 ### Operational Policy Update (April 2026)
 
-The active deployment profile is:
+As of April 2026 qBTC has pivoted to **Falcon-from-genesis**: every transaction carries a mandatory Falcon-padded-512 hybrid witness enforced at consensus from block 1. The previous ECDSA-first / soft-fork roadmap is superseded. Key facts:
 
-- ECDSA-first for everyday payments and low-value transfers
-- Hybrid signatures for vault and high-value flows
-- Current test profile: ~90% standard (ECDSA) and ~10% hybrid regression lanes
-- Planned future transition: soft-fork migration from ECDSA baseline toward Falcon-backed post-quantum enforcement when quantum risk materially increases
+- Mandatory hybrid witness (ECDSA + Falcon-padded-512) on all P2WPKH outputs
+- Falcon private key derived on-demand from ECDSA seed — never persisted to disk
+- `-pqcsig=dilithium` flag retains ML-DSA-44 as a research and comparison option
+- No soft-fork activation, no migration flag day, no legacy ECDSA UTXOs to migrate
 
 ---
 
@@ -55,7 +55,7 @@ qBTC is designed around three principles:
 
 1. **Preserve Bitcoin's economic model.** The 21M supply cap, SHA-256 proof-of-work, and halving schedule are preserved. Users familiar with Bitcoin's monetary properties will find qBTC's tokenomics immediately recognisable.
 
-2. **Adopt adaptive quantum migration.** Keep ECDSA efficient for everyday use, enforce hybrid signatures in vault/high-value policy domains, and move to stronger protocol-level PQC enforcement as quantum risk reaches defined operational thresholds.
+2. **Adopt mandatory quantum-safe signatures from genesis.** Every transaction carries a Falcon hybrid witness. There are no legacy ECDSA-only UTXOs and no migration challenge. Users get quantum safety immediately, not after a soft-fork activation event.
 
 3. **Enable high throughput via BlockDAG.** The GHOSTDAG consensus layer allows parallel block production, increasing transaction throughput without increasing block size limits to unworkable levels.
 

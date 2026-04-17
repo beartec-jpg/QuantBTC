@@ -1837,7 +1837,12 @@ bool DescriptorScriptPubKeyMan::TopUpWithDB(WalletBatch& batch, unsigned int siz
                         pqc::HybridKey hybrid;
                         hybrid.SetPQCPublicKey(pqc_pub);
                         m_map_pqc_keys[keyid] = std::move(hybrid);
-                        // No DB write for the private key — it's always re-derived.
+                        // Write the pubkey to DB so it survives node restarts.
+                        // Private key is intentionally not stored — always re-derived from
+                        // the ECDSA seed on demand at signing time.
+                        if (!batch.WriteDescriptorPQCKey(id, pubkey, pqc_pub, /*pqc_privkey=*/{})) {
+                            throw std::runtime_error(std::string(__func__) + ": writing Falcon pubkey to wallet DB failed");
+                        }
                     } else {
                         if (!DeriveDeterministicDilithiumKeyPair(ecdsa_key, id, i, pubkey, pqc_pub, pqc_priv)) {
                             WalletLogPrintf("PQC: deterministic Dilithium derivation failed for %s (index %d)\n",
@@ -2418,7 +2423,12 @@ bool DescriptorScriptPubKeyMan::AddPQCKey(const CKeyID& key_id, const std::vecto
     LOCK(cs_desc_man);
     m_map_crypted_pqc_keys.erase(key_id);
     pqc::HybridKey hybrid;
-    hybrid.SetPQCKey(pqc_pubkey, pqc_privkey);
+    if (pqc_privkey.empty()) {
+        // Falcon: pubkey-only entry — private key is never stored; re-derived at signing.
+        hybrid.SetPQCPublicKey(pqc_pubkey);
+    } else {
+        hybrid.SetPQCKey(pqc_pubkey, pqc_privkey);
+    }
     m_map_pqc_keys[key_id] = std::move(hybrid);
 
     // Register hybrid P2WPKH scriptPubKey for IsMine detection on wallet reload.

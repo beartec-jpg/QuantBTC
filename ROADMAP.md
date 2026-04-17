@@ -3,16 +3,17 @@
 
 ## What Is QuantumBTC?
 
-QuantumBTC (QBTC) is a Bitcoin Core v28.0.0 fork that combines **post-quantum cryptographic capabilities** with **BlockDAG consensus** (GHOSTDAG) to create a high-throughput blockchain network with a staged quantum-migration strategy, while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW).
+QuantumBTC (QBTC) is a Bitcoin Core v28.0.0 fork that combines **post-quantum cryptographic signatures** with **BlockDAG consensus** (GHOSTDAG) to create a high-throughput, quantum-safe blockchain network, while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW).
 
-Current network policy is **ECDSA-first for day-to-day payments** and **hybrid signatures for high-value/vault transactions**. This keeps transaction weight and memory overhead low while enabling quantum-safe custody today and preserving a smooth migration path toward stricter PQC enforcement as the threat landscape evolves.
+**Every transaction on QuantumBTC is quantum-safe from genesis.** The network uses a mandatory hybrid witness format (ECDSA + Falcon-padded-512) for all payments. There is no ECDSA-only mode, no migration soft-fork, and no opt-in period — quantum resistance is enforced at the consensus level from block 1. Falcon (FN-DSA, NIST FIPS 206) was chosen over ML-DSA-44 (Dilithium) for its 2.14× smaller witness size, yielding nearly 2× the transaction throughput at the same block weight limit.
 
-### Current Signature Policy
+### Signature Policy
 
-- **Standard wallet / small payments:** ECDSA witness path
-- **Vault / high-value flows:** hybrid witness path (ECDSA + ML-DSA-44)
-- **Current validation profile:** ~90% standard test scenarios and ~10% hybrid scenarios
-- **Future direction:** soft-fork migration from ECDSA baseline to Falcon-backed post-quantum enforcement when quantum threat justifies network-wide activation
+- **All transactions:** mandatory hybrid witness — ECDSA (secp256k1) + Falcon-padded-512 (FN-DSA)
+- **Why hybrid:** ECDSA protects against classical adversaries today; Falcon protects against quantum adversaries permanently
+- **No migration needed:** Falcon is active at genesis — no soft-fork, no flag day, no opt-in
+- **Scheme selection:** `-pqcsig=falcon` (default) or `-pqcsig=dilithium` (ML-DSA-44 available for research/comparison)
+- **Key storage:** Falcon private key derived on-demand from ECDSA seed — never persisted to disk
 
 ---
 
@@ -141,10 +142,10 @@ Brought up a standalone QuantumBTC testnet network:
 | Capability | Status | Details |
 |------------|--------|---------|
 | **Solo mining** | ✅ | `generatetoaddress` produces DAG-mode blocks with trivial difficulty |
-| **PQC transactions** | ✅ | Hybrid ECDSA + ML-DSA-44 witness available for vault/high-value use |
+| **PQC transactions** | ✅ | Mandatory hybrid ECDSA + Falcon-padded-512 witness on all transactions |
 | **Peer-to-peer sync** | ✅ | Nodes discover, connect, and sync full chain including PQC txs |
 | **Wallet operations** | ✅ | Create, load, encrypt, send, receive with PQC keys |
-| **Fee estimation** | ✅ | Correctly accounts for PQC witness size (~1075 vB per input) |
+| **Fee estimation** | ✅ | Correctly accounts for Falcon witness size (~670 vB per input) |
 | **RBF** | ✅ | Replace-by-fee works with PQC transactions |
 | **CPFP** | ✅ | Child-pays-for-parent with PQC witness |
 | **Block validation** | ✅ | Full consensus verification of PQC sigs + DAG parents |
@@ -161,8 +162,8 @@ Brought up a standalone QuantumBTC testnet network:
 |------|--------|-------|
 | DNS seed nodes | ❌ | No public DNS seeds — bootstrap via `-seednode=<ip>:28333` |
 | Pool mining | ❌ | No stratum integration; solo mining only |
-| SPHINCS+ wallet signing | ❌ | Only crypto primitive tested; wallet uses Dilithium only |
-| Falcon/SQIsign | ❌ | Stubs only — not wired to real implementations |
+| SPHINCS+ wallet signing | ❌ | Only crypto primitive tested; wallet uses Falcon/Dilithium |
+| SQIsign | ❌ | Stub only — research item, not wired |
 | KEMs in protocol | ❌ | Kyber/FrodoKEM/NTRU not used for node communication yet |
 | Mainnet launch | ❌ | `CQbtcMainParams` defined but not deployed |
 | GUI (bitcoin-qt) | ❌ | Build fails (Falcon/Kyber liboqs link errors) |
@@ -266,25 +267,32 @@ Systematic throughput and resilience testing at scale:
 - [x] Max-TPS blast test: 60 wallets, 3 nodes, 180s blast → 87 tx/s confirmed, 894 tx/block peak
 - [x] 30–60 minute sustained run at 15–20 tx/s with 50+ wallets (endurance test)
 
-### Phase 9: Adaptive PQC Activation Path
+### Phase 9: Falcon-from-Genesis — Full Quantum-Safe Deployment
 
-**Status: 🚧 In Progress**
+**Status: ✅ Complete**
 
-Align protocol activation with practical risk and network economics:
+Pivoted from the ECDSA-first / soft-fork migration model to mandatory Falcon hybrid signatures from block 1. No migration path is needed because there are no legacy ECDSA-only UTXOs:
 
-- [x] Document ECDSA-first + hybrid-vault operating model
-- [x] Adopt mixed validation profile: 90% standard, 10% hybrid regression lanes
-- [ ] Define objective quantum-risk trigger criteria for stronger default PQC enforcement
-- [ ] Integrate production Falcon implementation (replace current stub path)
-- [ ] Draft and test soft-fork rules for ECDSA-to-Falcon migration
-- [ ] Publish migration guidance for wallets, exchanges, and custodians
+- [x] Implement Falcon-padded-512 (FN-DSA, NIST FIPS 206) cryptographic primitives
+- [x] Wire Falcon keygen, sign, verify into wallet, interpreter, and signing pipeline
+- [x] Deterministic Falcon key derivation from ECDSA seed (no separate key storage)
+- [x] Keypool cap: derive Falcon keys on-demand, not pre-generated (eliminates ~100s stall)
+- [x] Fee estimation dispatches on `preferred_sig_scheme` — correct Falcon sizes (666B sig + 897B pk)
+- [x] Consensus: dispatch Falcon vs Dilithium by signature size in interpreter (666B → Falcon)
+- [x] Signature cache: Falcon goes through `CheckPQCSignature` → `ComputeEntryPQC` (domain 'P')
+- [x] Tamper rejection proof: both sig halves enforced independently at consensus (16/16 PASS)
+- [x] Wallet restart persistence: Falcon keys re-derived from ECDSA seed after bitcoind restart
+- [x] Dilithium (`-pqcsig=dilithium`) retained as alternative for research and comparison
+- [x] `dbcache` config fix: removed `-dbcache=150` override; nodes now use `dbcache=512` from conf
+- [x] Falcon implementation report: [TESTREPORT-2026-04-17-FALCON-IMPLEMENTATION.md](TESTREPORT-2026-04-17-FALCON-IMPLEMENTATION.md)
 - [x] True GHOSTDAG parallelism test: 8–12 miners to force simultaneous blocks and verify blue/red scoring under contention
 - [x] 50,000-tx high-throughput test: 10 nodes, 90% ECDSA / 10% ML-DSA, 61.2 tx/s, 100% success, 29.2% multi-parent blocks
 - [x] 72-hour surge endurance: ~417,000 txs, 25,736 blocks, 0 consensus splits, 0 data loss
 - [x] Security audit: 86/90 pass, 0 unexpected failures, all 17 findings fixed (3 HIGH, 6 MEDIUM, 8 LOW)
 - [ ] PQC signature verification CPU profiling under peak load (`getpqcsigcachestats`)
-- [ ] Benchmark signature cache hit rates during sustained blast
+- [ ] Benchmark Falcon signature cache hit rates during sustained blast
 - [ ] Pruning strategy validation for DAG metadata beyond 100k blocks
+- [ ] Verify `-prune` mode correctly retains DAG parent references (block index vs raw block files)
 
 Test reports: [Max-TPS](TESTREPORT-2026-04-09-MAX-TPS.md) | [Stress](TESTREPORT-2026-04-09-STRESS.md) | [Sustained](TESTREPORT-2026-04-09-SUSTAINED-GHOSTDAG.md) | [72-Hour Surge](TESTREPORT-2026-04-14-72HR-FINAL.md) | [Security Audit](TESTREPORT-2026-07-15-SECURITY-AUDIT.md) | [Scalability Projections](TESTREPORT-2026-04-15-PROJECTIONS.md)
 
@@ -299,12 +307,12 @@ Test reports: [Max-TPS](TESTREPORT-2026-04-09-MAX-TPS.md) | [Stress](TESTREPORT-
 ### Phase 10: Protocol Hardening (Planned)
 
 - [ ] Wire SPHINCS+ as alternative signature algorithm in wallet
-- [ ] Replace Falcon/SQIsign stubs with real implementations (or remove)
-- [ ] Integrate ML-KEM (Kyber) for encrypted P2P communication
-- [ ] Formal security audit of PQC consensus rules
-- [ ] BIP specification for QBTC hybrid witness format
-- [ ] Add SPHINCS+ signature cache entries alongside Dilithium
+- [ ] Integrate ML-KEM (Kyber) for encrypted P2P channel negotiation
+- [ ] Formal security audit of PQC consensus rules (Falcon-specific)
+- [ ] BIP specification for QBTC hybrid witness format (Falcon variant)
+- [ ] Add SPHINCS+ signature cache alongside Falcon
 - [ ] Pruning strategy for DAG metadata as the chain grows beyond 100k blocks
+- [ ] `getpqcinfo` RPC reporting active scheme, cache stats, and key derivation mode
 
 ### Phase 11: Mainnet Preparation (Planned)
 
@@ -436,5 +444,5 @@ Classical equivalent:         ~141 vB (7.6× smaller)
 
 ---
 
-*Last updated: April 14, 2026*
+*Last updated: April 17, 2026*
 *QuantumBTC — Quantum-safe BlockDAG for a post-quantum world*

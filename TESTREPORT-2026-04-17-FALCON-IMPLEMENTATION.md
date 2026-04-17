@@ -250,9 +250,10 @@ Dilithium uses `ComputeEntryDilithiumRaw` (domain `'D'`), Falcon uses `ComputeEn
 | Item | Priority | Notes |
 |---|---|---|
 | Verify `-prune` mode with DAG parent references | Medium | DAG headers reference multiple parents — confirm `hashParents` survives block pruning (stored in block index LevelDB, not raw block files) |
-| Dilithium tamper mirror test | Low | Mirror of `test_falcon_sig_tamper.py` for completeness |
-| Phase 9: Soft-fork activation criteria | Medium | Objective quantum-risk trigger for ECDSA→Falcon migration signal |
-| Phase 9: Objective QC threshold definition | Medium | Define the fault-tolerant logical qubit count that triggers mandatory migration |
+| Wallet restart / key persistence test | ✅ Done | `test_falcon_restart_persistence.py` — proves keys re-derive from ECDSA seed after restart |
+| Dilithium tamper mirror test | ✅ Done | `test_dilithium_sig_tamper.py` — mirror of Falcon tamper test for ML-DSA-44 |
+| Phase 10: GUI (bitcoin-qt) build | Low | Build fails with Falcon/Kyber liboqs link errors |
+| Phase 10: Stratum v2 pool mining | Low | No pool protocol yet; solo mining only |
 
 ---
 

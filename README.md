@@ -14,21 +14,21 @@
 
 ## What is qBTC?
 
-qBTC (QuantumBTC) transforms Bitcoin Core into a high-throughput blockchain with an incremental post-quantum migration path while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW). The network currently runs an **ECDSA-first policy** for most transactions, with **opt-in hybrid witnesses** (ECDSA + ML-DSA-44) for high-value and vault use cases.
+qBTC (QuantumBTC) transforms Bitcoin Core into a high-throughput, quantum-safe blockchain while preserving Bitcoin's economic model (21M supply cap, halving schedule, SHA-256 PoW). **Every transaction on qBTC is quantum-safe from genesis** — there is no ECDSA-only mode, no migration soft-fork, and no opt-in period. The hybrid witness (ECDSA + Falcon-padded-512) is mandatory at the consensus level from block 1.
 
-### Operational Policy (Current)
+### Signature Policy
 
-- **Small everyday payments:** classical ECDSA path (lower witness weight and lower fees)
-- **High-value custody / vault flows:** hybrid signatures (ECDSA + Dilithium) enforced by vault policy
-- **Network goal:** avoid unnecessary witness bloat while preserving a production-ready quantum-safe path today
-- **Migration strategy:** move from ECDSA-first to stronger PQC enforcement as quantum risk rises, with planned Falcon soft-fork transition
-- **Current test mix:** approximately **90% standard (ECDSA)** and **10% hybrid** scenarios
+- **All transactions:** mandatory hybrid witness — ECDSA + Falcon-padded-512 (FN-DSA, NIST FIPS 206)
+- **Why hybrid:** ECDSA protects against classical adversaries today; Falcon protects against quantum adversaries permanently
+- **No migration needed:** Falcon is active at genesis; no soft-fork, no flag day, no opt-in
+- **Falcon vs Dilithium:** Falcon (666B sig + 897B pk) is 2.14× smaller than Dilithium (2420B + 1312B), giving ~179 tx/s theoretical max vs 91 for Dilithium
+- **Key storage:** Falcon private key derived on-demand from ECDSA seed — never written to disk
 
 ### Key Capabilities
 
 | Capability | Status |
 |------------|--------|
-| PQC hybrid transactions (ECDSA + ML-DSA-44, opt-in) | ✅ |
+| PQC hybrid transactions (ECDSA + Falcon-padded-512, mandatory) | ✅ |
 | BlockDAG parallel block production (GHOSTDAG) | ✅ |
 | Solo mining via `generatetoaddress` | ✅ |
 | P2P node sync with PQC transactions | ✅ |
