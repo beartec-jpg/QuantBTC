@@ -93,11 +93,6 @@ using node::CBlockIndexHeightOnlyComparator;
 using node::CBlockIndexWorkComparator;
 using node::SnapshotMetadata;
 
-// =========================================================================
-// QuantumBTC Early Protection: global manager instance
-// =========================================================================
-earlyprotection::EarlyProtectionManager g_early_protection;
-
 /** Time to wait between writing blocks/block index to disk. */
 static constexpr std::chrono::hours DATABASE_WRITE_INTERVAL{1};
 /** Time to wait between flushing chainstate to disk. */
@@ -4734,16 +4729,17 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                   force_flag, height_ok, protection_active);
 
         if (protection_active) {
-            auto bwi = g_early_protection.PopBlockWeight(pindex->GetBlockHash());
+            auto& early_protection = earlyprotection::EarlyProtectionManager::GetInstance();
+            auto bwi = early_protection.PopBlockWeight(pindex->GetBlockHash());
             double weight = bwi.weight;
             LogPrintf("AcceptBlock: EarlyProtection PopBlockWeight returned weight=%.3f peer_id=%lld\n",
                       weight, bwi.peer_id);
 
             if (bwi.peer_id == -1) {
-                  g_early_protection.RegisterPeer(-1);
-                  double w_activation = g_early_protection.GetActivationWeight(-1);
-                double w_throttle = g_early_protection.RecordBlockIPAndGetThrottleWeight("127.0.0.1");
-                double w_ramp = g_early_protection.RecordBlockAndGetRampWeight(-1);
+                  early_protection.RegisterPeer(-1);
+                  double w_activation = early_protection.GetActivationWeight(-1);
+                double w_throttle = early_protection.RecordBlockIPAndGetThrottleWeight("127.0.0.1");
+                double w_ramp = early_protection.RecordBlockAndGetRampWeight(-1);
                   weight = w_activation * w_throttle * w_ramp;
                   LogPrintf("AcceptBlock: EarlyProtection local block weights: activation=%.3f throttle=%.3f ramp=%.3f final=%.3f\n",
                             w_activation, w_throttle, w_ramp, weight);

@@ -1737,7 +1737,7 @@ void PeerManagerImpl::InitializeNode(const CNode& node, ServiceFlags our_service
 
     // QuantumBTC Early Protection: register peer with random activation delay.
     // New peers start with reduced block weight during the bootstrap period.
-    int delay = g_early_protection.RegisterPeer(nodeid);
+    int delay = earlyprotection::EarlyProtectionManager::GetInstance().RegisterPeer(nodeid);
     if (delay > 0) {
         LogPrint(BCLog::NET,
                  "EarlyProtection: registered peer=%d with %ds activation delay\n",
@@ -1770,7 +1770,7 @@ void PeerManagerImpl::FinalizeNode(const CNode& node)
     NodeId nodeid = node.GetId();
 
     // QuantumBTC Early Protection: clean up peer tracking on disconnect.
-    g_early_protection.UnregisterPeer(nodeid);
+    earlyprotection::EarlyProtectionManager::GetInstance().UnregisterPeer(nodeid);
 
     {
     LOCK(cs_main);
@@ -5093,9 +5093,10 @@ void PeerManagerImpl::ProcessMessage(CNode& pfrom, const std::string& msg_type, 
         //   - Per-IP/subnet throttle (>25% of recent 100 → 50% weight)
         {
             std::string peer_ip = pfrom.addr.ToStringAddr();
-            double weight = g_early_protection.ComputeBlockWeight(
+            auto& early_protection = earlyprotection::EarlyProtectionManager::GetInstance();
+            double weight = early_protection.ComputeBlockWeight(
                 pfrom.GetId(), peer_ip);
-            g_early_protection.SetBlockWeight(hash, weight, peer_ip,
+            early_protection.SetBlockWeight(hash, weight, peer_ip,
                                               pfrom.GetId());
             if (weight < 1.0) {
                 LogPrint(BCLog::NET,

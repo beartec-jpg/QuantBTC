@@ -6,12 +6,12 @@
 
 // ML-KEM-768 parameters (NIST FIPS 203, formerly CRYSTALS-Kyber)
 #define KYBER_N 256
-#endif
 #ifndef KYBER_K
 #define KYBER_K 3
 #endif
 #ifndef KYBER_Q
 #define KYBER_Q 3329
+#endif
 #define KYBER_PUBLIC_KEY_BYTES   1184  // ML-KEM-768 public key
 #define KYBER_SECRET_KEY_BYTES   2400  // ML-KEM-768 secret key
 #define KYBER_CIPHERTEXT_BYTES   1088  // ML-KEM-768 ciphertext

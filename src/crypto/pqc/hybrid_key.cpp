@@ -148,8 +148,9 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
     memory_cleanse(classical_sig.data(), classical_sig.size());
     memory_cleanse(pqc_sig.data(), pqc_sig.size());
 
-    LogPrintf("HybridKey::Sign: hybrid signature produced (%u bytes: ECDSA=%u + Dilithium=%u)\n",
-              signature.size(), csig_len, pqc_sig.size());
+    LogDebug(BCLog::WALLET,
+             "HybridKey::Sign: hybrid signature produced (%u bytes: ECDSA=%u + Dilithium=%u)\n",
+             signature.size(), csig_len, pqc_sig.size());
     return true;
 }
 

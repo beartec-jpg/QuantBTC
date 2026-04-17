@@ -57,9 +57,6 @@ struct PrecomputedTransactionData;
 struct LockPoints;
 struct AssumeutxoData;
 
-/** Global early-protection manager (QuantumBTC anti-monopolization). */
-extern earlyprotection::EarlyProtectionManager g_early_protection;
-
 namespace node {
 class SnapshotMetadata;
 } // namespace node

@@ -117,6 +117,20 @@ def _convertbits(data, frombits, tobits, pad=True):
     return ret
 
 
+def generate_swap_secret() -> Tuple[str, str]:
+    """Generate seller-side atomic-swap secret material.
+
+    Returns:
+      (secret_hex, secret_hash_hex)
+
+    The seller must keep `secret_hex` local and only send `secret_hash_hex`
+    to the swap coordinator/server when creating an offer.
+    """
+    secret = secrets.token_bytes(32)
+    secret_hash = hashlib.sha256(secret).hexdigest()
+    return secret.hex(), secret_hash
+
+
 # ---------------------------------------------------------------------------
 # HMAC-SHA512 helpers (matching the C++ node exactly)
 # ---------------------------------------------------------------------------
@@ -561,6 +575,12 @@ def self_test():
         ecdsa_only_kp = QBTCKeyPair.from_privkey_hex(kp.ecdsa.privkey.hex())
         assert ecdsa_only_kp.dilithium is None, "ECDSA-only import must not have Dilithium!"
         print(f"  ECDSA-only import has no Dilithium key: PASS")
+
+    # 5. Seller-side swap secret generation (hash-only server model)
+    secret_hex, secret_hash_hex = generate_swap_secret()
+    assert len(secret_hex) == 64, "Swap secret must be 32 bytes / 64 hex chars"
+    assert len(secret_hash_hex) == 64, "SHA-256 hash must be 32 bytes / 64 hex chars"
+    print(f"\nSwap secret generation: PASS (seller local secret, hash-only offer)")
 
     print("\n=== All tests passed ===")
 

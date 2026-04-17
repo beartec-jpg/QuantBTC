@@ -184,6 +184,21 @@ assert recovered.address() == kp.address()  # same ECDSA address
 # Both ECDSA and Dilithium keys are independently re-derived from the seed
 ```
 
+## 6. Atomic Swap Seller-Side Secret Generation
+
+Use seller-local secret generation and send only `secretHash` to the swap
+coordinator:
+
+```python
+from qbtc_wallet import generate_swap_secret
+
+secret_hex, secret_hash_hex = generate_swap_secret()
+
+# Keep secret_hex local (seller device only).
+# Send only secret_hash_hex in offer creation.
+print(secret_hash_hex)
+```
+
 ### Migration from Old Wallets
 
 Wallets created before the security fix used `b"QBTC"` as the derivation

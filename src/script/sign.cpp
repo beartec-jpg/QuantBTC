@@ -109,8 +109,9 @@ bool MutableTransactionSignatureCreator::CreatePQCSig(const SigningProvider& pro
     }
 
     pqcPubKey = hybridKey.GetPQCPublicKey();
-    LogPrintf("PQC: created Dilithium signature (%u-byte sig, %u-byte pk) for input %u\n",
-              pqcSig.size(), pqcPubKey.size(), nIn);
+    LogDebug(BCLog::WALLET,
+             "PQC: created Dilithium signature (%u-byte sig, %u-byte pk) for input %u\n",
+             pqcSig.size(), pqcPubKey.size(), nIn);
     return true;
 }
 

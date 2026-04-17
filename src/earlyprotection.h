@@ -103,6 +103,12 @@ inline std::string GetSubnet24(const std::string& ip)
 class EarlyProtectionManager
 {
 public:
+    static EarlyProtectionManager& GetInstance()
+    {
+        static EarlyProtectionManager instance;
+        return instance;
+    }
+
     // ---------- Peer Activation Delay ----------
 
     /**
@@ -332,6 +338,11 @@ public:
     }
 
 private:
+    EarlyProtectionManager() = default;
+    ~EarlyProtectionManager() = default;
+    EarlyProtectionManager(const EarlyProtectionManager&) = delete;
+    EarlyProtectionManager& operator=(const EarlyProtectionManager&) = delete;
+
     std::mutex m_mutex;
 
     /** Peer ID -> activation time point (after which full weight applies). */
