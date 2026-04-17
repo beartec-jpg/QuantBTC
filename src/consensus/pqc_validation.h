@@ -54,14 +54,6 @@ bool CheckPQCSignatures(const CTransaction& tx, unsigned int flags, BlockValidat
  */
 bool IsPQCGloballyEnabled();
 
-/**
- * Check if PQC signatures are globally required via the runtime configuration.
- *
- * NOTE: This is a runtime configuration check only (same caveat as
- * IsPQCGloballyEnabled).  It does NOT enforce a block-height policy.
- */
-bool IsPQCGloballyRequired();
-
 } // namespace Consensus
 
 #endif // BITCOIN_CONSENSUS_PQC_VALIDATION_H

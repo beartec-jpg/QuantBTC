@@ -19,6 +19,24 @@ static_assert(pqc::SPHINCS::SIGNATURE_SIZE   == CRYPTO_BYTES,
 
 namespace pqc {
 
+/**
+ * SLH-DSA (SPHINCS+) application context string for domain separation.
+ *
+ * The SPHINCS+ reference implementation's `crypto_sign_signature` API does not
+ * accept a context parameter (unlike ML-DSA-44).  We achieve the same domain
+ * separation by prepending this fixed prefix to every message before it is
+ * passed to the signing / verification functions.  This ensures that
+ * QuantBTC SLH-DSA signatures are structurally distinguishable from
+ * signatures produced by any other application using the same key and the
+ * same SLH-DSA-SHA2-128f parameter set, preventing cross-protocol replay.
+ *
+ * CONSENSUS NOTE: The same prefix MUST be used in both Sign() and Verify().
+ * Changing this string is a consensus-breaking change and must be coordinated
+ * with an activation height.  The ML-DSA equivalent is MLDSA_CTX in dilithium.cpp.
+ */
+static constexpr char   SLHDSA_CTX[]    = "QuantBTC-SLH-DSA-v1";
+static constexpr size_t SLHDSA_CTX_LEN  = sizeof(SLHDSA_CTX) - 1; // exclude NUL terminator
+
 SPHINCS::SPHINCS() {}
 SPHINCS::~SPHINCS() {}
 
@@ -43,11 +61,18 @@ bool SPHINCS::Sign(const std::vector<uint8_t>& message, const std::vector<uint8_
         return false;
     }
 
+    // Prepend the domain-separation context to the message.
+    // See SLHDSA_CTX comment above for rationale.
+    std::vector<uint8_t> prefixed;
+    prefixed.reserve(SLHDSA_CTX_LEN + message.size());
+    prefixed.insert(prefixed.end(), SLHDSA_CTX, SLHDSA_CTX + SLHDSA_CTX_LEN);
+    prefixed.insert(prefixed.end(), message.begin(), message.end());
+
     signature.resize(SIGNATURE_SIZE);
     size_t sig_len = 0;
 
     if (crypto_sign_signature(signature.data(), &sig_len,
-                              message.data(), message.size(),
+                              prefixed.data(), prefixed.size(),
                               private_key.data()) != 0) {
         LogPrintf("SPHINCS::Sign: crypto_sign_signature failed\n");
         signature.clear();
@@ -66,8 +91,14 @@ bool SPHINCS::Verify(const std::vector<uint8_t>& message, const std::vector<uint
         return false;
     }
 
+    // Prepend the domain-separation context to the message (must match Sign).
+    std::vector<uint8_t> prefixed;
+    prefixed.reserve(SLHDSA_CTX_LEN + message.size());
+    prefixed.insert(prefixed.end(), SLHDSA_CTX, SLHDSA_CTX + SLHDSA_CTX_LEN);
+    prefixed.insert(prefixed.end(), message.begin(), message.end());
+
     return crypto_sign_verify(signature.data(), signature.size(),
-                              message.data(), message.size(),
+                              prefixed.data(), prefixed.size(),
                               public_key.data()) == 0;
 }
 

@@ -4672,8 +4672,15 @@ bool ChainstateManager::AcceptBlock(const std::shared_ptr<const CBlock>& pblock,
                 } else {
                     // During IBD, fork-branch parents may not be available yet.
                     // Skip — the block is valid on its selected parent chain.
+                    // IMPORTANT: The blue score computed for this block is
+                    // provisional (based on an incomplete parent set).  It will
+                    // be corrected the next time -reindex is run once all headers
+                    // have been downloaded.  The provisional score does not affect
+                    // long-term consensus but may temporarily influence tip
+                    // selection during this IBD window.
                     LogPrint(BCLog::VALIDATION,
-                             "AcceptBlock: DAG parent %s not yet known for block %s, skipping\n",
+                             "AcceptBlock: DAG parent %s not yet known for block %s, skipping "
+                             "(blue score will be provisional until reindex)\n",
                              par_hash.ToString(), block.GetHash().ToString());
                 }
             }

@@ -96,6 +96,16 @@ private:
         // Slow path for DAG: BFS through vDagParents.
         // Height-bounded: only enqueue nodes above pAncestor's height.
         // At each node we check direct pointer equality before pruning.
+        //
+        // Safety cap: an adversarially wide DAG can force the visited set to
+        // grow to O(MAX_MERGESET_SIZE × MAX_BLOCK_PARENTS) entries.  We cap
+        // the BFS at MAX_ANCESTOR_BFS_NODES visited nodes.  Exceeding the cap
+        // returns false (conservative: treats pAncestor as non-ancestor),
+        // which causes GHOSTDAG to classify the block as "red" rather than
+        // "blue".  This is safe: a legitimate block will never reach the cap
+        // because the height bound already limits how many nodes are reachable.
+        static constexpr size_t MAX_ANCESTOR_BFS_NODES = 500000;
+
         std::vector<const CBlockIndex*> queue;
         std::unordered_set<const CBlockIndex*> visited;
         queue.push_back(pBlock);
@@ -103,6 +113,15 @@ private:
 
         size_t front = 0;
         while (front < queue.size()) {
+            if (visited.size() > MAX_ANCESTOR_BFS_NODES) {
+                LogPrint(BCLog::VALIDATION,
+                         "IsBlockAncestor: BFS node limit (%u) exceeded; "
+                         "treating %s as non-ancestor of %s\n",
+                         MAX_ANCESTOR_BFS_NODES,
+                         pAncestor->GetBlockHash().ToString(),
+                         pBlock->GetBlockHash().ToString());
+                return false;
+            }
             const CBlockIndex* cur = queue[front++];
 
             auto enqueue = [&](const CBlockIndex* p) {

@@ -200,13 +200,21 @@ private:
  * Virtual chain: the sequence of selected parents from virtual block back
  * to genesis. This is the "main chain" equivalent in a BlockDAG.
  *
+ * The returned vector is ordered from the virtual block's direct selected
+ * parent (index 0) back toward genesis (last element).  The virtual block
+ * itself is not included.
+ *
  * k must be supplied explicitly (use GetConsensus().ghostdag_k).
  * Returns an empty vector on mergeset overflow (adversarial topology).
+ *
+ * max_depth caps the walk so callers are not surprised on a chain with
+ * hundreds of thousands of blocks.  The default (0) means "no limit".
  */
 std::vector<uint256> ComputeVirtualSelectedParentChain(
     const std::vector<uint256>& tips,
     const IGhostdagBlockProvider& provider,
-    uint32_t k);
+    uint32_t k,
+    size_t max_depth = 0);
 
 } // namespace dag
 
