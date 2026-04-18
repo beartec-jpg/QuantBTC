@@ -17,9 +17,9 @@ enum class PQCSignatureScheme {
 };
 
 enum class PQCMode {
-    HYBRID,     // ECDSA + Dilithium (default)
+    HYBRID,     // ECDSA + Falcon (default)
     CLASSICAL,  // ECDSA only (PQC disabled)
-    PURE        // Dilithium only (future, not yet supported at consensus)
+    PURE        // PQC-only (future, not yet supported at consensus)
 };
 
 struct PQCConfig {
@@ -30,7 +30,7 @@ struct PQCConfig {
     // Keep broken/experimental PQC algorithms disabled by default until they are hardened.
     std::vector<PQCAlgorithm> enabled_kems{};
     std::vector<PQCSignatureScheme> enabled_signatures{};
-    PQCSignatureScheme preferred_sig_scheme{PQCSignatureScheme::DILITHIUM};
+    PQCSignatureScheme preferred_sig_scheme{PQCSignatureScheme::FALCON};
     
     static PQCConfig& GetInstance() {
         static PQCConfig instance;

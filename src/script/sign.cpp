@@ -10,11 +10,56 @@
 #include <crypto/pqc/hybrid_key.h>
 #include <crypto/pqc/dilithium.h>
 #include <crypto/pqc/falcon.h>
+#include <crypto/pqc/sphincs.h>
 #include <util/translation.h>
 #include <util/vector.h>
 #include <logging.h>
 
 typedef std::vector<unsigned char> valtype;
+
+namespace {
+
+void GetPQCSigAndPubKeySizes(const pqc::PQCSignatureScheme scheme, size_t& sig_size, size_t& pubkey_size)
+{
+    switch (scheme) {
+    case pqc::PQCSignatureScheme::FALCON:
+        sig_size = pqc::Falcon::SIGNATURE_SIZE;
+        pubkey_size = pqc::Falcon::PUBLIC_KEY_SIZE;
+        return;
+    case pqc::PQCSignatureScheme::FALCON1024:
+        sig_size = pqc::Falcon1024::SIGNATURE_SIZE;
+        pubkey_size = pqc::Falcon1024::PUBLIC_KEY_SIZE;
+        return;
+    case pqc::PQCSignatureScheme::SPHINCS_PLUS:
+        sig_size = pqc::SPHINCS::SIGNATURE_SIZE;
+        pubkey_size = pqc::SPHINCS::PUBLIC_KEY_SIZE;
+        return;
+    case pqc::PQCSignatureScheme::DILITHIUM:
+    default:
+        sig_size = pqc::Dilithium::SIGNATURE_SIZE;
+        pubkey_size = pqc::Dilithium::PUBLIC_KEY_SIZE;
+        return;
+    }
+}
+
+const char* GetPQCAlgoNameFromPubKeySize(const size_t pubkey_size)
+{
+    if (pubkey_size == pqc::Falcon::PUBLIC_KEY_SIZE) return "Falcon-512";
+    if (pubkey_size == pqc::Falcon1024::PUBLIC_KEY_SIZE) return "Falcon-1024";
+    if (pubkey_size == pqc::SPHINCS::PUBLIC_KEY_SIZE) return "SPHINCS+";
+    if (pubkey_size == pqc::Dilithium::PUBLIC_KEY_SIZE) return "Dilithium";
+    return "Unknown";
+}
+
+bool IsKnownPQCPubKeySize(const size_t pubkey_size)
+{
+    return pubkey_size == pqc::Falcon::PUBLIC_KEY_SIZE ||
+           pubkey_size == pqc::Falcon1024::PUBLIC_KEY_SIZE ||
+           pubkey_size == pqc::SPHINCS::PUBLIC_KEY_SIZE ||
+           pubkey_size == pqc::Dilithium::PUBLIC_KEY_SIZE;
+}
+
+} // namespace
 
 MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMutableTransaction& tx, unsigned int input_idx, const CAmount& amount, int hash_type)
     : m_txto{tx}, nIn{input_idx}, nHashType{hash_type}, amount{amount}, checker{&m_txto, nIn, amount, MissingDataBehavior::FAIL},
@@ -110,7 +155,12 @@ bool MutableTransactionSignatureCreator::CreatePQCSig(const SigningProvider& pro
     }
 
     pqcPubKey = hybridKey.GetPQCPublicKey();
-    const char* algo = (pqcSig.size() == pqc::Falcon::SIGNATURE_SIZE) ? "Falcon" : "Dilithium";
+    if (!IsKnownPQCPubKeySize(pqcPubKey.size())) {
+        LogPrintf("PQC: signing produced unknown PQC public key size (%zu bytes) for key %s\n",
+                  pqcPubKey.size(), keyid.ToString());
+        return false;
+    }
+    const char* algo = GetPQCAlgoNameFromPubKeySize(pqcPubKey.size());
     LogPrintf("PQC: created %s signature (%u-byte sig, %u-byte pk) for input %u\n",
               algo, pqcSig.size(), pqcPubKey.size(), nIn);
     return true;
@@ -854,9 +904,11 @@ public:
         // ever verified, providing an additional safety barrier against
         // accidental broadcast.
         if (!pqc::PQCConfig::GetInstance().ShouldSignPQC()) return false;
-        const bool falcon = (pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON);
-        pqcSig.assign(falcon ? pqc::Falcon::SIGNATURE_SIZE : pqc::Dilithium::SIGNATURE_SIZE, '\000');
-        pqcPubKey.assign(falcon ? pqc::Falcon::PUBLIC_KEY_SIZE : pqc::Dilithium::PUBLIC_KEY_SIZE, '\000');
+        size_t pqc_sig_size{0};
+        size_t pqc_pubkey_size{0};
+        GetPQCSigAndPubKeySizes(pqc::PQCConfig::GetInstance().preferred_sig_scheme, pqc_sig_size, pqc_pubkey_size);
+        pqcSig.assign(pqc_sig_size, '\000');
+        pqcPubKey.assign(pqc_pubkey_size, '\000');
         return true;
     }
     // For fee-estimation: check if a HybridKey exists (even when PQC signing is off)

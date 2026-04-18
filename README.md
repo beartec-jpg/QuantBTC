@@ -145,7 +145,7 @@ Classical equivalent:         ~141 vB (7.6x smaller)
 ### Digital Signature Algorithms
 - **CRYSTALS-Dilithium (ML-DSA-44)** — lattice-based, NIST FIPS 204. **Primary signature algorithm used in consensus.**
 - **SPHINCS+ (SLH-DSA-SHA2-128f)** — stateless hash-based signatures. Crypto primitives implemented; not yet wired to wallet signing.
-- **Falcon** — stub only, not wired to a real implementation.
+- **Falcon** — implemented via vendored PQClean Falcon-padded reference implementation and used as the default signing scheme.
 - **SQIsign** — stub only, not wired to a real implementation.
 
 ### Key Encapsulation Mechanisms (KEM)
@@ -160,7 +160,7 @@ For detailed PQC documentation, see [doc/pqc.md](doc/pqc.md).
 PQC is enabled by default on qBTC chains. For manual configuration:
 
 ```bash
-./src/bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqcsig=sphincs,dilithium -pqchybridsig=1
+./src/bitcoind -pqc=1 -pqcalgo=kyber,ntru -pqcsig=falcon -pqchybridsig=1
 ```
 
 | Option | Description | Default |
@@ -169,7 +169,7 @@ PQC is enabled by default on qBTC chains. For manual configuration:
 | `-pqchybridkeys=0\|1` | Enable/disable hybrid key generation | `1` |
 | `-pqchybridsig=0\|1` | Enable/disable hybrid signatures | `1` (policy-gated by deployment profile) |
 | `-pqcalgo=algo1,algo2,...` | KEM algorithms | `kyber,frodo,ntru` |
-| `-pqcsig=sig1,sig2,...` | Signature schemes | `sphincs,dilithium` |
+| `-pqcsig=sig1,sig2,...` | Signature schemes | `falcon` |
 
 ---
 
