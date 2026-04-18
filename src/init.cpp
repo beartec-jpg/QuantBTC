@@ -523,8 +523,8 @@ void SetupServerArgs(ArgsManager& argsman)
     argsman.AddArg("-txindex", strprintf("Maintain a full transaction index, used by the getrawtransaction rpc call (default: %u)", DEFAULT_TXINDEX), ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     // QuantumBTC: PQC and DAG runtime flags
     argsman.AddArg("-pqc", "Enable post-quantum cryptography extensions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-pqcmode=<mode>", "PQC signing mode: hybrid (ECDSA+Dilithium, default), classical (ECDSA only), pure (Dilithium only, future)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
-    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme for new keys: dilithium (default), falcon, falcon1024, sphincs. Use falcon1024 for 256-bit PQ (NIST Level 5) vault outputs.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcmode=<mode>", "PQC signing mode: hybrid (ECDSA+Falcon, default), classical (ECDSA only), pure (PQC-only, future)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-pqcsig=<scheme>", "PQC signature scheme for new keys: falcon (default), falcon1024, dilithium, sphincs. Use falcon1024 for 256-bit PQ (NIST Level 5) vault outputs.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqcalgo=<algo>", "PQC KEM algorithms to enable (comma-separated)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqchybridkeys", "Enable hybrid PQC+ECDSA keys (default: 1 when -pqc=1)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-pqchybridsig", "Require hybrid PQC signatures for all transactions (default: 0)", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
@@ -783,7 +783,7 @@ void InitParameterInteraction(ArgsManager& args)
             LogPrintf("QuantumBTC: PQC enabled, mode=%s\n", pqcmode);
         }
         // Wire -pqcsig= to preferred_sig_scheme
-        std::string pqcsig = args.GetArg("-pqcsig", "dilithium");
+        std::string pqcsig = args.GetArg("-pqcsig", "falcon");
         if (pqcsig == "falcon") {
             pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
             pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON);
@@ -796,8 +796,8 @@ void InitParameterInteraction(ArgsManager& args)
             pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::SPHINCS_PLUS;
             pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::SPHINCS_PLUS);
         } else {
-            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::DILITHIUM;
-            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::DILITHIUM);
+            pqcconf.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
+            pqcconf.enabled_signatures.push_back(pqc::PQCSignatureScheme::FALCON);
         }
     }
 

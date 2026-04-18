@@ -18,6 +18,7 @@
 #include <crypto/pqc/pqc_config.h>
 #include <crypto/pqc/dilithium.h>
 #include <crypto/pqc/falcon.h>
+#include <crypto/pqc/sphincs.h>
 #include <span.h>
 #include <util/bip32.h>
 #include <util/check.h>
@@ -33,6 +34,29 @@
 using util::Split;
 
 namespace {
+
+void GetPQCSigAndPubKeySizes(const pqc::PQCSignatureScheme scheme, int64_t& sig_size, int64_t& pubkey_size)
+{
+    switch (scheme) {
+    case pqc::PQCSignatureScheme::FALCON:
+        sig_size = static_cast<int64_t>(pqc::Falcon::SIGNATURE_SIZE);
+        pubkey_size = static_cast<int64_t>(pqc::Falcon::PUBLIC_KEY_SIZE);
+        return;
+    case pqc::PQCSignatureScheme::FALCON1024:
+        sig_size = static_cast<int64_t>(pqc::Falcon1024::SIGNATURE_SIZE);
+        pubkey_size = static_cast<int64_t>(pqc::Falcon1024::PUBLIC_KEY_SIZE);
+        return;
+    case pqc::PQCSignatureScheme::SPHINCS_PLUS:
+        sig_size = static_cast<int64_t>(pqc::SPHINCS::SIGNATURE_SIZE);
+        pubkey_size = static_cast<int64_t>(pqc::SPHINCS::PUBLIC_KEY_SIZE);
+        return;
+    case pqc::PQCSignatureScheme::DILITHIUM:
+    default:
+        sig_size = static_cast<int64_t>(pqc::Dilithium::SIGNATURE_SIZE);
+        pubkey_size = static_cast<int64_t>(pqc::Dilithium::PUBLIC_KEY_SIZE);
+        return;
+    }
+}
 
 ////////////////////////////////////////////////////////////////////////////
 // Checksum                                                               //
@@ -905,17 +929,18 @@ public:
         const auto sig_size = use_max_sig ? 72 : 71;
         int64_t size = 1 + sig_size + 1 + 33; // compactsize + ecdsa_sig + compactsize + ec_pubkey
         if (pqc::PQCConfig::GetInstance().ShouldSignPQC()) {
-            const bool falcon = (pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON);
-            const int64_t pqc_sig_size = falcon ? (int64_t)pqc::Falcon::SIGNATURE_SIZE : (int64_t)pqc::Dilithium::SIGNATURE_SIZE;
-            const int64_t pqc_pk_size  = falcon ? (int64_t)pqc::Falcon::PUBLIC_KEY_SIZE  : (int64_t)pqc::Dilithium::PUBLIC_KEY_SIZE;
+            int64_t pqc_sig_size{0};
+            int64_t pqc_pk_size{0};
+            GetPQCSigAndPubKeySizes(pqc::PQCConfig::GetInstance().preferred_sig_scheme, pqc_sig_size, pqc_pk_size);
             // varint prefix: 1 byte if size < 253 else 3 bytes (fd + 2 bytes)
             const int64_t pqc_sig_pfx = (pqc_sig_size < 253) ? 1 : 3;
             const int64_t pqc_pk_pfx  = (pqc_pk_size  < 253) ? 1 : 3;
             size += pqc_sig_pfx + pqc_sig_size + pqc_pk_pfx + pqc_pk_size;
         } else if (pqc::PQCConfig::GetInstance().enable_hybrid_signatures) {
             // Classical-with-hybrid-address (3-elem): varint + pqc_pk only
-            const bool falcon = (pqc::PQCConfig::GetInstance().preferred_sig_scheme == pqc::PQCSignatureScheme::FALCON);
-            const int64_t pqc_pk_size = falcon ? (int64_t)pqc::Falcon::PUBLIC_KEY_SIZE : (int64_t)pqc::Dilithium::PUBLIC_KEY_SIZE;
+            int64_t ignored_sig_size{0};
+            int64_t pqc_pk_size{0};
+            GetPQCSigAndPubKeySizes(pqc::PQCConfig::GetInstance().preferred_sig_scheme, ignored_sig_size, pqc_pk_size);
             const int64_t pqc_pk_pfx  = (pqc_pk_size < 253) ? 1 : 3;
             size += pqc_pk_pfx + pqc_pk_size;
         }

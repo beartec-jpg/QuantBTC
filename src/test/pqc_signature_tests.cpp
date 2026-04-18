@@ -1,7 +1,11 @@
 #include <boost/test/unit_test.hpp>
+#include <crypto/pqc/hybrid_key.h>
+#include <crypto/pqc/pqc_config.h>
 #include <crypto/pqc/pqc_manager.h>
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/falcon.h>
 #include <crypto/pqc/sphincs.h>
+#include <key.h>
 #include <vector>
 
 BOOST_AUTO_TEST_SUITE(pqc_signature_tests)
@@ -99,8 +103,62 @@ BOOST_AUTO_TEST_CASE(dilithium_signature_test)
 
 BOOST_AUTO_TEST_CASE(falcon_signature_test)
 {
-    // Falcon is NOT IMPLEMENTED — all operations must be rejected
-    TestUnimplementedSignatureAlgorithm(pqc::PQCAlgorithm::FALCON);
+    TestImplementedSignatureAlgorithm(pqc::PQCAlgorithm::FALCON,
+                                     pqc::Falcon::PUBLIC_KEY_SIZE,
+                                     pqc::Falcon::PRIVATE_KEY_SIZE,
+                                     pqc::Falcon::SIGNATURE_SIZE);
+}
+
+BOOST_AUTO_TEST_CASE(falcon1024_signature_test)
+{
+    TestImplementedSignatureAlgorithm(pqc::PQCAlgorithm::FALCON1024,
+                                     pqc::Falcon1024::PUBLIC_KEY_SIZE,
+                                     pqc::Falcon1024::PRIVATE_KEY_SIZE,
+                                     pqc::Falcon1024::SIGNATURE_SIZE);
+}
+
+BOOST_AUTO_TEST_CASE(hybrid_key_falcon_sign_verify_test)
+{
+    ECC_Context ecc_context{};
+
+    auto& cfg = pqc::PQCConfig::GetInstance();
+    const bool orig_enable_pqc = cfg.enable_pqc;
+    const bool orig_hybrid_sig = cfg.enable_hybrid_signatures;
+    const auto orig_scheme = cfg.preferred_sig_scheme;
+    struct ConfigRestore {
+        pqc::PQCConfig& cfg_ref;
+        bool enable_pqc_ref;
+        bool hybrid_sig_ref;
+        pqc::PQCSignatureScheme scheme_ref;
+        ~ConfigRestore() {
+            cfg_ref.enable_pqc = enable_pqc_ref;
+            cfg_ref.enable_hybrid_signatures = hybrid_sig_ref;
+            cfg_ref.preferred_sig_scheme = scheme_ref;
+        }
+    } restore{cfg, orig_enable_pqc, orig_hybrid_sig, orig_scheme};
+
+    cfg.enable_pqc = true;
+    cfg.enable_hybrid_signatures = true;
+    cfg.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
+
+    pqc::HybridKey key;
+    CKey classical;
+    classical.MakeNewKey(true);
+    BOOST_REQUIRE(key.SetClassicalKey(classical));
+
+    std::vector<unsigned char> falcon_pk, falcon_sk;
+    pqc::Falcon falcon;
+    BOOST_REQUIRE(falcon.GenerateKeyPair(falcon_pk, falcon_sk));
+    BOOST_REQUIRE(key.SetPQCKey(falcon_pk, falcon_sk));
+
+    uint256 hash{};
+    std::vector<unsigned char> signature;
+    BOOST_REQUIRE(key.Sign(hash, signature));
+    BOOST_CHECK(key.Verify(hash, signature));
+
+    std::vector<unsigned char> tampered = signature;
+    tampered.back() ^= 0x01;
+    BOOST_CHECK(!key.Verify(hash, tampered));
 }
 
 BOOST_AUTO_TEST_CASE(sqisign_signature_test)

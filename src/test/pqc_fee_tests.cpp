@@ -5,6 +5,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include <crypto/pqc/dilithium.h>
+#include <crypto/pqc/falcon.h>
 #include <crypto/pqc/pqc_config.h>
 #include <key.h>
 #include <script/descriptor.h>
@@ -14,12 +15,13 @@
 BOOST_AUTO_TEST_SUITE(pqc_fee_tests)
 
 /// When PQC hybrid signatures are enabled, WPKHDescriptor must report
-/// a MaxSatSize that accounts for the Dilithium sig + pubkey, and
+/// a MaxSatSize that accounts for the configured PQC sig + pubkey, and
 /// MaxSatisfactionElems must return 4 (not 2).
 BOOST_AUTO_TEST_CASE(wpkh_maxsatsize_pqc)
 {
     auto& cfg = pqc::PQCConfig::GetInstance();
     const bool orig_hybrid = cfg.enable_hybrid_signatures;
+    const auto orig_scheme = cfg.preferred_sig_scheme;
 
     // --- PQC disabled: classic P2WPKH sizes ---
     cfg.enable_hybrid_signatures = false;
@@ -45,9 +47,10 @@ BOOST_AUTO_TEST_CASE(wpkh_maxsatsize_pqc)
         BOOST_CHECK_EQUAL(*sat_elems, 2);
     }
 
-    // --- PQC enabled: must include Dilithium overhead ---
+    // --- PQC enabled: must include selected scheme overhead ---
     cfg.enable_hybrid_signatures = true;
-    {
+    auto check_scheme_weight = [&](pqc::PQCSignatureScheme scheme, int64_t sig_size, int64_t pk_size) {
+        cfg.preferred_sig_scheme = scheme;
         ECC_Context ecc_context{};
         CKey key = GenerateRandomKey();
         CPubKey pubkey = key.GetPubKey();
@@ -64,16 +67,24 @@ BOOST_AUTO_TEST_CASE(wpkh_maxsatsize_pqc)
         BOOST_REQUIRE(sat_weight.has_value());
         BOOST_REQUIRE(sat_elems.has_value());
 
-        // PQC P2WPKH: 107 + 3 + 2420 + 3 + 1312 = 3845
-        const int64_t expected = 107 + 3 + pqc::Dilithium::SIGNATURE_SIZE + 3 + pqc::Dilithium::PUBLIC_KEY_SIZE;
+        // PQC P2WPKH: 107 + 3 + pqc sig + 3 + pqc pubkey
+        const int64_t expected = 107 + 3 + sig_size + 3 + pk_size;
         BOOST_CHECK_EQUAL(*sat_weight, expected);
         BOOST_CHECK_EQUAL(*sat_elems, 4);
-        // vsize must be ≥ 1000 vB — the whole point of the fix
-        BOOST_CHECK_GE(*sat_weight, 1000);
-    }
+    };
+    check_scheme_weight(pqc::PQCSignatureScheme::FALCON,
+                        pqc::Falcon::SIGNATURE_SIZE,
+                        pqc::Falcon::PUBLIC_KEY_SIZE);
+    check_scheme_weight(pqc::PQCSignatureScheme::FALCON1024,
+                        pqc::Falcon1024::SIGNATURE_SIZE,
+                        pqc::Falcon1024::PUBLIC_KEY_SIZE);
+    check_scheme_weight(pqc::PQCSignatureScheme::DILITHIUM,
+                        pqc::Dilithium::SIGNATURE_SIZE,
+                        pqc::Dilithium::PUBLIC_KEY_SIZE);
 
     // Restore original setting
     cfg.enable_hybrid_signatures = orig_hybrid;
+    cfg.preferred_sig_scheme = orig_scheme;
 }
 
 /// DummySignatureCreator must produce a 4-element witness stack
@@ -82,6 +93,7 @@ BOOST_AUTO_TEST_CASE(dummy_signature_creator_pqc)
 {
     auto& cfg = pqc::PQCConfig::GetInstance();
     const bool orig_hybrid = cfg.enable_hybrid_signatures;
+    const auto orig_scheme = cfg.preferred_sig_scheme;
 
     ECC_Context ecc_context{};
     CKey key = GenerateRandomKey();
@@ -104,19 +116,21 @@ BOOST_AUTO_TEST_CASE(dummy_signature_creator_pqc)
 
     // --- PQC enabled: 4-element witness ---
     cfg.enable_hybrid_signatures = true;
+    cfg.preferred_sig_scheme = pqc::PQCSignatureScheme::FALCON;
     {
         SignatureData sigdata;
         // ProduceSignature may return false (dummy sigs don't pass VerifyScript)
         // but the witness structure is what matters for size estimation.
         (void)ProduceSignature(provider, DUMMY_MAXIMUM_SIGNATURE_CREATOR, spk, sigdata);
         BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack.size(), 4U);
-        // Element 2 = dummy Dilithium sig (2420 bytes)
-        BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[2].size(), pqc::Dilithium::SIGNATURE_SIZE);
-        // Element 3 = dummy Dilithium pubkey (1312 bytes)
-        BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[3].size(), pqc::Dilithium::PUBLIC_KEY_SIZE);
+        // Element 2 = dummy Falcon sig (666 bytes)
+        BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[2].size(), pqc::Falcon::SIGNATURE_SIZE);
+        // Element 3 = dummy Falcon pubkey (897 bytes)
+        BOOST_CHECK_EQUAL(sigdata.scriptWitness.stack[3].size(), pqc::Falcon::PUBLIC_KEY_SIZE);
     }
 
     cfg.enable_hybrid_signatures = orig_hybrid;
+    cfg.preferred_sig_scheme = orig_scheme;
 }
 
 BOOST_AUTO_TEST_SUITE_END()

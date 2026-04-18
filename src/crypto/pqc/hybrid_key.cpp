@@ -10,6 +10,33 @@
 
 namespace pqc {
 
+namespace {
+
+bool GetAlgoFromPublicKeySize(size_t pubkey_size, PQCAlgorithm& algo, size_t& sig_size, const char*& algo_name)
+{
+    if (pubkey_size == Falcon::PUBLIC_KEY_SIZE) {
+        algo = PQCAlgorithm::FALCON;
+        sig_size = Falcon::SIGNATURE_SIZE;
+        algo_name = "Falcon-512";
+        return true;
+    }
+    if (pubkey_size == Falcon1024::PUBLIC_KEY_SIZE) {
+        algo = PQCAlgorithm::FALCON1024;
+        sig_size = Falcon1024::SIGNATURE_SIZE;
+        algo_name = "Falcon-1024";
+        return true;
+    }
+    if (pubkey_size == Dilithium::PUBLIC_KEY_SIZE) {
+        algo = PQCAlgorithm::DILITHIUM;
+        sig_size = Dilithium::SIGNATURE_SIZE;
+        algo_name = "Dilithium";
+        return true;
+    }
+    return false;
+}
+
+} // namespace
+
 HybridKey::HybridKey() : m_is_valid(false) {}
 
 HybridKey::~HybridKey() {
@@ -158,12 +185,12 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
         return false;
     }
 
-    // Real Dilithium PQC signature. This hybrid blob is for internal/P2P use and
+    // Real PQC signature. This hybrid blob is for internal/P2P use and
     // is intentionally distinct from the on-chain 4-element witness path.
     std::vector<unsigned char> pqc_sig;
     std::vector<unsigned char> msg_bytes(hash.begin(), hash.end());
     if (!SignPQCMessage(msg_bytes, pqc_sig)) {
-        LogPrintf("HybridKey::Sign: Dilithium signing failed in hybrid mode\n");
+        LogPrintf("HybridKey::Sign: PQC signing failed in hybrid mode\n");
         return false;
     }
 
@@ -180,7 +207,7 @@ bool HybridKey::Sign(const uint256& hash, std::vector<unsigned char>& signature)
     memory_cleanse(classical_sig.data(), classical_sig.size());
     memory_cleanse(pqc_sig.data(), pqc_sig.size());
 
-    LogPrintf("HybridKey::Sign: hybrid signature produced (%u bytes: ECDSA=%u + Dilithium=%u)\n",
+    LogPrintf("HybridKey::Sign: hybrid signature produced (%u bytes: ECDSA=%u + PQC=%u)\n",
               signature.size(), csig_len, pqc_sig.size());
     return true;
 }
@@ -192,9 +219,22 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
 
     // PQC-only verification mode: classical key was never set (e.g. via SetPQCPublicKey).
     if (!m_classical_key.IsValid() && !m_pqc_public_key.empty()) {
+        PQCAlgorithm pqc_algo{};
+        size_t expected_sig_size{0};
+        const char* algo_name = "unknown";
+        if (!GetAlgoFromPublicKeySize(m_pqc_public_key.size(), pqc_algo, expected_sig_size, algo_name)) {
+            LogPrintf("HybridKey::Verify: unsupported PQC public key size %zu in PQC-only mode\n",
+                      m_pqc_public_key.size());
+            return false;
+        }
+        if (signature.size() != expected_sig_size) {
+            LogPrintf("HybridKey::Verify: wrong %s signature size %zu (expected %zu) in PQC-only mode\n",
+                      algo_name, signature.size(), expected_sig_size);
+            return false;
+        }
         std::vector<unsigned char> msg_bytes(hash.begin(), hash.end());
         PQCManager& manager = PQCManager::GetInstance();
-        return manager.Verify(PQCAlgorithm::DILITHIUM, msg_bytes, signature, m_pqc_public_key);
+        return manager.Verify(pqc_algo, msg_bytes, signature, m_pqc_public_key);
     }
 
     // Detect hybrid format from the signature itself: [1-byte len][ECDSA][PQC].
@@ -205,35 +245,36 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
     if (m_pqc_public_key.empty()) {
         return m_classical_key.GetPubKey().Verify(hash, signature);
     }
-    {
-        // Peek: if the leading length byte + ECDSA sig + at least Dilithium::SIGNATURE_SIZE
-        // bytes are present, this is a hybrid signature — verify it as such regardless
-        // of the current enable_hybrid_signatures config flag.
-        bool looks_hybrid = false;
-        if (signature.size() >= 2) {
-            uint8_t csig_len_peek = signature[0];
-            looks_hybrid = (signature.size() >= static_cast<size_t>(1 + csig_len_peek + Dilithium::SIGNATURE_SIZE));
-        }
-        if (!looks_hybrid) {
-            // PQC public key is loaded but the signature is classical-only:
-            // reject to prevent signature-downgrade attacks.
-            LogPrintf("HybridKey::Verify: classical-only signature rejected for hybrid key\n");
-            return false;
-        }
+    PQCAlgorithm pqc_algo{};
+    size_t expected_pqc_sig_size{0};
+    const char* algo_name = "unknown";
+    if (!GetAlgoFromPublicKeySize(m_pqc_public_key.size(), pqc_algo, expected_pqc_sig_size, algo_name)) {
+        LogPrintf("HybridKey::Verify: unsupported PQC public key size %zu for hybrid key\n",
+                  m_pqc_public_key.size());
+        return false;
     }
 
     // Parse hybrid signature: [1 byte len] [classical_sig] [pqc_sig]
     if (signature.size() < 2) return false;
     
     uint8_t csig_len = signature[0];
-    if (signature.size() < static_cast<size_t>(1 + csig_len + Dilithium::SIGNATURE_SIZE)) return false;
+    const size_t expected_hybrid_size = static_cast<size_t>(1 + csig_len + expected_pqc_sig_size);
+    if (signature.size() < expected_hybrid_size) {
+        LogPrintf("HybridKey::Verify: classical-only/truncated signature rejected for %s hybrid key\n", algo_name);
+        return false;
+    }
+    if (signature.size() > expected_hybrid_size) {
+        LogPrintf("HybridKey::Verify: wrong hybrid signature length %zu for %s key (expected %zu)\n",
+                  signature.size(), algo_name, expected_hybrid_size);
+        return false;
+    }
     
     std::vector<unsigned char> classical_sig(signature.begin() + 1, 
                                             signature.begin() + 1 + csig_len);
     std::vector<unsigned char> pqc_sig(signature.begin() + 1 + csig_len,
                                       signature.end());
 
-    if (pqc_sig.size() != Dilithium::SIGNATURE_SIZE) return false;
+    if (pqc_sig.size() != expected_pqc_sig_size) return false;
 
     // Verify classical ECDSA signature
     if (!m_classical_key.GetPubKey().Verify(hash, classical_sig)) {
@@ -241,11 +282,11 @@ bool HybridKey::Verify(const uint256& hash, const std::vector<unsigned char>& si
         return false;
     }
 
-    // Verify Dilithium PQC signature
+    // Verify PQC signature
     std::vector<unsigned char> msg_bytes(hash.begin(), hash.end());
     PQCManager& manager = PQCManager::GetInstance();
-    if (!manager.Verify(PQCAlgorithm::DILITHIUM, msg_bytes, pqc_sig, m_pqc_public_key)) {
-        LogPrintf("HybridKey::Verify: Dilithium verification failed\n");
+    if (!manager.Verify(pqc_algo, msg_bytes, pqc_sig, m_pqc_public_key)) {
+        LogPrintf("HybridKey::Verify: %s verification failed\n", algo_name);
         return false;
     }
 
