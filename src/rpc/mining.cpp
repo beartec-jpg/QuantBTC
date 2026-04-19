@@ -23,6 +23,7 @@
 #include <net.h>
 #include <node/context.h>
 #include <node/miner.h>
+#include <node/sv2_transport.h>
 #include <node/warnings.h>
 #include <pow.h>
 #include <rpc/blockchain.h>
@@ -33,6 +34,7 @@
 #include <script/descriptor.h>
 #include <script/script.h>
 #include <script/signingprovider.h>
+#include <sync.h>
 #include <txmempool.h>
 #include <univalue.h>
 #include <util/signalinterrupt.h>
@@ -51,8 +53,21 @@ using node::CBlockTemplate;
 using interfaces::Mining;
 using node::NodeContext;
 using node::RegenerateCommitments;
+using node::SV2Transport;
 using node::UpdateTime;
 using util::ToString;
+
+static Mutex g_sv2_transport_mutex;
+static std::unique_ptr<SV2Transport> g_sv2_transport GUARDED_BY(g_sv2_transport_mutex);
+
+static SV2Transport& EnsureSV2Transport(NodeContext& node)
+{
+    LOCK(g_sv2_transport_mutex);
+    if (!g_sv2_transport) {
+        g_sv2_transport = std::make_unique<SV2Transport>(EnsureMining(node));
+    }
+    return *g_sv2_transport;
+}
 
 /**
  * Return average network hashes per second based on the last 'lookup' blocks,
@@ -1117,6 +1132,102 @@ static RPCHelpMan submitheader()
     };
 }
 
+static RPCHelpMan startsv2transport()
+{
+    return RPCHelpMan{"startsv2transport",
+        "\nStart the internal Stratum V2 transport skeleton.\n",
+        {},
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::BOOL, "started_now", "Whether transport transitioned from stopped to running"},
+                {RPCResult::Type::BOOL, "running", "Current running state"},
+            }},
+        RPCExamples{
+            HelpExampleCli("startsv2transport", "")
+            + HelpExampleRpc("startsv2transport", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    NodeContext& node = EnsureAnyNodeContext(request.context);
+    SV2Transport& transport = EnsureSV2Transport(node);
+    const bool started_now = transport.Start();
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("started_now", started_now);
+    result.pushKV("running", transport.IsRunning());
+    return result;
+},
+    };
+}
+
+static RPCHelpMan stopsv2transport()
+{
+    return RPCHelpMan{"stopsv2transport",
+        "\nStop the internal Stratum V2 transport skeleton.\n",
+        {},
+        RPCResult{RPCResult::Type::BOOL, "", "True when transport is not running after this call"},
+        RPCExamples{
+            HelpExampleCli("stopsv2transport", "")
+            + HelpExampleRpc("stopsv2transport", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    NodeContext& node = EnsureAnyNodeContext(request.context);
+    SV2Transport& transport = EnsureSV2Transport(node);
+    transport.Stop();
+    return !transport.IsRunning();
+},
+    };
+}
+
+static RPCHelpMan getsv2transportinfo()
+{
+    return RPCHelpMan{"getsv2transportinfo",
+        "\nReturn status for the internal Stratum V2 transport skeleton.\n",
+        {},
+        RPCResult{
+            RPCResult::Type::OBJ, "", "",
+            {
+                {RPCResult::Type::BOOL, "running", "Whether the transport skeleton is running"},
+                {RPCResult::Type::NUM, "connected_clients", "Tracked transport client sessions"},
+                {RPCResult::Type::NUM, "next_sequence", "Next outbound frame sequence id"},
+                {RPCResult::Type::NUM, "queued_outbound_frames", "Total queued outbound frames across all clients"},
+                {RPCResult::Type::NUM, "queued_submit_frames", "Total queued inbound submit-solution frames"},
+                {RPCResult::Type::STR_HEX, "tip_hash", /*optional=*/true, "Latest tip hash snapshot from SetNewPrevHash"},
+                {RPCResult::Type::ARR, "mining_parents", /*optional=*/true, "Latest mining parents snapshot from SetNewPrevHash",
+                    {RPCResult{RPCResult::Type::STR_HEX, "", "Parent hash"}}},
+            }},
+        RPCExamples{
+            HelpExampleCli("getsv2transportinfo", "")
+            + HelpExampleRpc("getsv2transportinfo", "")
+        },
+        [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
+{
+    NodeContext& node = EnsureAnyNodeContext(request.context);
+    SV2Transport& transport = EnsureSV2Transport(node);
+    const node::SV2TransportStats stats = transport.GetStats();
+
+    UniValue result(UniValue::VOBJ);
+    result.pushKV("running", stats.running);
+    result.pushKV("connected_clients", static_cast<uint64_t>(stats.connected_clients));
+    result.pushKV("next_sequence", stats.next_sequence);
+    result.pushKV("queued_outbound_frames", static_cast<uint64_t>(stats.queued_outbound_frames));
+    result.pushKV("queued_submit_frames", static_cast<uint64_t>(stats.queued_submit_frames));
+
+    Mining& miner = EnsureMining(node);
+    if (auto prevhash = miner.getSetNewPrevHash()) {
+        result.pushKV("tip_hash", prevhash->tip_hash.GetHex());
+        UniValue parents(UniValue::VARR);
+        for (const auto& parent : prevhash->mining_parents) {
+            parents.push_back(parent.GetHex());
+        }
+        result.pushKV("mining_parents", std::move(parents));
+    }
+    return result;
+},
+    };
+}
+
 void RegisterMiningRPCCommands(CRPCTable& t)
 {
     static const CRPCCommand commands[]{
@@ -1127,6 +1238,9 @@ void RegisterMiningRPCCommands(CRPCTable& t)
         {"mining", &getblocktemplate},
         {"mining", &submitblock},
         {"mining", &submitheader},
+        {"mining", &startsv2transport},
+        {"mining", &stopsv2transport},
+        {"mining", &getsv2transportinfo},
 
         {"hidden", &generatetoaddress},
         {"hidden", &generatetodescriptor},
