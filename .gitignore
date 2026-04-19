@@ -158,4 +158,5 @@ confi*/
 
 # Out-of-tree build directory
 build-fresh/
+.venv/
 pqc_sign_tool

@@ -13,6 +13,30 @@
 #include <primitives/block.h>
 #include <uint256.h>
 
+namespace {
+
+uint64_t IntegerSquareRoot(uint64_t n)
+{
+    uint64_t bit = uint64_t{1} << 62;
+    uint64_t result = 0;
+
+    while (bit > n) bit >>= 2;
+
+    while (bit != 0) {
+        if (n >= result + bit) {
+            n -= result + bit;
+            result = (result >> 1) + bit;
+        } else {
+            result >>= 1;
+        }
+        bit >>= 2;
+    }
+
+    return result;
+}
+
+} // namespace
+
 /**
  * GetNextWorkRequired for QuantumBTC BlockDAG mode.
  *
@@ -72,37 +96,35 @@ unsigned int GetNextWorkRequiredDAG(const CBlockIndex* pindexLast, const CBlockH
 
     // Transaction-load-aware difficulty adjustment.
     //
-    // After the time-based retarget, scale the target down (harder PoW)
-    // proportionally to how busy the network has been over the same window.
-    // This makes a 51% attack most expensive exactly when the network carries
-    // the most economic value, while keeping difficulty low during quiet periods
-    // so that household miners stay competitive.
+    // Version 2 uses a gentler square-root ramp instead of the old linear one:
+    //   avg_tx       = transactions per block over the 4031-block window
+    //   load_ratio   = avg_tx / baseline
+    //   load_mult    = clamp(sqrt(load_ratio), 1, max_mult)
+    //   new_target   = time_target / load_mult
     //
-    // Multiplier formula (linear ramp, integer arithmetic):
-    //   avg_tx      = transactions per block over the 4031-block window
-    //   excess      = clamp(avg_tx − baseline, 0, (max_mult−1) × baseline)
-    //   load_num    = baseline + excess          ∈ [baseline, max_mult×baseline]
-    //   new_target  = time_target × baseline / load_num
-    //                 (smaller target = higher difficulty)
+    // This still raises attack cost during sustained congestion, but avoids
+    // overreacting to moderate bursts in normal network activity.
     if (params.nLoadDiffBaseline > 0 && params.nLoadDiffMaxMultiplier > 1) {
         const uint64_t tx_last  = pindexLast->m_chain_tx_count;
         const uint64_t tx_first = pindexFirst->m_chain_tx_count;
         if (tx_last > tx_first) {
             const int64_t kWindow = nWindow - 1;
-            // Divide in uint64_t first, then cast — result fits in int64_t since
-            // even at uint64_t max the quotient is only ~4.5×10^15 < INT64_MAX.
-            const int64_t avg_tx  = static_cast<int64_t>((tx_last - tx_first) / static_cast<uint64_t>(kWindow));
-            const int64_t baseline  = params.nLoadDiffBaseline;
-            const int64_t max_mult  = params.nLoadDiffMaxMultiplier;
+            const int64_t avg_tx = static_cast<int64_t>((tx_last - tx_first) / static_cast<uint64_t>(kWindow));
+            const uint64_t baseline = static_cast<uint64_t>(params.nLoadDiffBaseline);
+            const uint64_t max_mult = static_cast<uint64_t>(params.nLoadDiffMaxMultiplier);
 
-            if (avg_tx > baseline) {
-                const int64_t max_excess = (max_mult - 1) * baseline;
-                const int64_t excess     = std::min(avg_tx - baseline, max_excess);
-                const int64_t load_num   = baseline + excess;
+            if (avg_tx > 0 && static_cast<uint64_t>(avg_tx) > baseline) {
+                constexpr uint64_t FP_SCALE = 1U << 16;
+                const uint64_t capped_avg_tx = std::min<uint64_t>(
+                    static_cast<uint64_t>(avg_tx),
+                    baseline * max_mult * max_mult);
+                const uint64_t ratio_scaled = (capped_avg_tx * FP_SCALE * FP_SCALE) / baseline;
+                uint64_t load_mult_scaled = IntegerSquareRoot(ratio_scaled);
 
-                // Reduce target proportionally (load_num > baseline ⟹ target shrinks)
-                bnNew = bnNew * arith_uint256(static_cast<uint64_t>(baseline))
-                             / arith_uint256(static_cast<uint64_t>(load_num));
+                if (load_mult_scaled < FP_SCALE) load_mult_scaled = FP_SCALE;
+                if (load_mult_scaled > max_mult * FP_SCALE) load_mult_scaled = max_mult * FP_SCALE;
+
+                bnNew = bnNew * arith_uint256(FP_SCALE) / arith_uint256(load_mult_scaled);
             }
         }
     }

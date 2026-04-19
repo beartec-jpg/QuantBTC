@@ -206,14 +206,13 @@ struct Params {
 
     /**
      * Average transactions per block above which the load-based difficulty
-     * multiplier activates.  At exactly this rate the multiplier is 1× (no
-     * change).  It grows linearly up to nLoadDiffMaxMultiplier× as the
-     * average rate reaches nLoadDiffMaxMultiplier * nLoadDiffBaseline tx/block.
+     * multiplier activates. At exactly this rate the multiplier is 1× (no
+     * change). Above baseline, v2 uses a gentler square-root ramp so that
+     * difficulty grows as $\sqrt{\text{avg_tx}/\text{baseline}}$, capped by
+     * nLoadDiffMaxMultiplier.
      *
-     * Rationale: raises the PoW attack cost proportionally to economic
-     * activity — the network is hardest to attack precisely when it carries
-     * the most value.  During quiet periods the baseline stays low so that
-     * household miners remain competitive.
+     * Rationale: raises the PoW attack cost during sustained congestion while
+     * avoiding an overly aggressive response to ordinary traffic spikes.
      *
      * 0 = feature disabled (default for chains that do not set this).
      */

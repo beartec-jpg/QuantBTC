@@ -221,84 +221,88 @@ BOOST_AUTO_TEST_CASE(ChainParams_SIGNET_sanity)
  *       = (8063 - 4032) * tx_per_block / 4031
  *       = 4031 * tx_per_block / 4031 = tx_per_block
  */
-BOOST_AUTO_TEST_CASE(dag_load_aware_difficulty)
+BOOST_AUTO_TEST_CASE(dag_load_aware_difficulty_v2_sqrt)
 {
     // Build a minimal Consensus::Params with DAG + load-aware difficulty enabled.
     Consensus::Params params;
-    params.powLimit                = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
-    params.fPowNoRetargeting       = false;
+    params.powLimit                     = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+    params.fPowNoRetargeting            = false;
     params.fPowAllowMinDifficultyBlocks = false;
-    params.fDagMode                = true;
-    params.nDagTargetSpacingMs     = 1000; // 1-second blocks
-    params.nLoadDiffBaseline       = 100;  // 100 tx/block threshold
-    params.nLoadDiffMaxMultiplier  = 4;    // up to 4× harder
+    params.fDagMode                     = true;
+    params.nDagTargetSpacingMs          = 1000; // 1-second blocks
+    params.nLoadDiffBaseline            = 100;  // 100 tx/block threshold
+    params.nLoadDiffMaxMultiplier       = 8;    // cap at 8× harder under sustained attack
 
     // Build a chain of 8064 blocks (height 0 … 8063) spaced 1 second apart.
     const int CHAIN_HEIGHT = 8064;
     std::vector<CBlockIndex> blocks(CHAIN_HEIGHT);
     for (int i = 0; i < CHAIN_HEIGHT; i++) {
-        blocks[i].pprev           = i ? &blocks[i - 1] : nullptr;
-        blocks[i].nHeight         = i;
-        blocks[i].nTime           = 1700000000 + i; // 1 second per block
-        blocks[i].nBits           = 0x207fffff;
+        blocks[i].pprev            = i ? &blocks[i - 1] : nullptr;
+        blocks[i].nHeight          = i;
+        blocks[i].nTime            = 1700000000 + i; // 1 second per block
+        blocks[i].nBits            = 0x207fffff;
         blocks[i].m_chain_tx_count = 0;
     }
 
-    // The candidate block header (one second after the last chain block).
     CBlockHeader next_header;
     next_header.nTime = blocks[CHAIN_HEIGHT - 1].nTime + 1;
 
     const CBlockIndex* pindexLast = &blocks[CHAIN_HEIGHT - 1]; // height 8063
 
-    // Helper: assign a uniform tx count per block across the entire chain so
-    // that the average over the retarget window (heights 4033 … 8063) equals
-    // tx_per_block.
     auto set_tx_rate = [&](int64_t tx_per_block) {
         for (int i = 0; i < CHAIN_HEIGHT; i++) {
             blocks[i].m_chain_tx_count = static_cast<uint64_t>(i) * tx_per_block;
         }
     };
 
-    // ── Case 1: no transactions ─────────────────────────────────────────────
-    // Load adjustment inactive → result is the pure time-based retarget.
     set_tx_rate(0);
     const unsigned int base_bits = GetNextWorkRequiredDAG(pindexLast, &next_header, params);
+    arith_uint256 base_target;
+    base_target.SetCompact(base_bits);
 
-    // ── Case 2: tx_per_block == baseline (100/block) ────────────────────────
-    // Multiplier == 1 → identical to time-only result.
+    // Baseline traffic leaves time-based difficulty unchanged.
     set_tx_rate(params.nLoadDiffBaseline);
     BOOST_CHECK_EQUAL(GetNextWorkRequiredDAG(pindexLast, &next_header, params), base_bits);
 
-    // ── Case 3: tx_per_block == 2 × baseline (200/block) ────────────────────
-    // Multiplier == 2 → target halved (difficulty doubled).
+    // 2× baseline should harden, but more gently than the old linear ramp.
     set_tx_rate(params.nLoadDiffBaseline * 2);
-    const unsigned int double_bits = GetNextWorkRequiredDAG(pindexLast, &next_header, params);
-    arith_uint256 base_target, double_target;
-    base_target.SetCompact(base_bits);
-    double_target.SetCompact(double_bits);
+    const unsigned int gentle_bits = GetNextWorkRequiredDAG(pindexLast, &next_header, params);
+    arith_uint256 gentle_target;
+    gentle_target.SetCompact(gentle_bits);
+    BOOST_CHECK(gentle_target < base_target);
 
-    BOOST_CHECK(double_target < base_target); // harder than time-only
-    // double_target ≈ base_target / 2; allow ±1 for integer rounding
-    BOOST_CHECK(double_target * 2 <= base_target + arith_uint256(1));
-    BOOST_CHECK(double_target * 2 + arith_uint256(1) >= base_target);
+    // 4× baseline and 16× baseline should keep hardening monotonically.
+    set_tx_rate(params.nLoadDiffBaseline * 4);
+    const unsigned int two_x_bits = GetNextWorkRequiredDAG(pindexLast, &next_header, params);
+    arith_uint256 two_x_target;
+    two_x_target.SetCompact(two_x_bits);
+    BOOST_CHECK(two_x_target < gentle_target);
 
-    // ── Case 4: tx_per_block == 5 × baseline (500/block) ────────────────────
-    // Above the 4× cap; multiplier clamped to 4 → target ≈ base / 4.
-    set_tx_rate(params.nLoadDiffBaseline * 5);
+    set_tx_rate(params.nLoadDiffBaseline * 16);
+    const unsigned int four_x_bits = GetNextWorkRequiredDAG(pindexLast, &next_header, params);
+    arith_uint256 four_x_target;
+    four_x_target.SetCompact(four_x_bits);
+    BOOST_CHECK(four_x_target < two_x_target);
+
+    // At 64× baseline, sqrt(64)=8 reaches the configured cap.
+    set_tx_rate(params.nLoadDiffBaseline * 64);
+    const unsigned int cap_threshold_bits = GetNextWorkRequiredDAG(pindexLast, &next_header, params);
+    arith_uint256 cap_threshold_target;
+    cap_threshold_target.SetCompact(cap_threshold_bits);
+    BOOST_CHECK(cap_threshold_target < four_x_target);
+
+    // Extreme spam should not harden beyond the 8× cap.
+    set_tx_rate(params.nLoadDiffBaseline * 100);
     const unsigned int capped_bits = GetNextWorkRequiredDAG(pindexLast, &next_header, params);
     arith_uint256 capped_target;
     capped_target.SetCompact(capped_bits);
+    BOOST_CHECK_EQUAL(capped_bits, cap_threshold_bits);
+    BOOST_CHECK(capped_target == cap_threshold_target);
 
-    BOOST_CHECK(capped_target < double_target); // harder than 2× case
-    // capped_target ≈ base_target / 4; allow ±1 for integer rounding
-    BOOST_CHECK(capped_target * 4 <= base_target + arith_uint256(1));
-    BOOST_CHECK(capped_target * 4 + arith_uint256(1) >= base_target);
-
-    // ── Case 5: feature disabled (baseline == 0) ────────────────────────────
-    // Whatever the tx rate, result must equal the pure time-based retarget.
+    // Feature disabled → identical to pure time-based retarget.
     Consensus::Params params_disabled = params;
     params_disabled.nLoadDiffBaseline = 0;
-    set_tx_rate(params.nLoadDiffBaseline * 10);
+    set_tx_rate(params.nLoadDiffBaseline * 100);
     BOOST_CHECK_EQUAL(GetNextWorkRequiredDAG(pindexLast, &next_header, params_disabled), base_bits);
 }
 
