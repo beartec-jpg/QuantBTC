@@ -73,7 +73,9 @@ using interfaces::FoundBlock;
 using interfaces::Handler;
 using interfaces::MakeSignalHandler;
 using interfaces::Mining;
+using interfaces::NewTemplate;
 using interfaces::Node;
+using interfaces::SetNewPrevHash;
 using interfaces::WalletLoader;
 using node::BlockAssembler;
 using util::Join;
@@ -866,7 +868,20 @@ public:
 class MinerImpl : public Mining
 {
 public:
-    explicit MinerImpl(NodeContext& node) : m_node(node) {}
+    explicit MinerImpl(NodeContext& node) : m_node(node)
+    {
+        if (m_node.validation_signals) {
+            m_sv2_signals = std::make_shared<Sv2Signals>(*this);
+            m_node.validation_signals->RegisterSharedValidationInterface(m_sv2_signals);
+        }
+    }
+
+    ~MinerImpl() override
+    {
+        if (m_sv2_signals && m_node.validation_signals) {
+            m_node.validation_signals->UnregisterSharedValidationInterface(m_sv2_signals);
+        }
+    }
 
     bool isTestChain() override
     {
@@ -896,6 +911,29 @@ public:
         return context()->mempool->GetTransactionsUpdated();
     }
 
+    std::unique_ptr<Handler> handleNewTemplate(interfaces::NewTemplateFn fn) override
+    {
+        return MakeSignalHandler(m_new_template_signal.connect(std::move(fn)));
+    }
+
+    std::unique_ptr<Handler> handleSetNewPrevHash(interfaces::SetNewPrevHashFn fn) override
+    {
+        return MakeSignalHandler(m_set_new_prev_hash_signal.connect(std::move(fn)));
+    }
+
+    bool submitSolution(const std::shared_ptr<const CBlock>& block, bool* new_block) override
+    {
+        return processNewBlock(block, new_block);
+    }
+
+    std::optional<SetNewPrevHash> getSetNewPrevHash() override
+    {
+        LOCK(::cs_main);
+        const CBlockIndex* tip = chainman().ActiveChain().Tip();
+        if (!tip) return std::nullopt;
+        return BuildSetNewPrevHash(tip);
+    }
+
     bool testBlockValidity(const CBlock& block, bool check_merkle_root, BlockValidationState& state) override
     {
         LOCK(cs_main);
@@ -918,6 +956,99 @@ public:
 
     NodeContext* context() override { return &m_node; }
     ChainstateManager& chainman() { return *Assert(m_node.chainman); }
+
+private:
+    class Sv2Signals final : public CValidationInterface
+    {
+    public:
+        explicit Sv2Signals(MinerImpl& miner) : m_miner(miner) {}
+
+        void UpdatedBlockTip(const CBlockIndex* pindexNew, const CBlockIndex*, bool fInitialDownload) override
+        {
+            if (fInitialDownload || pindexNew == nullptr) return;
+            m_miner.EmitSetNewPrevHash(*pindexNew);
+            m_miner.EmitNewTemplate(*pindexNew);
+        }
+
+        void TransactionAddedToMempool(const NewMempoolTransactionInfo&, uint64_t) override
+        {
+            m_miner.EmitNewTemplateFromTip();
+        }
+
+        void TransactionRemovedFromMempool(const CTransactionRef&, MemPoolRemovalReason, uint64_t) override
+        {
+            m_miner.EmitNewTemplateFromTip();
+        }
+
+    private:
+        MinerImpl& m_miner;
+    };
+
+    SetNewPrevHash BuildSetNewPrevHash(const CBlockIndex* tip) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
+    {
+        AssertLockHeld(::cs_main);
+        SetNewPrevHash update;
+        update.tip_hash = tip->GetBlockHash();
+
+        if (args().GetBoolArg("-dag", chainman().GetConsensus().fDagMode)) {
+            update.mining_parents = chainman().m_dag_tips.GetMiningParents(chainman().GetConsensus().nMaxDagParents);
+        } else {
+            update.mining_parents = {update.tip_hash};
+        }
+        if (update.mining_parents.empty()) {
+            update.mining_parents.push_back(update.tip_hash);
+        }
+        return update;
+    }
+
+    NewTemplate BuildNewTemplate(const CBlockIndex* tip) EXCLUSIVE_LOCKS_REQUIRED(::cs_main)
+    {
+        AssertLockHeld(::cs_main);
+        NewTemplate update;
+        update.tip_hash = tip->GetBlockHash();
+        update.n_bits = tip->nBits;
+        if (auto* mempool = context()->mempool.get()) {
+            update.tx_updated_count = mempool->GetTransactionsUpdated();
+        }
+        return update;
+    }
+
+    void EmitSetNewPrevHash(const CBlockIndex& tip)
+    {
+        SetNewPrevHash update;
+        {
+            LOCK(::cs_main);
+            update = BuildSetNewPrevHash(&tip);
+        }
+        m_set_new_prev_hash_signal(update);
+    }
+
+    void EmitNewTemplate(const CBlockIndex& tip)
+    {
+        NewTemplate update;
+        {
+            LOCK(::cs_main);
+            update = BuildNewTemplate(&tip);
+        }
+        m_new_template_signal(update);
+    }
+
+    void EmitNewTemplateFromTip()
+    {
+        std::optional<NewTemplate> update;
+        {
+            LOCK(::cs_main);
+            const CBlockIndex* tip = chainman().ActiveChain().Tip();
+            if (tip) update = BuildNewTemplate(tip);
+        }
+        if (update) m_new_template_signal(*update);
+    }
+
+    ArgsManager& args() { return *Assert(m_node.args); }
+
+    boost::signals2::signal<void(const NewTemplate&)> m_new_template_signal;
+    boost::signals2::signal<void(const SetNewPrevHash&)> m_set_new_prev_hash_signal;
+    std::shared_ptr<Sv2Signals> m_sv2_signals;
     NodeContext& m_node;
 };
 } // namespace

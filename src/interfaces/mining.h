@@ -8,8 +8,11 @@
 #include <node/types.h>
 #include <uint256.h>
 
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace node {
 struct CBlockTemplate;
@@ -24,6 +27,24 @@ namespace interfaces {
 
 //! Interface giving clients (RPC, Stratum v2 Template Provider in the future)
 //! ability to create block templates.
+
+class Handler;
+
+struct NewTemplate
+{
+    uint256 tip_hash;
+    uint32_t n_bits{0};
+    unsigned int tx_updated_count{0};
+};
+
+struct SetNewPrevHash
+{
+    uint256 tip_hash;
+    std::vector<uint256> mining_parents;
+};
+
+using NewTemplateFn = std::function<void(const NewTemplate&)>;
+using SetNewPrevHashFn = std::function<void(const SetNewPrevHash&)>;
 
 class Mining
 {
@@ -60,6 +81,18 @@ public:
     //! Return the number of transaction updates in the mempool,
     //! used to decide whether to make a new block template.
     virtual unsigned int getTransactionsUpdated() = 0;
+
+    //! Register callback to receive SV2-style NewTemplate notifications.
+    virtual std::unique_ptr<Handler> handleNewTemplate(NewTemplateFn fn) = 0;
+
+    //! Register callback to receive SV2-style SetNewPrevHash notifications.
+    virtual std::unique_ptr<Handler> handleSetNewPrevHash(SetNewPrevHashFn fn) = 0;
+
+    //! Process an SV2-style solution submission.
+    virtual bool submitSolution(const std::shared_ptr<const CBlock>& block, bool* new_block) = 0;
+
+    //! Return latest SV2-style prevhash update snapshot.
+    virtual std::optional<SetNewPrevHash> getSetNewPrevHash() = 0;
 
     /**
      * Check a block is completely valid from start to finish.
