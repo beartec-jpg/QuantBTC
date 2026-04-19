@@ -212,6 +212,18 @@ The `DagTipSet` class (`src/dag/dagtipset.cpp`) tracks all concurrent tips of th
 
 Difficulty adjustment in DAG mode uses `GetNextWorkRequiredDAG()` with a 128-block rolling window, analogous to Bitcoin's 2,016-block retarget but adapted to the 10-second block target. The window size of 128 blocks corresponds to approximately 21 minutes at the target spacing, providing responsive difficulty adjustment while filtering out short-term hashrate variance.
 
+In the current v2 design, qBTC also applies a load-aware hardening term derived from recent transaction activity across the retarget window. Let B be the baseline average transaction count per block and let A be the observed rolling average. The effective load multiplier is approximately:
+
+    multiplier = clamp(1, max_multiplier, sqrt(A / B))
+
+The resulting target is then hardened by that multiplier. This produces three desirable properties:
+
+1. **Low impact during normal use.** Small or organic traffic increases only change difficulty modestly.
+2. **Strong anti-spam response.** Sustained congestion raises difficulty more aggressively, but without the abrupt behavior of a linear ramp.
+3. **Graceful recovery.** When spam subsides, the rolling average falls and difficulty relaxes back toward its baseline band over subsequent windows.
+
+This square-root curve was chosen because it is smoother for honest users than a linear policy while still allowing the chain to harden sharply under attack. In testing, the consensus cap has been tuned to allow up to approximately 8x hardening during sustained overload conditions.
+
 ---
 
 ## 4. Tokenomics & Economic Model

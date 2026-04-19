@@ -44,6 +44,7 @@ Introduced parallel block production via the GHOSTDAG protocol:
 - [x] Multi-parent block headers (`hashParents` field, `BLOCK_VERSION_DAGMODE` flag)
 - [x] DAG-aware `AcceptBlockHeader()` validation (parent existence, duplicate detection, max parents)
 - [x] DAG-aware difficulty adjustment (`GetNextWorkRequiredDAG`)
+- [x] Load-aware DAA v2 with square-root response and capped anti-spam hardening
 - [x] Tipset management in `AcceptBlock()` (not `ConnectTip()` — fork blocks tracked too)
 - [x] RPC fields: `dagparents`, `dagblock`, `dagmode`, `ghostdag_k`, `dag_tips`
 - [x] Early protection system (IP throttle, ramp weight, activation delay)
@@ -288,6 +289,8 @@ Pivoted from the ECDSA-first / soft-fork migration model to mandatory Falcon hyb
 - [x] True GHOSTDAG parallelism test: 8–12 miners to force simultaneous blocks and verify blue/red scoring under contention
 - [x] 50,000-tx high-throughput test: 10 nodes, 90% ECDSA / 10% ML-DSA, 61.2 tx/s, 100% success, 29.2% multi-parent blocks
 - [x] 72-hour surge endurance: ~417,000 txs, 25,736 blocks, 0 consensus splits, 0 data loss
+- [x] Load-aware DAA v2 implemented: rolling transaction-load awareness with sqrt scaling, smoother response under organic traffic, and capped hardening up to 8x under sustained spam
+- [x] Realistic DAA ramp test harness: staged 1→8 miner / 5-wallet-per-node baseline, attack, and recovery simulation for high-resource validation
 - [x] Security audit: 86/90 pass, 0 unexpected failures, all 17 findings fixed (3 HIGH, 6 MEDIUM, 8 LOW)
 - [ ] PQC signature verification CPU profiling under peak load (`getpqcsigcachestats`)
 - [ ] Benchmark Falcon signature cache hit rates during sustained blast
@@ -301,7 +304,7 @@ Test reports: [Max-TPS](TESTREPORT-2026-04-09-MAX-TPS.md) | [Stress](TESTREPORT-
 - [ ] Stratum v2 integration for pool mining
 - [ ] DAG-aware mining pool protocol (multi-parent template)
 - [ ] GPU/ASIC miner compatibility testing
-- [ ] Difficulty adjustment tuning for real hash rate
+- [ ] Final mainnet tuning of load-aware DAA v2 against production hash-rate and traffic distributions
 - [ ] Publish home mining guides (CPU/GPU/small ASIC) using current testnet difficulty
 
 ### Phase 10: Protocol Hardening (Planned)

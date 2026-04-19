@@ -53,9 +53,11 @@ Replaced Bitcoin's linear chain with parallel block production via the GHOSTDAG 
 - **`DagTipSet`** — tracks concurrent DAG tips and provides mining parents
 - **Multi-parent block headers** — `hashParents` field with `BLOCK_VERSION_DAGMODE` flag
 - **DAG-aware validation** — parent existence checks, duplicate detection, max parents limit
-- **DAG difficulty adjustment** — `GetNextWorkRequiredDAG()` for variable block spacing
+- **DAG difficulty adjustment v2** — `GetNextWorkRequiredDAG()` combines rolling retargeting with a load-aware square-root hardening curve
 - **10-second block target** with 16 MB max block weight
 - **RPC fields**: `dagparents`, `dagblock`, `dagmode`, `ghostdag_k`, `dag_tips`
+
+The current DAA v2 is designed to keep qBTC near its 10-second target while resisting sustained spam. Instead of a harsh linear jump, the load multiplier grows approximately as the square root of recent average transaction load above a baseline and is capped by consensus parameters. This means normal traffic stays smooth, while sustained attack traffic can harden difficulty sharply and then relax back down once the load clears.
 
 ### Real Cryptography (ML-DSA-44)
 
