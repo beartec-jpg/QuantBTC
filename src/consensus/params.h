@@ -166,10 +166,41 @@ struct Params {
 
     /**
      * DAG difficulty adjustment window size (in blocks).
-     * Retarget occurs every nDagDiffWindowSize blocks.
+     * When fDagUseEma is false, retarget occurs every nDagDiffWindowSize blocks.
+     * When fDagUseEma is true, this is the maximum lookback for the EMA computation.
      * Default 4032 (~67 min at 1 s/block); shorter values give faster convergence.
      */
     int64_t nDagDiffWindowSize{4032};
+
+    /**
+     * Enable per-block dual-EMA difficulty adjustment instead of the
+     * fixed-window retarget.  Two EMAs with different half-lives track
+     * block times: a fast EMA that reacts to spikes and a slow EMA that
+     * provides stability.  Difficulty adjusts every block.
+     */
+    bool fDagUseEma{false};
+
+    /**
+     * Fast EMA half-life in blocks.  Controls how quickly difficulty
+     * responds to sudden changes in block rate.  Smaller = more reactive.
+     * Default 12 blocks (~2 min at 10 s/block).
+     */
+    int64_t nDagEmaFastHalfLife{12};
+
+    /**
+     * Slow EMA half-life in blocks.  Provides a stability anchor that
+     * prevents overreaction and smooths out oscillation.
+     * Default 72 blocks (~12 min at 10 s/block).
+     */
+    int64_t nDagEmaSlowHalfLife{72};
+
+    /**
+     * Maximum per-block difficulty adjustment ratio (as a fraction).
+     * Prevents extreme single-block swings.  Expressed as numerator
+     * over 1000: e.g. 3000 means difficulty can at most 3× per block.
+     * Default 3000 (3×).
+     */
+    int64_t nDagEmaMaxAdjust{3000};
 
     /**
      * Maximum number of parent references a DAG block may include.

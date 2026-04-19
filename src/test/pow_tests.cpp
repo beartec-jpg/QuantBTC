@@ -306,4 +306,99 @@ BOOST_AUTO_TEST_CASE(dag_load_aware_difficulty_v2_sqrt)
     BOOST_CHECK_EQUAL(GetNextWorkRequiredDAG(pindexLast, &next_header, params_disabled), base_bits);
 }
 
+/**
+ * Test the dual-EMA per-block difficulty adjustment.
+ *
+ * Build chains with different block-time patterns and verify that the
+ * fast EMA causes difficulty to rise when blocks are too fast, and ease
+ * when blocks are too slow.
+ */
+BOOST_AUTO_TEST_CASE(dag_dual_ema_difficulty)
+{
+    Consensus::Params params;
+    params.powLimit                     = uint256{"7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"};
+    params.fPowNoRetargeting            = false;
+    params.fPowAllowMinDifficultyBlocks = false;
+    params.fDagMode                     = true;
+    params.nDagTargetSpacingMs          = 10000; // 10-second target
+    params.nDagDiffWindowSize           = 128;   // max lookback
+    params.fDagUseEma                   = true;
+    params.nDagEmaFastHalfLife          = 12;
+    params.nDagEmaSlowHalfLife          = 72;
+    params.nDagEmaMaxAdjust             = 3000;  // max 3× per block
+    params.nLoadDiffBaseline            = 0;     // disable load-aware for this test
+    params.nLoadDiffMaxMultiplier       = 1;
+
+    const int CHAIN_LEN = 200;
+    std::vector<CBlockIndex> blocks(CHAIN_LEN);
+
+    // Helper: build a chain with uniform block spacing
+    // Use a mid-range difficulty so there's headroom to go both harder and easier.
+    const uint32_t midBits = 0x1f0fffff;
+    auto build_uniform_chain = [&](int spacing_sec) {
+        for (int i = 0; i < CHAIN_LEN; i++) {
+            blocks[i].pprev  = i ? &blocks[i - 1] : nullptr;
+            blocks[i].nHeight = i;
+            blocks[i].nTime  = 1700000000 + i * spacing_sec;
+            blocks[i].nBits  = midBits;
+            blocks[i].m_chain_tx_count = 0;
+        }
+    };
+
+    CBlockHeader next_header;
+
+    // ── 1. On-target blocks (10s each): difficulty should stay roughly the same
+    build_uniform_chain(10);
+    next_header.nTime = blocks[CHAIN_LEN - 1].nTime + 10;
+    const unsigned int on_target_bits = GetNextWorkRequiredDAG(&blocks[CHAIN_LEN - 1], &next_header, params);
+    arith_uint256 on_target;
+    on_target.SetCompact(on_target_bits);
+    arith_uint256 midTarget;
+    midTarget.SetCompact(midBits);
+    arith_uint256 powLimit = UintToArith256(params.powLimit);
+    // Should be very close to the starting target (EMA converges, adjustment ≈ 1.0)
+    BOOST_CHECK(on_target <= midTarget);
+    BOOST_CHECK(on_target > midTarget / 2);
+
+    // ── 2. Fast blocks (2s each, 5x too fast): difficulty should increase (lower target)
+    build_uniform_chain(2);
+    next_header.nTime = blocks[CHAIN_LEN - 1].nTime + 2;
+    const unsigned int fast_bits = GetNextWorkRequiredDAG(&blocks[CHAIN_LEN - 1], &next_header, params);
+    arith_uint256 fast_target;
+    fast_target.SetCompact(fast_bits);
+    BOOST_CHECK(fast_target < on_target); // harder than on-target
+
+    // ── 3. Slow blocks (30s each, 3x too slow): difficulty should decrease (higher target)
+    build_uniform_chain(30);
+    next_header.nTime = blocks[CHAIN_LEN - 1].nTime + 30;
+    const unsigned int slow_bits = GetNextWorkRequiredDAG(&blocks[CHAIN_LEN - 1], &next_header, params);
+    arith_uint256 slow_target;
+    slow_target.SetCompact(slow_bits);
+    BOOST_CHECK(slow_target > on_target); // easier than on-target
+
+    // ── 4. Spike: 180 blocks at 10s, then 20 blocks at 1s — fast EMA should react
+    for (int i = 0; i < CHAIN_LEN; i++) {
+        blocks[i].pprev  = i ? &blocks[i - 1] : nullptr;
+        blocks[i].nHeight = i;
+        int spacing = (i >= 180) ? 1 : 10; // spike at block 180
+        blocks[i].nTime  = (i == 0) ? 1700000000 : blocks[i-1].nTime + spacing;
+        blocks[i].nBits  = midBits;
+        blocks[i].m_chain_tx_count = 0;
+    }
+    next_header.nTime = blocks[CHAIN_LEN - 1].nTime + 1;
+    const unsigned int spike_bits = GetNextWorkRequiredDAG(&blocks[CHAIN_LEN - 1], &next_header, params);
+    arith_uint256 spike_target;
+    spike_target.SetCompact(spike_bits);
+    // After 20 blocks at 1s, fast EMA should have pulled difficulty up (target down)
+    BOOST_CHECK(spike_target < on_target);
+
+    // ── 5. Very early chain (height < emaActivation): should return powLimit
+    //    emaActivation = max(4, nDagDiffWindowSize) = 128
+    build_uniform_chain(10);
+    const int emaActivation = std::max(4, static_cast<int>(params.nDagDiffWindowSize));
+    next_header.nTime = blocks[emaActivation].nTime + 10;
+    const unsigned int early_bits = GetNextWorkRequiredDAG(&blocks[emaActivation - 1], &next_header, params);
+    BOOST_CHECK_EQUAL(early_bits, powLimit.GetCompact());
+}
+
 BOOST_AUTO_TEST_SUITE_END()

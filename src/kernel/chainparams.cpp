@@ -649,9 +649,19 @@ public:
         // HYBRID_SIG not yet scheduled on QBTC testnet; keep disabled.
         consensus.nHybridSigHeight = std::numeric_limits<int>::max();
 
-        // DAG difficulty window: 128 blocks (~21 min at 10 s/block).
-        // Short window for fast convergence to the 10-second target.
-        consensus.nDagDiffWindowSize = 128;
+        // DAG difficulty window: 256 blocks.  Also serves as the EMA
+        // activation height — the first 256 blocks use minimum difficulty
+        // (grace period for bootstrap / testnet coin maturity).
+        consensus.nDagDiffWindowSize = 256;
+
+        // Dual-EMA per-block difficulty adjustment.
+        // Fast EMA (12-block half-life) reacts to mining spikes within seconds.
+        // Slow EMA (72-block half-life) anchors stability over minutes.
+        // Difficulty adjusts every single block — no fixed retarget window.
+        consensus.fDagUseEma            = true;
+        consensus.nDagEmaFastHalfLife   = 12;   // ~2 min at 10 s/block
+        consensus.nDagEmaSlowHalfLife   = 72;   // ~12 min at 10 s/block
+        consensus.nDagEmaMaxAdjust      = 3000; // max 3× per block
 
         // Transaction-load-aware difficulty: same thresholds as mainnet.
         consensus.nLoadDiffBaseline     = 200;
