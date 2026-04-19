@@ -1,4 +1,4 @@
-// Copyright (c) 2026 The QuantumBTC developers
+// Copyright (c) 2026 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -78,6 +78,7 @@ private:
     std::unique_ptr<interfaces::Handler> m_new_template_handler GUARDED_BY(m_mutex);
     std::unique_ptr<interfaces::Handler> m_set_new_prev_hash_handler GUARDED_BY(m_mutex);
 
+    // Upper bound for a single framed message to cap per-client memory usage.
     static constexpr size_t MAX_FRAME_SIZE{4 * 1024 * 1024};
 
     void OnNewTemplate(const interfaces::NewTemplate& update) EXCLUSIVE_LOCKS_REQUIRED(!m_mutex);

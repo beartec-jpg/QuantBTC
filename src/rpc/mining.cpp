@@ -58,6 +58,7 @@ using node::UpdateTime;
 using util::ToString;
 
 static Mutex g_sv2_transport_mutex;
+// Process-wide singleton lifetime: created on first use and never reset.
 static std::unique_ptr<SV2Transport> g_sv2_transport GUARDED_BY(g_sv2_transport_mutex);
 
 static SV2Transport& EnsureSV2Transport(NodeContext& node)

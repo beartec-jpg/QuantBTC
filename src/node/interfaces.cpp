@@ -997,6 +997,7 @@ private:
         SetNewPrevHash update;
         update.tip_hash = tip->GetBlockHash();
 
+        // Some test/utility contexts construct NodeContext without ArgsManager.
         const bool dag_mode = m_node.args
             ? m_node.args->GetBoolArg("-dag", chainman().GetConsensus().fDagMode)
             : chainman().GetConsensus().fDagMode;
@@ -1005,9 +1006,9 @@ private:
         } else {
             update.mining_parents = {update.tip_hash};
         }
-        // During early startup DAG tip tracking may not be populated yet.
-        // Falling back to the selected tip keeps mining unblocked and matches
-        // linear-chain parent behavior until full DAG tip state is available.
+        // During early startup, or when the DAG tip snapshot is temporarily
+        // unavailable, fall back to selected tip. This keeps mining unblocked
+        // and matches linear-chain parent behavior.
         if (update.mining_parents.empty()) {
             update.mining_parents.push_back(update.tip_hash);
         }

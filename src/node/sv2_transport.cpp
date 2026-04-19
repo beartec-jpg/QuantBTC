@@ -1,9 +1,10 @@
-// Copyright (c) 2026 The QuantumBTC developers
+// Copyright (c) 2026 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <interfaces/handler.h>
 #include <interfaces/mining.h>
+#include <logging.h>
 #include <node/sv2_transport.h>
 #include <span.h>
 #include <sync.h>
@@ -19,6 +20,8 @@
 
 namespace node {
 namespace {
+constexpr uint32_t TYPE_FIELD_SIZE{1};
+constexpr uint32_t SEQUENCE_FIELD_SIZE{8};
 
 std::vector<uint8_t> ToBytes(const std::string& str)
 {
@@ -180,6 +183,9 @@ void SV2Transport::ParseClientFrames(uint64_t client_id)
     while (client.rx_buffer.size() >= 4) {
         const uint32_t frame_size = ReadBE32(Span<const uint8_t>{client.rx_buffer}.first(4));
         if (frame_size == 0 || frame_size > MAX_FRAME_SIZE) {
+            LogPrint(BCLog::NET,
+                     "SV2 transport: dropping client=%llu buffer due to invalid frame size=%u\n",
+                     static_cast<unsigned long long>(client_id), frame_size);
             client.rx_buffer.clear();
             return;
         }
@@ -215,7 +221,7 @@ void SV2Transport::BroadcastFrame(SV2MessageType type, const std::vector<uint8_t
 
 std::vector<uint8_t> SV2Transport::EncodeFrame(SV2MessageType type, uint64_t sequence, const std::vector<uint8_t>& payload)
 {
-    const uint32_t frame_size = 1 + 8 + payload.size();
+    const uint32_t frame_size = TYPE_FIELD_SIZE + SEQUENCE_FIELD_SIZE + payload.size();
     std::vector<uint8_t> out;
     out.reserve(4 + frame_size);
 
