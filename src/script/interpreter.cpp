@@ -1859,6 +1859,11 @@ bool GenericTransactionSignatureChecker<T>::CheckPQCSignature(const std::vector<
         pqc::Falcon falcon;
         return falcon.Verify(msg, pqcSig, pqcPubKey);
     }
+    if (pqcSig.size() == pqc::Falcon1024::SIGNATURE_SIZE &&
+        pqcPubKey.size() == pqc::Falcon1024::PUBLIC_KEY_SIZE) {
+        pqc::Falcon1024 falcon1024;
+        return falcon1024.Verify(msg, pqcSig, pqcPubKey);
+    }
     if (pqcSig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
         pqcPubKey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE) {
         pqc::Dilithium dilithium;
@@ -2001,13 +2006,17 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 // Falcon-padded-512: sig=666B, pk=897B (both below MAX_SCRIPT_ELEMENT_SIZE=520? No — 666>520)
                 static_assert(pqc::Falcon::SIGNATURE_SIZE > MAX_SCRIPT_ELEMENT_SIZE,
                               "Falcon sig size sanity: must exceed MAX_SCRIPT_ELEMENT_SIZE");
-                const bool is_dilithium = (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
-                                           pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE);
-                const bool is_sphincs   = (pqc_sig.size() == pqc::SPHINCS::SIGNATURE_SIZE &&
-                                           pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE);
-                const bool is_falcon    = (pqc_sig.size() == pqc::Falcon::SIGNATURE_SIZE &&
-                                           pqc_pubkey.size() == pqc::Falcon::PUBLIC_KEY_SIZE);
-                if (!is_dilithium && !is_sphincs && !is_falcon) {
+                static_assert(pqc::Falcon1024::SIGNATURE_SIZE > MAX_SCRIPT_ELEMENT_SIZE,
+                              "Falcon-1024 sig size sanity: must exceed MAX_SCRIPT_ELEMENT_SIZE");
+                const bool is_dilithium  = (pqc_sig.size() == pqc::Dilithium::SIGNATURE_SIZE &&
+                                            pqc_pubkey.size() == pqc::Dilithium::PUBLIC_KEY_SIZE);
+                const bool is_sphincs    = (pqc_sig.size() == pqc::SPHINCS::SIGNATURE_SIZE &&
+                                            pqc_pubkey.size() == pqc::SPHINCS::PUBLIC_KEY_SIZE);
+                const bool is_falcon     = (pqc_sig.size() == pqc::Falcon::SIGNATURE_SIZE &&
+                                            pqc_pubkey.size() == pqc::Falcon::PUBLIC_KEY_SIZE);
+                const bool is_falcon1024 = (pqc_sig.size() == pqc::Falcon1024::SIGNATURE_SIZE &&
+                                            pqc_pubkey.size() == pqc::Falcon1024::PUBLIC_KEY_SIZE);
+                if (!is_dilithium && !is_sphincs && !is_falcon && !is_falcon1024) {
                     return set_error(serror, SCRIPT_ERR_PQC_SIG_SIZE);
                 }
 
@@ -2036,13 +2045,7 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                 pqc_scriptCode << OP_DUP << OP_HASH160 << program << OP_EQUALVERIFY << OP_CHECKSIG;
 
                 // Verify PQC signature over the BIP143 sighash.
-                if (is_falcon) {
-                    const int nHashType = stack[0].back();
-                    if (!checker.CheckPQCSignature(pqc_sig, pqc_pubkey, pqc_scriptCode,
-                                                   SigVersion::WITNESS_V0, nHashType)) {
-                        return set_error(serror, SCRIPT_ERR_PQC_SIG);
-                    }
-                } else if (is_dilithium) {
+                if (is_falcon || is_falcon1024 || is_dilithium) {
                     const int nHashType = stack[0].back();
                     if (!checker.CheckPQCSignature(pqc_sig, pqc_pubkey, pqc_scriptCode,
                                                    SigVersion::WITNESS_V0, nHashType)) {
@@ -2056,7 +2059,7 @@ static bool VerifyWitnessProgram(const CScriptWitness& witness, int witversion, 
                     }
                 }
 
-                const char* pqc_algo = is_falcon ? "Falcon" : (is_dilithium ? "Dilithium" : "SPHINCS+");
+                const char* pqc_algo = is_falcon ? "Falcon-512" : (is_falcon1024 ? "Falcon-1024" : (is_dilithium ? "Dilithium" : "SPHINCS+"));
                 LogDebug(BCLog::VALIDATION,
                          "PQC: verified %s signature (hybrid_addr=%d) for P2WPKH input\n",
                          pqc_algo, is_hybrid_addr);

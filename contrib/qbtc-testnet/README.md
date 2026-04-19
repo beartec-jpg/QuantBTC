@@ -41,6 +41,21 @@ docker build -t qbtc-testnet -f contrib/qbtc-testnet/Dockerfile .
 docker run -d --name qbtc -p 28333:28333 -p 28332:28332 -v qbtc-data:/home/qbtc/.bitcoin qbtc-testnet
 ```
 
+### Windows low-spec quick start
+
+For older Windows PCs, use the bundled launcher:
+
+```powershell
+contrib\qbtc-testnet\qbtc-testnet-windows.bat start
+```
+
+This will:
+
+- auto-create `%LOCALAPPDATA%\Bitcoin\bitcoin.conf` if missing,
+- apply the low-spec defaults from `qbtc-windows-low-spec.conf`,
+- enable pruning and reduced cache pressure for older machines,
+- and re-bootstrap peers from the current public qBTC seed nodes when peer count is low.
+
 See [doc/join-testnet.md](../../doc/join-testnet.md) for full Docker Compose setup.
 
 ### Manual Build
@@ -107,6 +122,8 @@ Place `qbtc-testnet.conf` in `~/.bitcoin/bitcoin.conf` or use:
 ```bash
 ./src/bitcoind -qbtctestnet -conf=/path/to/qbtc-testnet.conf
 ```
+
+For older Windows hardware, use [qbtc-windows-low-spec.conf](qbtc-windows-low-spec.conf) together with [qbtc-testnet-windows.ps1](qbtc-testnet-windows.ps1) or [qbtc-testnet-windows.bat](qbtc-testnet-windows.bat).
 
 See [qbtc-testnet.conf](qbtc-testnet.conf) for all available options.
 

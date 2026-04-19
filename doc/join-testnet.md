@@ -216,6 +216,16 @@ seednode=89.167.109.241:28333
 ./src/bitcoind -daemon
 ```
 
+### Windows quick start for older PCs
+
+A low-spec Windows profile is now available under:
+
+- `contrib/qbtc-testnet/qbtc-testnet-windows.bat`
+- `contrib/qbtc-testnet/qbtc-testnet-windows.ps1`
+- `contrib/qbtc-testnet/qbtc-windows-low-spec.conf`
+
+The launcher auto-creates the config if needed, uses pruning and reduced cache settings, and attempts to re-add the public seed peers when the local peer count is too low.
+
 Monitor sync progress:
 
 ```bash

@@ -5,7 +5,7 @@
 #   1. Logs start positions on all 3 nodes
 #   2. Adds pqcmode=classical to N2/N3 configs (N1 stays hybrid)
 #   3. Restarts N2/N3 daemons
-#   4. Applies cpulimit (40%) to all 3 daemons
+#   4. Applies cpulimit (30%) to all 3 daemons
 #   5. Deploys surge_72hr_mixed.sh to all 3 nodes
 #   6. Launches test in screen sessions on all 3
 
@@ -231,7 +231,7 @@ echo ""
 echo "  N1 (${N1[ip]}): hybrid  — ~10% of txs (baseline 0.33 tx/s)"
 echo "  N2 (${N2[ip]}): classical — ~45% of txs (baseline 1.67 tx/s)"
 echo "  N3 (${N3[ip]}): classical — ~45% of txs (baseline 1.67 tx/s)"
-echo "  CPU limit: 40% per node"
+echo "  CPU limit: 30% per node"
 echo ""
 echo "  Monitor:"
 echo "    ssh root@${N1[ip]}  # pass: ${N1[pass]}"

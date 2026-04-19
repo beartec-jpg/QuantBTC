@@ -13,7 +13,8 @@ Mines 30-50 blocks while creating parallel forks, then analyzes:
 """
 import subprocess, json, struct, hashlib, os, sys, time
 
-CLI = ["./src/bitcoin-cli", "-regtest", "-datadir=/tmp/qbtc_regtest"]
+DATADIR = os.path.join(os.environ.get("TMPDIR", "/tmp"), "qbtc_regtest")
+CLI = ["./src/bitcoin-cli", "-regtest", f"-datadir={DATADIR}"]
 
 def rpc(method, *args):
     cmd = CLI + [method] + [str(a) for a in args]

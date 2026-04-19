@@ -352,12 +352,19 @@ def suite_runtime_enforcement():
                 # Verify sizes: [ecdsa_sig, ecdsa_pk, pqc_sig, pqc_pk]
                 pqc_sig_size = len(w[2]) // 2  # hex chars / 2
                 pqc_pk_size  = len(w[3]) // 2
-                DILITHIUM_SIG = 2420
-                DILITHIUM_PK  = 1312
-                report("R5  4-element witness: PQC sig size = 2420B (Dilithium)",
-                       pqc_sig_size == DILITHIUM_SIG, f"actual={pqc_sig_size}")
-                report("R6  4-element witness: PQC pubkey size = 1312B (Dilithium)",
-                       pqc_pk_size == DILITHIUM_PK, f"actual={pqc_pk_size}")
+                known_pairs = {
+                    (2420, 1312): "Dilithium",
+                    (666, 897): "Falcon-512",
+                    (1280, 1793): "Falcon-1024",
+                    (17088, 32): "SPHINCS+",
+                }
+                scheme = known_pairs.get((pqc_sig_size, pqc_pk_size))
+                report("R5  4-element witness uses a known PQC signature size",
+                       scheme is not None,
+                       f"sig={pqc_sig_size} pk={pqc_pk_size} scheme={scheme or 'unknown'}")
+                report("R6  4-element witness uses a known PQC pubkey size",
+                       scheme is not None,
+                       f"sig={pqc_sig_size} pk={pqc_pk_size} scheme={scheme or 'unknown'}")
             else:
                 report("R5  witness is ECDSA-only (2-element) on this build", True,
                        "PQC hybrid mode requires full testnet binary with key binding")

@@ -14,7 +14,7 @@
 # This is the most critical crash-safety test.
 # ============================================================
 
-DATADIR="/tmp/qbtc-kill9"
+DATADIR="${TMPDIR:-/tmp}/qbtc-kill9"
 SRCDIR="$(cd "$(dirname "$0")" && pwd)"
 BITCOIND="$SRCDIR/build-fresh/src/bitcoind"
 CLI="$SRCDIR/build-fresh/src/bitcoin-cli -datadir=$DATADIR -regtest -rpcuser=test -rpcpassword=test -rpcport=18567"
@@ -112,6 +112,7 @@ CONF
 
 $BITCOIND -datadir="$DATADIR" -regtest -daemon 2>&1
 if ! wait_for_node; then
+    fail "Setup" "node did not start"
     echo "FATAL: node did not start"; exit 1
 fi
 

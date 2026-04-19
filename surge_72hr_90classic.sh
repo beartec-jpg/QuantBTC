@@ -65,7 +65,7 @@ MODEFILE="/tmp/surge72_90c_mode"
 PIDFILE="/tmp/surge72_90c.pid"
 STARTFILE="${LOGDIR}/start_state_${NODE_LABEL}.json"
 
-CPU_LIMIT=50
+CPU_LIMIT=30
 
 # ── Helpers ──────────────────────────────────────────────────────
 cli() {

@@ -10,7 +10,7 @@
 # Combined baseline: N1≈0.33 + N2≈1.67 + N3≈1.67 = ~3.7 tx/s (N1≈9%)
 # Combined surge:    N1≈5    + N2≈20   + N3≈20   = ~45 tx/s   (N1≈11%)
 #
-# CPU capped at 40% via cpulimit on bitcoind.
+# CPU capped at 30% via cpulimit on bitcoind.
 #
 # Usage:
 #   chmod +x surge_72hr_mixed.sh
@@ -62,7 +62,7 @@ MODEFILE="/tmp/surge72_mode"
 PIDFILE="/tmp/surge72_mixed.pid"
 STARTFILE="${LOGDIR}/start_state_${NODE_LABEL}.json"
 
-CPU_LIMIT=40
+CPU_LIMIT=30
 
 # ── Helpers ──────────────────────────────────────────────────────
 cli() {

@@ -13,7 +13,7 @@
 # Falcon-512 witness is ~3.7× smaller than Dilithium, so higher baseline rates
 # are sustainable on the same 4GB VPS hardware.
 #
-# CPU capped at 40% via cpulimit on bitcoind.
+# CPU capped at 30% via cpulimit on bitcoind.
 #
 # Requires: daemon started with -pqcmode=hybrid -pqcsig=falcon
 # Requires: commit >= cabf245 (IsPQCWitness() Falcon fix)
@@ -69,7 +69,7 @@ MODEFILE="/tmp/surge72_falcon_mode"
 PIDFILE="/tmp/surge72_falcon.pid"
 STARTFILE="${LOGDIR}/start_state_${NODE_LABEL}.json"
 
-CPU_LIMIT=40
+CPU_LIMIT=30
 
 # ── Helpers ──────────────────────────────────────────────────────
 cli() {

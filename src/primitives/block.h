@@ -14,6 +14,12 @@
 
 #include <vector>
 
+/** Hard ceiling on hashParents vector during deserialization.
+ *  Enforced at the serialization layer to prevent memory-amplification DoS
+ *  from oversized block headers received over P2P.  Must be >= the largest
+ *  consensus nMaxDagParents (currently 64 on mainnet/regtest).  */
+static constexpr uint64_t MAX_BLOCK_PARENTS_SERIALIZATION = 64;
+
 /**
  * nVersion bit flag indicating this block uses QuantumBTC BlockDAG mode.
  * When set, the block serialization includes a hashParents vector after
@@ -87,7 +93,27 @@ public:
         }
         READWRITE(obj.nNonce);
         if (obj.nVersion & BLOCK_VERSION_DAGMODE) {
-            READWRITE(obj.hashParents);
+            // Bounded deserialization: reject payloads with more than
+            // MAX_BLOCK_PARENTS_SERIALIZATION parents at the wire level
+            // to prevent memory-amplification DoS from malicious peers.
+            // Without this, a single `headers` message (2000 headers ×
+            // ~125k hashes each) could force ~8 GB of allocation before
+            // AcceptBlockHeader() validates the count.
+            if constexpr (ser_action.ForRead()) {
+                uint64_t nSize = ReadCompactSize(s);
+                if (nSize > MAX_BLOCK_PARENTS_SERIALIZATION) {
+                    throw std::ios_base::failure("hashParents size exceeds MAX_BLOCK_PARENTS_SERIALIZATION");
+                }
+                obj.hashParents.resize(nSize);
+                for (auto& h : obj.hashParents) {
+                    s >> h;
+                }
+            } else {
+                WriteCompactSize(s, obj.hashParents.size());
+                for (const auto& h : obj.hashParents) {
+                    s << h;
+                }
+            }
         }
     }
 

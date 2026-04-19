@@ -89,7 +89,8 @@ def cli_raw(nid, *args, wallet=None):
     ]
     if wallet:
         base += [f"-rpcwallet={wallet}"]
-    r = subprocess.run(base + list(args), capture_output=True, text=True, timeout=30)
+    timeout = 180 if args and args[0] == "generatetoaddress" else 60
+    r = subprocess.run(base + list(args), capture_output=True, text=True, timeout=timeout)
     return r.returncode, r.stdout.strip(), r.stderr.strip()
 
 def cli(nid, *args, wallet=None):
