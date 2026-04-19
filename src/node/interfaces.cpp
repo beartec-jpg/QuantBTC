@@ -41,6 +41,7 @@
 #include <policy/policy.h>
 #include <policy/rbf.h>
 #include <policy/settings.h>
+#include <pow.h>
 #include <primitives/block.h>
 #include <primitives/transaction.h>
 #include <rpc/protocol.h>
@@ -54,6 +55,7 @@
 #include <util/result.h>
 #include <util/signalinterrupt.h>
 #include <util/string.h>
+#include <util/time.h>
 #include <util/translation.h>
 #include <validation.h>
 #include <validationinterface.h>
@@ -871,8 +873,12 @@ public:
     explicit MinerImpl(NodeContext& node) : m_node(node)
     {
         if (m_node.validation_signals) {
-            m_sv2_signals = std::make_shared<Sv2Signals>(*this);
+            m_sv2_signals = std::make_shared<SV2Signals>(*this);
             m_node.validation_signals->RegisterSharedValidationInterface(m_sv2_signals);
+        } else {
+            // Some utility/test contexts can construct Mining without validation signals.
+            // In that case SV2 push notifications are unavailable, but the Mining API still works.
+            LogPrint(BCLog::VALIDATION, "SV2 Mining notifications disabled: validation signals unavailable\n");
         }
     }
 
@@ -958,13 +964,14 @@ public:
     ChainstateManager& chainman() { return *Assert(m_node.chainman); }
 
 private:
-    class Sv2Signals final : public CValidationInterface
+    class SV2Signals final : public CValidationInterface
     {
     public:
-        explicit Sv2Signals(MinerImpl& miner) : m_miner(miner) {}
+        explicit SV2Signals(MinerImpl& miner) : m_miner(miner) {}
 
-        void UpdatedBlockTip(const CBlockIndex* pindexNew, const CBlockIndex*, bool fInitialDownload) override
+        void UpdatedBlockTip(const CBlockIndex* pindexNew, const CBlockIndex* pindexFork, bool fInitialDownload) override
         {
+            (void)pindexFork;
             if (fInitialDownload || pindexNew == nullptr) return;
             m_miner.EmitSetNewPrevHash(*pindexNew);
             m_miner.EmitNewTemplate(*pindexNew);
@@ -990,11 +997,17 @@ private:
         SetNewPrevHash update;
         update.tip_hash = tip->GetBlockHash();
 
-        if (args().GetBoolArg("-dag", chainman().GetConsensus().fDagMode)) {
+        const bool dag_mode = m_node.args
+            ? m_node.args->GetBoolArg("-dag", chainman().GetConsensus().fDagMode)
+            : chainman().GetConsensus().fDagMode;
+        if (dag_mode) {
             update.mining_parents = chainman().m_dag_tips.GetMiningParents(chainman().GetConsensus().nMaxDagParents);
         } else {
             update.mining_parents = {update.tip_hash};
         }
+        // During early startup DAG tip tracking may not be populated yet.
+        // Falling back to the selected tip keeps mining unblocked and matches
+        // linear-chain parent behavior until full DAG tip state is available.
         if (update.mining_parents.empty()) {
             update.mining_parents.push_back(update.tip_hash);
         }
@@ -1006,7 +1019,9 @@ private:
         AssertLockHeld(::cs_main);
         NewTemplate update;
         update.tip_hash = tip->GetBlockHash();
-        update.n_bits = tip->nBits;
+        CBlockHeader work_calculation_header;
+        work_calculation_header.nTime = TicksSinceEpoch<std::chrono::seconds>(NodeClock::now());
+        update.n_bits = GetNextWorkRequired(tip, &work_calculation_header, chainman().GetConsensus());
         if (auto* mempool = context()->mempool.get()) {
             update.tx_updated_count = mempool->GetTransactionsUpdated();
         }
@@ -1044,11 +1059,9 @@ private:
         if (update) m_new_template_signal(*update);
     }
 
-    ArgsManager& args() { return *Assert(m_node.args); }
-
     boost::signals2::signal<void(const NewTemplate&)> m_new_template_signal;
     boost::signals2::signal<void(const SetNewPrevHash&)> m_set_new_prev_hash_signal;
-    std::shared_ptr<Sv2Signals> m_sv2_signals;
+    std::shared_ptr<SV2Signals> m_sv2_signals;
     NodeContext& m_node;
 };
 } // namespace

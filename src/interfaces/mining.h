@@ -34,6 +34,7 @@ struct NewTemplate
 {
     uint256 tip_hash;
     uint32_t n_bits{0};
+    //! Mempool update sequence; 0 when mempool context is unavailable.
     unsigned int tx_updated_count{0};
 };
 
