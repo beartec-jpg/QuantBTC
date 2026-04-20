@@ -1,0 +1,27 @@
+[Unit]
+Description=BearTec QBTC Pool MVP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/QuantBTC
+Environment=QBTC_POOL_RPC_URL=http://127.0.0.1:28332/
+Environment=QBTC_POOL_RPC_USER=qbtcverify
+Environment=QBTC_POOL_RPC_PASS=verify_node3_2026
+Environment=QBTC_POOL_HOST=0.0.0.0
+Environment=QBTC_POOL_PORT=3333
+Environment=QBTC_POOL_HTTP_HOST=0.0.0.0
+Environment=QBTC_POOL_HTTP_PORT=8088
+Environment=QBTC_POOL_DB=/var/lib/qbtc-pool/pool.db
+Environment=QBTC_POOL_NAME=BearTec QBTC Pool
+Environment=QBTC_POOL_FEE=1.0
+Environment=QBTC_POOL_PAYOUT_THRESHOLD=25.0
+Environment=QBTC_POOL_ENABLE_PAYOUTS=0
+ExecStart=/usr/bin/python3 /root/QuantBTC/contrib/qbtc-pool/qbtc_pool.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
