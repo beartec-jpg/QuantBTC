@@ -56,7 +56,16 @@ MAX_JOB_AGE_SEC = int(os.environ.get("QBTC_POOL_MAX_JOB_AGE_SEC", "180"))
 MAX_FUTURE_NTIME_DRIFT_SEC = int(os.environ.get("QBTC_POOL_MAX_FUTURE_NTIME_DRIFT_SEC", "90"))
 DEFAULT_SHARE_DIFFICULTY = float(os.environ.get("QBTC_POOL_DEFAULT_DIFFICULTY", "0.00025"))
 MIN_SHARE_DIFFICULTY = float(os.environ.get("QBTC_POOL_MIN_DIFFICULTY", "0.000001"))
+HOME_MAX_HASHRATE = float(os.environ.get("QBTC_POOL_HOME_MAX_HASHRATE", "10000000"))
+STANDARD_MAX_HASHRATE = float(os.environ.get("QBTC_POOL_STANDARD_MAX_HASHRATE", "250000000"))
 DIFF1_TARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+POOL_TIER_ORDER = {"home": 0, "standard": 1, "pro": 2}
+POOL_TIER_LABELS = {
+    "all": "Gateway",
+    "home": "Home CPU",
+    "standard": "Open GPU",
+    "pro": "Pro / ASIC",
+}
 if REWARD_METHOD not in {"PPS", "PPLNS"}:
     REWARD_METHOD = "PPS"
 
@@ -93,6 +102,25 @@ def bits_to_target(bits_hex: str) -> int:
 def difficulty_to_target(difficulty: float) -> int:
     difficulty = max(float(difficulty or DEFAULT_SHARE_DIFFICULTY), MIN_SHARE_DIFFICULTY)
     return max(1, int(DIFF1_TARGET / difficulty))
+
+
+def classify_worker_tier(hashrate: float) -> str:
+    if hashrate <= HOME_MAX_HASHRATE:
+        return "home"
+    if hashrate <= STANDARD_MAX_HASHRATE:
+        return "standard"
+    return "pro"
+
+
+def parse_requested_tier(password: str) -> str:
+    password = str(password or "").strip().lower()
+    if any(token in password for token in ("cpu", "home")):
+        return "home"
+    if any(token in password for token in ("gpu", "standard", "open")):
+        return "standard"
+    if any(token in password for token in ("asic", "pro")):
+        return "pro"
+    return "auto"
 
 
 class RPCClient:
@@ -148,7 +176,9 @@ class PoolDB:
                     pending_balance REAL DEFAULT 0,
                     total_paid REAL DEFAULT 0,
                     weighted_shares REAL DEFAULT 0,
-                    last_share_at INTEGER
+                    last_share_at INTEGER,
+                    pool_tier TEXT DEFAULT 'home',
+                    recent_hashrate REAL DEFAULT 0
                 );
 
                 CREATE TABLE IF NOT EXISTS shares (
@@ -205,6 +235,8 @@ class PoolDB:
             for statement in (
                 "ALTER TABLE workers ADD COLUMN weighted_shares REAL DEFAULT 0",
                 "ALTER TABLE workers ADD COLUMN last_share_at INTEGER",
+                "ALTER TABLE workers ADD COLUMN pool_tier TEXT DEFAULT 'home'",
+                "ALTER TABLE workers ADD COLUMN recent_hashrate REAL DEFAULT 0",
                 "ALTER TABLE shares ADD COLUMN round_id TEXT",
                 "ALTER TABLE shares ADD COLUMN reward_value REAL DEFAULT 0",
             ):
@@ -217,19 +249,53 @@ class PoolDB:
             except sqlite3.OperationalError:
                 pass
 
-    def authorize_worker(self, worker_name: str) -> None:
+    def authorize_worker(self, worker_name: str, requested_tier: str = "auto") -> str:
         now = int(time.time())
         payout_address = worker_name.split(".", 1)[0] if "." in worker_name else worker_name
+        default_tier = "home" if requested_tier == "auto" else requested_tier
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO workers(worker_name, payout_address, authorized_at, last_seen)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO workers(worker_name, payout_address, authorized_at, last_seen, pool_tier, recent_hashrate)
+                VALUES (?, ?, ?, ?, ?, 0)
                 ON CONFLICT(worker_name) DO UPDATE SET last_seen=excluded.last_seen
                 """,
-                (worker_name, payout_address, now, now),
+                (worker_name, payout_address, now, now, default_tier),
+            )
+            row = conn.execute(
+                "SELECT COALESCE(pool_tier, ?) AS pool_tier FROM workers WHERE worker_name = ?",
+                (default_tier, worker_name),
+            ).fetchone()
+            conn.commit()
+        return str(row["pool_tier"] or default_tier)
+
+    def refresh_worker_routing(self, worker_name: str) -> dict[str, Any]:
+        now = int(time.time())
+        since = now - 900
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT COALESCE(SUM(difficulty), 0) AS total_difficulty,
+                       MIN(submitted_at) AS first_seen
+                FROM shares
+                WHERE worker_name = ? AND accepted = 1 AND submitted_at >= ?
+                """,
+                (worker_name, since),
+            ).fetchone()
+            total_difficulty = float(row["total_difficulty"] or 0.0)
+            first_seen = int(row["first_seen"] or now)
+            elapsed = max(now - first_seen, 60)
+            recent_hashrate = (total_difficulty * 4294967296) / elapsed if total_difficulty > 0 else 0.0
+            pool_tier = classify_worker_tier(recent_hashrate)
+            conn.execute(
+                "UPDATE workers SET recent_hashrate = ?, pool_tier = ? WHERE worker_name = ?",
+                (recent_hashrate, pool_tier, worker_name),
             )
             conn.commit()
+        return {
+            "pool_tier": pool_tier,
+            "recent_hashrate": round(recent_hashrate, 2),
+        }
 
     def ensure_round(self, round_id: str, height: int, prevhash: str) -> None:
         now = int(time.time())
@@ -407,7 +473,7 @@ class PoolDB:
                 """
                 SELECT w.worker_name, w.payout_address, w.last_seen, w.last_share_at,
                        w.accepted_shares, w.invalid_shares, w.weighted_shares,
-                       w.pending_balance, w.total_paid,
+                       w.pending_balance, w.total_paid, w.pool_tier, w.recent_hashrate,
                        CASE
                            WHEN (w.accepted_shares + w.invalid_shares) > 0
                            THEN ROUND((w.accepted_shares * 100.0) / (w.accepted_shares + w.invalid_shares), 2)
@@ -427,6 +493,21 @@ class PoolDB:
 
         workers: list[dict[str, Any]] = []
         round_contributors: list[dict[str, Any]] = []
+        pool_tiers: dict[str, dict[str, Any]] = {
+            tier: {
+                "key": tier,
+                "label": POOL_TIER_LABELS[tier],
+                "worker_count": 0,
+                "connected_miners": 0,
+                "accepted_shares": 0,
+                "invalid_shares": 0,
+                "pending_payouts": 0.0,
+                "total_paid": 0.0,
+                "weighted_shares": 0.0,
+                "estimated_hashrate": 0.0,
+            }
+            for tier in ("home", "standard", "pro")
+        }
         round_weight_total = float(round_row["weighted_shares"] or 0.0) if round_row else 0.0
         round_total_rewards = float(round_row["total_rewards"] or 0.0) if round_row else 0.0
 
@@ -444,12 +525,22 @@ class PoolDB:
             item["pending_balance"] = pending_balance
             item["total_paid"] = round(float(item.get("total_paid") or 0.0), 8)
             item["weighted_shares"] = round(float(item.get("weighted_shares") or 0.0), 4)
+            item["recent_hashrate"] = round(float(item.get("recent_hashrate") or 0.0), 2)
+            item["pool_tier"] = str(item.get("pool_tier") or "home")
             item["earnings_24h"] = earnings_24h
             item["remaining_to_payout"] = round(max(PAYOUT_THRESHOLD - pending_balance, 0.0), 8)
             if earnings_24h > 0:
                 item["estimated_hours_to_payout"] = round(item["remaining_to_payout"] / (earnings_24h / 24.0), 2)
             else:
                 item["estimated_hours_to_payout"] = None
+            tier_bucket = pool_tiers.get(item["pool_tier"], pool_tiers["home"])
+            tier_bucket["worker_count"] += 1
+            tier_bucket["accepted_shares"] += int(item.get("accepted_shares") or 0)
+            tier_bucket["invalid_shares"] += int(item.get("invalid_shares") or 0)
+            tier_bucket["pending_payouts"] += pending_balance
+            tier_bucket["total_paid"] += float(item.get("total_paid") or 0.0)
+            tier_bucket["weighted_shares"] += float(item.get("weighted_shares") or 0.0)
+            tier_bucket["estimated_hashrate"] += float(item.get("recent_hashrate") or 0.0)
             workers.append(item)
 
         return {
@@ -473,6 +564,16 @@ class PoolDB:
             "current_round_weighted_shares": round(float(round_row["weighted_shares"] or 0.0), 4) if round_row else 0.0,
             "current_round_total_rewards": round(round_total_rewards, 8),
             "current_round_contributors": round_contributors,
+            "pool_tiers": {
+                tier: {
+                    **values,
+                    "pending_payouts": round(float(values["pending_payouts"]), 8),
+                    "total_paid": round(float(values["total_paid"]), 8),
+                    "weighted_shares": round(float(values["weighted_shares"]), 4),
+                    "estimated_hashrate": round(float(values["estimated_hashrate"]), 2),
+                }
+                for tier, values in pool_tiers.items()
+            },
             "workers": workers,
         }
 
@@ -611,6 +712,8 @@ class PoolClient:
     subscription_id: str = field(default_factory=lambda: secrets.token_hex(8))
     authorized: bool = False
     worker_name: str | None = None
+    requested_tier: str = "auto"
+    assigned_tier: str = "home"
     difficulty: float = DEFAULT_SHARE_DIFFICULTY
 
 
@@ -786,9 +889,11 @@ class PoolServer:
                     await self.broadcast_job()
                 elif method == "mining.authorize":
                     worker_name = params[0] if params else f"anonymous.{client.subscription_id}"
+                    password = params[1] if len(params) > 1 else ""
                     client.worker_name = worker_name
+                    client.requested_tier = parse_requested_tier(str(password))
                     client.authorized = True
-                    self.db.authorize_worker(worker_name)
+                    client.assigned_tier = self.db.authorize_worker(worker_name, client.requested_tier)
                     await self.send_json(writer, {"id": req_id, "result": True, "error": None})
                     await self.notify(writer, "mining.set_difficulty", [client.difficulty])
                     job = self.current_job
@@ -810,6 +915,8 @@ class PoolServer:
                         extranonce2,
                         client.difficulty,
                     )
+                    routing = self.db.refresh_worker_routing(worker_name)
+                    client.assigned_tier = str(routing.get("pool_tier") or client.assigned_tier)
                     if share_ok:
                         await self.send_json(writer, {"id": req_id, "result": True, "error": None})
                     else:
@@ -891,10 +998,19 @@ class PoolServer:
 
     def stats_snapshot(self, include_history: bool = True, record_sample: bool = True) -> dict[str, Any]:
         db_stats = self.db.stats()
+        connected_by_tier = {tier: 0 for tier in ("home", "standard", "pro")}
+        for client in self.clients.values():
+            if client.authorized:
+                connected_by_tier[client.assigned_tier] = connected_by_tier.get(client.assigned_tier, 0) + 1
+        for tier, count in connected_by_tier.items():
+            if tier in db_stats.get("pool_tiers", {}):
+                db_stats["pool_tiers"][tier]["connected_miners"] = count
+
         snapshot = {
             "pool_name": POOL_NAME,
             "running": True,
             "pool_fee_percent": POOL_FEE,
+            "pool_router_mode": "smart-gateway",
             "connected_miners": sum(1 for c in self.clients.values() if c.authorized),
             "last_template_height": int(self.current_job.get("height", 0)),
             "last_job_id": self.current_job.get("job_id"),
