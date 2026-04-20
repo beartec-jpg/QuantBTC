@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import os
 import secrets
@@ -50,12 +51,24 @@ REWARD_METHOD = os.environ.get("QBTC_POOL_REWARD_METHOD", "PPS").upper()
 HISTORY_WINDOW_SEC = int(os.environ.get("QBTC_POOL_HISTORY_WINDOW_SEC", str(24 * 60 * 60)))
 HISTORY_BUCKET_SEC = int(os.environ.get("QBTC_POOL_HISTORY_BUCKET_SEC", "300"))
 SNAPSHOT_INTERVAL_SEC = int(os.environ.get("QBTC_POOL_SNAPSHOT_INTERVAL_SEC", "60"))
+MAX_JOB_AGE_SEC = int(os.environ.get("QBTC_POOL_MAX_JOB_AGE_SEC", "180"))
+MAX_FUTURE_NTIME_DRIFT_SEC = int(os.environ.get("QBTC_POOL_MAX_FUTURE_NTIME_DRIFT_SEC", "90"))
 if REWARD_METHOD not in {"PPS", "PPLNS"}:
     REWARD_METHOD = "PPS"
 
 
 def ensure_parent_dir(path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+
+def is_hex_string(value: str, min_len: int = 1, max_len: int | None = None, *, even_length: bool = True) -> bool:
+    if not isinstance(value, str) or len(value) < min_len:
+        return False
+    if max_len is not None and len(value) > max_len:
+        return False
+    if even_length and len(value) % 2 != 0:
+        return False
+    return all(ch in "0123456789abcdefABCDEF" for ch in value)
 
 
 class RPCClient:
@@ -92,6 +105,9 @@ class PoolDB:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
         return conn
 
     def _init_db(self) -> None:
@@ -146,9 +162,20 @@ class PoolDB:
                     pending_payouts REAL DEFAULT 0
                 );
 
+                CREATE TABLE IF NOT EXISTS worker_rounds (
+                    round_id TEXT NOT NULL,
+                    worker_name TEXT NOT NULL,
+                    accepted_shares INTEGER DEFAULT 0,
+                    invalid_shares INTEGER DEFAULT 0,
+                    weighted_shares REAL DEFAULT 0,
+                    reward_estimate REAL DEFAULT 0,
+                    PRIMARY KEY (round_id, worker_name)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_shares_worker_time ON shares(worker_name, submitted_at);
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_shares_unique_submission ON shares(worker_name, job_id, nonce, ntime, extranonce2);
                 CREATE INDEX IF NOT EXISTS idx_pool_history_time ON pool_history(sampled_at);
+                CREATE INDEX IF NOT EXISTS idx_worker_rounds_round ON worker_rounds(round_id, weighted_shares);
                 """
             )
             for statement in (
@@ -254,6 +281,29 @@ class PoolDB:
                     """,
                     (round_id, now, now, 1 if accepted else 0, difficulty if accepted else 0.0, reward_value, 1 if accepted else 0, difficulty if accepted else 0.0, reward_value),
                 )
+                conn.execute(
+                    """
+                    INSERT INTO worker_rounds(round_id, worker_name, accepted_shares, invalid_shares, weighted_shares, reward_estimate)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(round_id, worker_name) DO UPDATE SET
+                        accepted_shares=worker_rounds.accepted_shares + ?,
+                        invalid_shares=worker_rounds.invalid_shares + ?,
+                        weighted_shares=worker_rounds.weighted_shares + ?,
+                        reward_estimate=worker_rounds.reward_estimate + ?
+                    """,
+                    (
+                        round_id,
+                        worker_name,
+                        1 if accepted else 0,
+                        0 if accepted else 1,
+                        difficulty if accepted else 0.0,
+                        reward_value,
+                        1 if accepted else 0,
+                        0 if accepted else 1,
+                        difficulty if accepted else 0.0,
+                        reward_value,
+                    ),
+                )
             if accepted:
                 conn.execute(
                     """
@@ -313,12 +363,22 @@ class PoolDB:
             ).fetchone()
             round_row = conn.execute(
                 """
-                SELECT round_id, height, started_at, updated_at, total_shares, accepted_shares, weighted_shares, total_rewards
+                SELECT round_id, height, started_at, updated_at, status, total_shares, accepted_shares, weighted_shares, total_rewards
                 FROM rounds
                 ORDER BY started_at DESC
                 LIMIT 1
                 """
             ).fetchone()
+            round_worker_rows = conn.execute(
+                """
+                SELECT worker_name, accepted_shares, invalid_shares, weighted_shares, reward_estimate
+                FROM worker_rounds
+                WHERE round_id = ?
+                ORDER BY weighted_shares DESC, accepted_shares DESC, worker_name ASC
+                LIMIT 12
+                """,
+                (round_row["round_id"],),
+            ).fetchall() if round_row else []
             worker_rows = conn.execute(
                 """
                 SELECT w.worker_name, w.payout_address, w.last_seen, w.last_share_at,
@@ -342,6 +402,17 @@ class PoolDB:
             ).fetchall()
 
         workers: list[dict[str, Any]] = []
+        round_contributors: list[dict[str, Any]] = []
+        round_weight_total = float(round_row["weighted_shares"] or 0.0) if round_row else 0.0
+        round_total_rewards = float(round_row["total_rewards"] or 0.0) if round_row else 0.0
+
+        for row in round_worker_rows:
+            item = dict(row)
+            item["weighted_shares"] = round(float(item.get("weighted_shares") or 0.0), 4)
+            item["reward_estimate"] = round(float(item.get("reward_estimate") or 0.0), 8)
+            item["share_percent"] = round((item["weighted_shares"] / round_weight_total) * 100, 2) if round_weight_total > 0 else 0.0
+            round_contributors.append(item)
+
         for row in worker_rows:
             item = dict(row)
             pending_balance = round(float(item.get("pending_balance") or 0.0), 8)
@@ -372,8 +443,12 @@ class PoolDB:
             "payout_interval_sec": PAYOUT_INTERVAL_SEC,
             "current_round_id": round_row["round_id"] if round_row else None,
             "current_round_height": int(round_row["height"] or 0) if round_row else None,
+            "current_round_status": round_row["status"] if round_row else None,
+            "current_round_started_at": int(round_row["started_at"] or 0) if round_row else None,
             "current_round_shares": int(round_row["accepted_shares"] or 0) if round_row else 0,
             "current_round_weighted_shares": round(float(round_row["weighted_shares"] or 0.0), 4) if round_row else 0.0,
+            "current_round_total_rewards": round(round_total_rewards, 8),
+            "current_round_contributors": round_contributors,
             "workers": workers,
         }
 
@@ -522,6 +597,7 @@ class PoolServer:
         self.clients: dict[int, PoolClient] = {}
         self.clients_lock = asyncio.Lock()
         self.job_lock = asyncio.Lock()
+        bootstrap_time = int(time.time())
         self.current_job: dict[str, Any] = {
             "job_id": "bootstrap",
             "round_id": "bootstrap",
@@ -531,10 +607,69 @@ class PoolServer:
             "merkle_branches": [],
             "version": "20000000",
             "nbits": "1d00ffff",
-            "ntime": f"{int(time.time()):08x}",
+            "ntime": f"{bootstrap_time:08x}",
             "clean_jobs": True,
             "height": 0,
+            "created_at": bootstrap_time,
         }
+        self.job_history: dict[str, dict[str, Any]] = {self.current_job["job_id"]: dict(self.current_job)}
+        self.job_retention_sec = max(MAX_JOB_AGE_SEC * 3, 300)
+
+    def remember_job(self, job: dict[str, Any]) -> None:
+        created_at = int(job.get("created_at") or time.time())
+        self.job_history[str(job["job_id"])] = {**job, "created_at": created_at}
+        cutoff = int(time.time()) - self.job_retention_sec
+        self.job_history = {
+            job_id: data for job_id, data in self.job_history.items()
+            if int(data.get("created_at") or 0) >= cutoff
+        }
+
+    def validate_share_submission(
+        self,
+        client: PoolClient,
+        worker_name: str,
+        job_id: str,
+        extranonce2: str,
+        ntime: str,
+        nonce: str,
+    ) -> tuple[bool, str, dict[str, Any] | None]:
+        if not client.authorized or not client.worker_name:
+            return False, "unauthorized", None
+        if worker_name != client.worker_name:
+            return False, "worker-mismatch", None
+
+        job = self.job_history.get(job_id)
+        if not job:
+            return False, "unknown-job", None
+
+        now = int(time.time())
+        if now - int(job.get("created_at") or now) > MAX_JOB_AGE_SEC:
+            return False, "stale-job", job
+        if not is_hex_string(nonce, 8, 8):
+            return False, "invalid-nonce", job
+        if not is_hex_string(ntime, 8, 8):
+            return False, "invalid-ntime", job
+        if extranonce2 and not is_hex_string(extranonce2, 2, 64):
+            return False, "invalid-extranonce2", job
+
+        share_time = int(ntime, 16)
+        template_time = int(str(job.get("ntime") or "0"), 16)
+        if share_time < template_time - MAX_JOB_AGE_SEC:
+            return False, "stale-ntime", job
+        if share_time > now + MAX_FUTURE_NTIME_DRIFT_SEC:
+            return False, "future-ntime", job
+        return True, "accepted", job
+
+    async def shutdown(self) -> None:
+        async with self.clients_lock:
+            clients = list(self.clients.values())
+            self.clients.clear()
+        for client in clients:
+            try:
+                client.writer.close()
+                await asyncio.wait_for(client.writer.wait_closed(), timeout=2)
+            except Exception:
+                pass
 
     async def send_json(self, writer: asyncio.StreamWriter, payload: dict[str, Any]) -> None:
         writer.write((json.dumps(payload) + "\n").encode())
@@ -609,11 +744,11 @@ class PoolServer:
                     extranonce2 = params[2] if len(params) > 2 else ""
                     ntime = params[3] if len(params) > 3 else ""
                     nonce = params[4] if len(params) > 4 else ""
-                    accepted = bool(client.authorized and job_id == self.current_job.get("job_id"))
+                    accepted, reason, job = self.validate_share_submission(client, worker_name, job_id, extranonce2, ntime, nonce)
                     share_ok, reason = self.db.record_share(
                         worker_name,
                         job_id,
-                        str(self.current_job.get("round_id", "")),
+                        str((job or self.current_job).get("round_id", "")),
                         accepted,
                         nonce,
                         ntime,
@@ -624,6 +759,13 @@ class PoolServer:
                         await self.send_json(writer, {"id": req_id, "result": True, "error": None})
                     else:
                         await self.send_json(writer, {"id": req_id, "result": None, "error": [23, reason, None]})
+                elif method == "mining.suggest_difficulty":
+                    try:
+                        client.difficulty = max(float(params[0]), 1.0)
+                        await self.send_json(writer, {"id": req_id, "result": True, "error": None})
+                        await self.notify(writer, "mining.set_difficulty", [client.difficulty])
+                    except (TypeError, ValueError, IndexError):
+                        await self.send_json(writer, {"id": req_id, "result": None, "error": [25, "invalid-difficulty", None]})
                 elif method in {"mining.extranonce.subscribe", "mining.configure"}:
                     await self.send_json(writer, {"id": req_id, "result": True, "error": None})
                 else:
@@ -632,7 +774,8 @@ class PoolServer:
             async with self.clients_lock:
                 self.clients.pop(client_id, None)
             writer.close()
-            await writer.wait_closed()
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(writer.wait_closed(), timeout=2)
 
     async def template_updater(self) -> None:
         while True:
@@ -655,9 +798,11 @@ class PoolServer:
                         "ntime": ntime,
                         "clean_jobs": True,
                         "height": height,
+                        "created_at": int(time.time()),
                     }
                     changed = next_job["prevhash"] != self.current_job.get("prevhash") or next_job["ntime"] != self.current_job.get("ntime")
                     self.current_job = next_job
+                    self.remember_job(next_job)
                 await asyncio.to_thread(self.db.ensure_round, round_id, height, prevhash)
                 if changed:
                     await self.broadcast_job()
@@ -754,7 +899,7 @@ async def main() -> None:
     await asyncio.to_thread(rpc.call, "getblockcount", [])
 
     httpd = start_http_server(pool)
-    server = await asyncio.start_server(pool.handle_client, STRATUM_HOST, STRATUM_PORT)
+    server = await asyncio.start_server(pool.handle_client, STRATUM_HOST, STRATUM_PORT, reuse_address=True)
 
     print(f"{POOL_NAME} listening on {STRATUM_HOST}:{STRATUM_PORT}")
     print(f"HTTP stats on {HTTP_HOST}:{HTTP_PORT}")
@@ -775,7 +920,17 @@ async def main() -> None:
         updater_task.cancel()
         payout_task.cancel()
         metrics_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await updater_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await payout_task
+        with contextlib.suppress(asyncio.CancelledError):
+            await metrics_task
+        server.close()
+        await server.wait_closed()
+        await pool.shutdown()
         httpd.shutdown()
+        httpd.server_close()
 
 
 if __name__ == "__main__":

@@ -21,10 +21,17 @@ Environment=QBTC_POOL_REWARD_METHOD=PPS
 Environment=QBTC_POOL_SHARE_REWARD=0.01
 Environment=QBTC_POOL_PAYOUT_THRESHOLD=0.25
 Environment=QBTC_POOL_PAYOUT_INTERVAL_SEC=3600
+Environment=QBTC_POOL_SNAPSHOT_INTERVAL_SEC=60
+Environment=QBTC_POOL_HISTORY_BUCKET_SEC=300
+Environment=QBTC_POOL_MAX_JOB_AGE_SEC=180
+Environment=QBTC_POOL_MAX_FUTURE_NTIME_DRIFT_SEC=90
 Environment=QBTC_POOL_ENABLE_PAYOUTS=1
+ExecStartPre=/bin/mkdir -p /var/lib/qbtc-pool
 ExecStart=/usr/bin/python3 /root/QuantBTC/contrib/qbtc-pool/qbtc_pool.py
 Restart=always
 RestartSec=5
+KillMode=mixed
+TimeoutStopSec=15
 
 [Install]
 WantedBy=multi-user.target
