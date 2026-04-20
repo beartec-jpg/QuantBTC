@@ -42,8 +42,16 @@ HTTP_PORT = int(os.environ.get("QBTC_POOL_HTTP_PORT", "8088"))
 DB_PATH = os.environ.get("QBTC_POOL_DB", "/var/lib/qbtc-pool/pool.db")
 PAYOUT_THRESHOLD = float(os.environ.get("QBTC_POOL_PAYOUT_THRESHOLD", "25.0"))
 ENABLE_PAYOUTS = os.environ.get("QBTC_POOL_ENABLE_PAYOUTS", "0") == "1"
+PAYOUT_INTERVAL_SEC = int(os.environ.get("QBTC_POOL_PAYOUT_INTERVAL_SEC", "3600"))
 POOL_NAME = os.environ.get("QBTC_POOL_NAME", "BearTec QBTC Pool")
 POOL_FEE = float(os.environ.get("QBTC_POOL_FEE", "1.0"))
+SHARE_REWARD = float(os.environ.get("QBTC_POOL_SHARE_REWARD", "0.01"))
+REWARD_METHOD = os.environ.get("QBTC_POOL_REWARD_METHOD", "PPS").upper()
+HISTORY_WINDOW_SEC = int(os.environ.get("QBTC_POOL_HISTORY_WINDOW_SEC", str(24 * 60 * 60)))
+HISTORY_BUCKET_SEC = int(os.environ.get("QBTC_POOL_HISTORY_BUCKET_SEC", "300"))
+SNAPSHOT_INTERVAL_SEC = int(os.environ.get("QBTC_POOL_SNAPSHOT_INTERVAL_SEC", "60"))
+if REWARD_METHOD not in {"PPS", "PPLNS"}:
+    REWARD_METHOD = "PPS"
 
 
 def ensure_parent_dir(path: str) -> None:
@@ -98,24 +106,65 @@ class PoolDB:
                     accepted_shares INTEGER DEFAULT 0,
                     invalid_shares INTEGER DEFAULT 0,
                     pending_balance REAL DEFAULT 0,
-                    total_paid REAL DEFAULT 0
+                    total_paid REAL DEFAULT 0,
+                    weighted_shares REAL DEFAULT 0,
+                    last_share_at INTEGER
                 );
 
                 CREATE TABLE IF NOT EXISTS shares (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     worker_name TEXT NOT NULL,
                     job_id TEXT NOT NULL,
+                    round_id TEXT,
                     accepted INTEGER NOT NULL,
                     submitted_at INTEGER NOT NULL,
                     nonce TEXT,
                     ntime TEXT,
                     extranonce2 TEXT,
-                    difficulty REAL DEFAULT 1.0
+                    difficulty REAL DEFAULT 1.0,
+                    reward_value REAL DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS rounds (
+                    round_id TEXT PRIMARY KEY,
+                    height INTEGER,
+                    prevhash TEXT,
+                    started_at INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    status TEXT DEFAULT 'open',
+                    total_shares INTEGER DEFAULT 0,
+                    accepted_shares INTEGER DEFAULT 0,
+                    weighted_shares REAL DEFAULT 0,
+                    total_rewards REAL DEFAULT 0
+                );
+
+                CREATE TABLE IF NOT EXISTS pool_history (
+                    sampled_at INTEGER PRIMARY KEY,
+                    accepted_shares INTEGER DEFAULT 0,
+                    invalid_shares INTEGER DEFAULT 0,
+                    connected_miners INTEGER DEFAULT 0,
+                    pending_payouts REAL DEFAULT 0
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_shares_worker_time ON shares(worker_name, submitted_at);
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_shares_unique_submission ON shares(worker_name, job_id, nonce, ntime, extranonce2);
+                CREATE INDEX IF NOT EXISTS idx_pool_history_time ON pool_history(sampled_at);
                 """
             )
+            for statement in (
+                "ALTER TABLE workers ADD COLUMN weighted_shares REAL DEFAULT 0",
+                "ALTER TABLE workers ADD COLUMN last_share_at INTEGER",
+                "ALTER TABLE shares ADD COLUMN round_id TEXT",
+                "ALTER TABLE shares ADD COLUMN reward_value REAL DEFAULT 0",
+            ):
+                try:
+                    conn.execute(statement)
+                except sqlite3.OperationalError:
+                    pass
+            try:
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_shares_round_time ON shares(round_id, submitted_at)")
+            except sqlite3.OperationalError:
+                pass
 
     def authorize_worker(self, worker_name: str) -> None:
         now = int(time.time())
@@ -131,27 +180,93 @@ class PoolDB:
             )
             conn.commit()
 
-    def record_share(self, worker_name: str, job_id: str, accepted: bool, nonce: str, ntime: str, extranonce2: str) -> None:
+    def ensure_round(self, round_id: str, height: int, prevhash: str) -> None:
         now = int(time.time())
         with self._lock, self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO shares(worker_name, job_id, accepted, submitted_at, nonce, ntime, extranonce2)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO rounds(round_id, height, prevhash, started_at, updated_at, status)
+                VALUES (?, ?, ?, ?, ?, 'open')
+                ON CONFLICT(round_id) DO UPDATE SET
+                    updated_at=excluded.updated_at,
+                    height=excluded.height,
+                    prevhash=excluded.prevhash,
+                    status='open'
                 """,
-                (worker_name, job_id, 1 if accepted else 0, now, nonce, ntime, extranonce2),
+                (round_id, height, prevhash, now, now),
             )
+            conn.execute(
+                "UPDATE rounds SET status='closed' WHERE round_id != ? AND status='open'",
+                (round_id,),
+            )
+            conn.commit()
+
+    def record_share(
+        self,
+        worker_name: str,
+        job_id: str,
+        round_id: str,
+        accepted: bool,
+        nonce: str,
+        ntime: str,
+        extranonce2: str,
+        difficulty: float = 1.0,
+    ) -> tuple[bool, str]:
+        now = int(time.time())
+        payout_address = worker_name.split(".", 1)[0] if "." in worker_name else worker_name
+        difficulty = max(float(difficulty or 1.0), 1.0)
+        reward_value = round(difficulty * SHARE_REWARD, 8) if accepted else 0.0
+
+        with self._lock, self._connect() as conn:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO shares(worker_name, job_id, round_id, accepted, submitted_at, nonce, ntime, extranonce2, difficulty, reward_value)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (worker_name, job_id, round_id, 1 if accepted else 0, now, nonce, ntime, extranonce2, difficulty, reward_value),
+                )
+            except sqlite3.IntegrityError:
+                conn.execute(
+                    """
+                    INSERT INTO workers(worker_name, payout_address, authorized_at, last_seen, invalid_shares)
+                    VALUES (?, ?, ?, ?, 1)
+                    ON CONFLICT(worker_name) DO UPDATE SET
+                        last_seen=excluded.last_seen,
+                        invalid_shares=workers.invalid_shares + 1
+                    """,
+                    (worker_name, payout_address, now, now),
+                )
+                conn.commit()
+                return False, "duplicate-share"
+
+            if round_id:
+                conn.execute(
+                    """
+                    INSERT INTO rounds(round_id, height, prevhash, started_at, updated_at, status, total_shares, accepted_shares, weighted_shares, total_rewards)
+                    VALUES (?, 0, '', ?, ?, 'open', 1, ?, ?, ?)
+                    ON CONFLICT(round_id) DO UPDATE SET
+                        updated_at=excluded.updated_at,
+                        total_shares=rounds.total_shares + 1,
+                        accepted_shares=rounds.accepted_shares + ?,
+                        weighted_shares=rounds.weighted_shares + ?,
+                        total_rewards=rounds.total_rewards + ?
+                    """,
+                    (round_id, now, now, 1 if accepted else 0, difficulty if accepted else 0.0, reward_value, 1 if accepted else 0, difficulty if accepted else 0.0, reward_value),
+                )
             if accepted:
                 conn.execute(
                     """
-                    INSERT INTO workers(worker_name, payout_address, authorized_at, last_seen, accepted_shares, pending_balance)
-                    VALUES (?, ?, ?, ?, 1, 0.01)
+                    INSERT INTO workers(worker_name, payout_address, authorized_at, last_seen, last_share_at, accepted_shares, weighted_shares, pending_balance)
+                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                     ON CONFLICT(worker_name) DO UPDATE SET
                         last_seen=excluded.last_seen,
+                        last_share_at=excluded.last_share_at,
                         accepted_shares=workers.accepted_shares + 1,
-                        pending_balance=workers.pending_balance + 0.01
+                        weighted_shares=workers.weighted_shares + ?,
+                        pending_balance=workers.pending_balance + ?
                     """,
-                    (worker_name, worker_name.split(".", 1)[0], now, now),
+                    (worker_name, payout_address, now, now, now, difficulty, reward_value, difficulty, reward_value),
                 )
             else:
                 conn.execute(
@@ -162,11 +277,13 @@ class PoolDB:
                         last_seen=excluded.last_seen,
                         invalid_shares=workers.invalid_shares + 1
                     """,
-                    (worker_name, worker_name.split(".", 1)[0], now, now),
+                    (worker_name, payout_address, now, now),
                 )
             conn.commit()
+            return accepted, "accepted" if accepted else "stale-or-unauthorized-share"
 
     def stats(self) -> dict[str, Any]:
+        since = int(time.time()) - 86400
         with self._lock, self._connect() as conn:
             worker_row = conn.execute(
                 """
@@ -174,28 +291,193 @@ class PoolDB:
                     COUNT(*) AS authorized_workers,
                     COALESCE(SUM(accepted_shares), 0) AS accepted_shares,
                     COALESCE(SUM(invalid_shares), 0) AS invalid_shares,
+                    COALESCE(SUM(weighted_shares), 0) AS weighted_shares,
                     COALESCE(SUM(pending_balance), 0) AS pending_payouts,
-                    COALESCE(SUM(total_paid), 0) AS total_paid
+                    COALESCE(SUM(total_paid), 0) AS total_paid,
+                    CASE
+                        WHEN COALESCE(SUM(accepted_shares), 0) + COALESCE(SUM(invalid_shares), 0) > 0
+                        THEN ROUND((COALESCE(SUM(accepted_shares), 0) * 100.0) /
+                          (COALESCE(SUM(accepted_shares), 0) + COALESCE(SUM(invalid_shares), 0)), 2)
+                        ELSE 100.0
+                    END AS acceptance_rate
                 FROM workers
                 """
             ).fetchone()
-            workers = [dict(r) for r in conn.execute(
+            earnings_row = conn.execute(
                 """
-                SELECT worker_name, payout_address, last_seen, accepted_shares, invalid_shares,
-                       pending_balance, total_paid
-                FROM workers
-                ORDER BY last_seen DESC
+                SELECT COALESCE(SUM(reward_value), 0) AS earnings_24h
+                FROM shares
+                WHERE accepted = 1 AND submitted_at >= ?
+                """,
+                (since,),
+            ).fetchone()
+            round_row = conn.execute(
+                """
+                SELECT round_id, height, started_at, updated_at, total_shares, accepted_shares, weighted_shares, total_rewards
+                FROM rounds
+                ORDER BY started_at DESC
+                LIMIT 1
+                """
+            ).fetchone()
+            worker_rows = conn.execute(
+                """
+                SELECT w.worker_name, w.payout_address, w.last_seen, w.last_share_at,
+                       w.accepted_shares, w.invalid_shares, w.weighted_shares,
+                       w.pending_balance, w.total_paid,
+                       CASE
+                           WHEN (w.accepted_shares + w.invalid_shares) > 0
+                           THEN ROUND((w.accepted_shares * 100.0) / (w.accepted_shares + w.invalid_shares), 2)
+                           ELSE 100.0
+                       END AS acceptance_rate,
+                       COALESCE((
+                         SELECT SUM(s.reward_value)
+                         FROM shares s
+                         WHERE s.worker_name = w.worker_name AND s.accepted = 1 AND s.submitted_at >= ?
+                       ), 0) AS earnings_24h
+                FROM workers w
+                ORDER BY w.last_seen DESC
                 LIMIT 25
-                """
-            )]
+                """,
+                (since,),
+            ).fetchall()
+
+        workers: list[dict[str, Any]] = []
+        for row in worker_rows:
+            item = dict(row)
+            pending_balance = round(float(item.get("pending_balance") or 0.0), 8)
+            earnings_24h = round(float(item.get("earnings_24h") or 0.0), 8)
+            item["pending_balance"] = pending_balance
+            item["total_paid"] = round(float(item.get("total_paid") or 0.0), 8)
+            item["weighted_shares"] = round(float(item.get("weighted_shares") or 0.0), 4)
+            item["earnings_24h"] = earnings_24h
+            item["remaining_to_payout"] = round(max(PAYOUT_THRESHOLD - pending_balance, 0.0), 8)
+            if earnings_24h > 0:
+                item["estimated_hours_to_payout"] = round(item["remaining_to_payout"] / (earnings_24h / 24.0), 2)
+            else:
+                item["estimated_hours_to_payout"] = None
+            workers.append(item)
+
         return {
             "authorized_workers": int(worker_row["authorized_workers"] or 0),
             "accepted_shares": int(worker_row["accepted_shares"] or 0),
             "invalid_shares": int(worker_row["invalid_shares"] or 0),
+            "weighted_shares": round(float(worker_row["weighted_shares"] or 0.0), 4),
             "pending_payouts": round(float(worker_row["pending_payouts"] or 0.0), 8),
             "total_paid": round(float(worker_row["total_paid"] or 0.0), 8),
+            "pool_acceptance_rate": round(float(worker_row["acceptance_rate"] or 100.0), 2),
+            "pool_earnings_24h": round(float(earnings_row["earnings_24h"] or 0.0), 8),
+            "reward_method": REWARD_METHOD,
+            "share_reward": SHARE_REWARD,
+            "payout_threshold": PAYOUT_THRESHOLD,
+            "payout_interval_sec": PAYOUT_INTERVAL_SEC,
+            "current_round_id": round_row["round_id"] if round_row else None,
+            "current_round_height": int(round_row["height"] or 0) if round_row else None,
+            "current_round_shares": int(round_row["accepted_shares"] or 0) if round_row else 0,
+            "current_round_weighted_shares": round(float(round_row["weighted_shares"] or 0.0), 4) if round_row else 0.0,
             "workers": workers,
         }
+
+    def record_pool_snapshot(self, snapshot: dict[str, Any]) -> None:
+        sampled_at = int(time.time())
+        sampled_at -= sampled_at % max(SNAPSHOT_INTERVAL_SEC, 60)
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO pool_history(sampled_at, accepted_shares, invalid_shares, connected_miners, pending_payouts)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(sampled_at) DO UPDATE SET
+                    accepted_shares=excluded.accepted_shares,
+                    invalid_shares=excluded.invalid_shares,
+                    connected_miners=excluded.connected_miners,
+                    pending_payouts=excluded.pending_payouts
+                """,
+                (
+                    sampled_at,
+                    int(snapshot.get("accepted_shares") or 0),
+                    int(snapshot.get("invalid_shares") or 0),
+                    int(snapshot.get("connected_miners") or 0),
+                    float(snapshot.get("pending_payouts") or 0.0),
+                ),
+            )
+            conn.execute(
+                "DELETE FROM pool_history WHERE sampled_at < ?",
+                (int(time.time()) - max(HISTORY_WINDOW_SEC * 2, 172800),),
+            )
+            conn.commit()
+
+    def history_24h(self) -> list[dict[str, Any]]:
+        now = int(time.time())
+        bucket = max(HISTORY_BUCKET_SEC, 60)
+        start = now - HISTORY_WINDOW_SEC
+        start -= start % bucket
+
+        with self._lock, self._connect() as conn:
+            share_rows = conn.execute(
+                """
+                SELECT ((submitted_at - ?) / ?) AS bucket_id,
+                       SUM(CASE WHEN accepted = 1 THEN 1 ELSE 0 END) AS accepted_count,
+                       SUM(CASE WHEN accepted = 0 THEN 1 ELSE 0 END) AS rejected_count
+                FROM shares
+                WHERE submitted_at >= ?
+                GROUP BY bucket_id
+                ORDER BY bucket_id ASC
+                """,
+                (start, bucket, start),
+            ).fetchall()
+            snapshot_rows = conn.execute(
+                """
+                SELECT ((sampled_at - ?) / ?) AS bucket_id,
+                       MAX(connected_miners) AS connected_miners,
+                       MAX(pending_payouts) AS pending_payouts
+                FROM pool_history
+                WHERE sampled_at >= ?
+                GROUP BY bucket_id
+                ORDER BY bucket_id ASC
+                """,
+                (start, bucket, start),
+            ).fetchall()
+
+        share_map = {
+            int(row["bucket_id"]): {
+                "accepted": int(row["accepted_count"] or 0),
+                "rejected": int(row["rejected_count"] or 0),
+            }
+            for row in share_rows
+        }
+        snapshot_map = {
+            int(row["bucket_id"]): {
+                "workers": int(row["connected_miners"] or 0),
+                "pending": round(float(row["pending_payouts"] or 0.0), 8),
+            }
+            for row in snapshot_rows
+        }
+
+        accepted_total = 0
+        rejected_total = 0
+        last_workers = 0
+        last_pending = 0.0
+        points: list[dict[str, Any]] = []
+
+        bucket_count = max(int(HISTORY_WINDOW_SEC / bucket), 1)
+        for bucket_id in range(bucket_count + 1):
+            accepted_delta = share_map.get(bucket_id, {}).get("accepted", 0)
+            rejected_delta = share_map.get(bucket_id, {}).get("rejected", 0)
+            accepted_total += accepted_delta
+            rejected_total += rejected_delta
+            if bucket_id in snapshot_map:
+                last_workers = snapshot_map[bucket_id]["workers"]
+                last_pending = snapshot_map[bucket_id]["pending"]
+            ts = start + (bucket_id * bucket)
+            points.append({
+                "time": time.strftime("%H:%M", time.localtime(ts)),
+                "timestamp": ts * 1000,
+                "accepted24h": accepted_total,
+                "rejected24h": rejected_total,
+                "workers": last_workers,
+                "pending": round(last_pending, 8),
+                "hashrate": round((accepted_delta * 4294967296) / bucket, 2) if accepted_delta > 0 else 0.0,
+            })
+        return points
 
     def matured_payouts(self, threshold: float) -> list[dict[str, Any]]:
         with self._lock, self._connect() as conn:
@@ -230,6 +512,7 @@ class PoolClient:
     subscription_id: str = field(default_factory=lambda: secrets.token_hex(8))
     authorized: bool = False
     worker_name: str | None = None
+    difficulty: float = 1.0
 
 
 class PoolServer:
@@ -241,6 +524,7 @@ class PoolServer:
         self.job_lock = asyncio.Lock()
         self.current_job: dict[str, Any] = {
             "job_id": "bootstrap",
+            "round_id": "bootstrap",
             "prevhash": "00" * 32,
             "coinb1": "",
             "coinb2": "",
@@ -326,11 +610,20 @@ class PoolServer:
                     ntime = params[3] if len(params) > 3 else ""
                     nonce = params[4] if len(params) > 4 else ""
                     accepted = bool(client.authorized and job_id == self.current_job.get("job_id"))
-                    self.db.record_share(worker_name, job_id, accepted, nonce, ntime, extranonce2)
-                    if accepted:
+                    share_ok, reason = self.db.record_share(
+                        worker_name,
+                        job_id,
+                        str(self.current_job.get("round_id", "")),
+                        accepted,
+                        nonce,
+                        ntime,
+                        extranonce2,
+                        client.difficulty,
+                    )
+                    if share_ok:
                         await self.send_json(writer, {"id": req_id, "result": True, "error": None})
                     else:
-                        await self.send_json(writer, {"id": req_id, "result": None, "error": [23, "stale-or-unauthorized-share", None]})
+                        await self.send_json(writer, {"id": req_id, "result": None, "error": [23, reason, None]})
                 elif method in {"mining.extranonce.subscribe", "mining.configure"}:
                     await self.send_json(writer, {"id": req_id, "result": True, "error": None})
                 else:
@@ -348,8 +641,11 @@ class PoolServer:
                 async with self.job_lock:
                     prevhash = tmpl.get("previousblockhash", "")
                     ntime = f"{int(tmpl.get('curtime', int(time.time()))):08x}"
+                    height = int(tmpl.get("height", 0))
+                    round_id = f"{height}:{prevhash[:16]}"
                     next_job = {
                         "job_id": secrets.token_hex(6),
+                        "round_id": round_id,
                         "prevhash": prevhash,
                         "coinb1": "",
                         "coinb2": "",
@@ -358,10 +654,11 @@ class PoolServer:
                         "nbits": tmpl.get("bits", "1d00ffff"),
                         "ntime": ntime,
                         "clean_jobs": True,
-                        "height": int(tmpl.get("height", 0)),
+                        "height": height,
                     }
                     changed = next_job["prevhash"] != self.current_job.get("prevhash") or next_job["ntime"] != self.current_job.get("ntime")
                     self.current_job = next_job
+                await asyncio.to_thread(self.db.ensure_round, round_id, height, prevhash)
                 if changed:
                     await self.broadcast_job()
             except Exception as exc:
@@ -382,19 +679,36 @@ class PoolServer:
                     self.db.mark_paid(payout["worker_name"], amount)
             except Exception as exc:
                 print(f"payout loop error: {exc}")
-            await asyncio.sleep(60)
+            await asyncio.sleep(max(PAYOUT_INTERVAL_SEC, 60))
 
-    def stats_snapshot(self) -> dict[str, Any]:
+    async def metrics_loop(self) -> None:
+        while True:
+            try:
+                self.stats_snapshot(include_history=False, record_sample=True)
+            except Exception as exc:
+                print(f"metrics loop error: {exc}")
+            await asyncio.sleep(max(SNAPSHOT_INTERVAL_SEC, 30))
+
+    def stats_snapshot(self, include_history: bool = True, record_sample: bool = True) -> dict[str, Any]:
         db_stats = self.db.stats()
-        return {
+        snapshot = {
             "pool_name": POOL_NAME,
             "running": True,
             "pool_fee_percent": POOL_FEE,
             "connected_miners": sum(1 for c in self.clients.values() if c.authorized),
             "last_template_height": int(self.current_job.get("height", 0)),
             "last_job_id": self.current_job.get("job_id"),
+            "reward_method": REWARD_METHOD,
+            "share_reward": SHARE_REWARD,
+            "payout_threshold": PAYOUT_THRESHOLD,
+            "payout_interval_sec": PAYOUT_INTERVAL_SEC,
             **db_stats,
         }
+        if record_sample:
+            self.db.record_pool_snapshot(snapshot)
+        if include_history:
+            snapshot["history_24h"] = self.db.history_24h()
+        return snapshot
 
 
 class StatsHandler(BaseHTTPRequestHandler):
@@ -456,9 +770,11 @@ async def main() -> None:
     async with server:
         updater_task = asyncio.create_task(pool.template_updater())
         payout_task = asyncio.create_task(pool.payout_loop())
+        metrics_task = asyncio.create_task(pool.metrics_loop())
         await stop_event.wait()
         updater_task.cancel()
         payout_task.cancel()
+        metrics_task.cancel()
         httpd.shutdown()
 
 
