@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import hashlib
 import json
 import os
 import secrets
@@ -53,6 +54,9 @@ HISTORY_BUCKET_SEC = int(os.environ.get("QBTC_POOL_HISTORY_BUCKET_SEC", "300"))
 SNAPSHOT_INTERVAL_SEC = int(os.environ.get("QBTC_POOL_SNAPSHOT_INTERVAL_SEC", "60"))
 MAX_JOB_AGE_SEC = int(os.environ.get("QBTC_POOL_MAX_JOB_AGE_SEC", "180"))
 MAX_FUTURE_NTIME_DRIFT_SEC = int(os.environ.get("QBTC_POOL_MAX_FUTURE_NTIME_DRIFT_SEC", "90"))
+DEFAULT_SHARE_DIFFICULTY = float(os.environ.get("QBTC_POOL_DEFAULT_DIFFICULTY", "0.00025"))
+MIN_SHARE_DIFFICULTY = float(os.environ.get("QBTC_POOL_MIN_DIFFICULTY", "0.000001"))
+DIFF1_TARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000
 if REWARD_METHOD not in {"PPS", "PPLNS"}:
     REWARD_METHOD = "PPS"
 
@@ -69,6 +73,26 @@ def is_hex_string(value: str, min_len: int = 1, max_len: int | None = None, *, e
     if even_length and len(value) % 2 != 0:
         return False
     return all(ch in "0123456789abcdefABCDEF" for ch in value)
+
+
+def sha256d(data: bytes) -> bytes:
+    return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+
+
+def bits_to_target(bits_hex: str) -> int:
+    if not is_hex_string(bits_hex, 8, 8):
+        raise ValueError("invalid nbits")
+    bits = int(bits_hex, 16)
+    exponent = bits >> 24
+    mantissa = bits & 0xFFFFFF
+    if exponent <= 3:
+        return mantissa >> (8 * (3 - exponent))
+    return mantissa << (8 * (exponent - 3))
+
+
+def difficulty_to_target(difficulty: float) -> int:
+    difficulty = max(float(difficulty or DEFAULT_SHARE_DIFFICULTY), MIN_SHARE_DIFFICULTY)
+    return max(1, int(DIFF1_TARGET / difficulty))
 
 
 class RPCClient:
@@ -241,7 +265,7 @@ class PoolDB:
     ) -> tuple[bool, str]:
         now = int(time.time())
         payout_address = worker_name.split(".", 1)[0] if "." in worker_name else worker_name
-        difficulty = max(float(difficulty or 1.0), 1.0)
+        difficulty = max(float(difficulty or DEFAULT_SHARE_DIFFICULTY), MIN_SHARE_DIFFICULTY)
         reward_value = round(difficulty * SHARE_REWARD, 8) if accepted else 0.0
 
         with self._lock, self._connect() as conn:
@@ -587,7 +611,7 @@ class PoolClient:
     subscription_id: str = field(default_factory=lambda: secrets.token_hex(8))
     authorized: bool = False
     worker_name: str | None = None
-    difficulty: float = 1.0
+    difficulty: float = DEFAULT_SHARE_DIFFICULTY
 
 
 class PoolServer:
@@ -614,6 +638,27 @@ class PoolServer:
         }
         self.job_history: dict[str, dict[str, Any]] = {self.current_job["job_id"]: dict(self.current_job)}
         self.job_retention_sec = max(MAX_JOB_AGE_SEC * 3, 300)
+
+    def compute_share_hash(self, client: PoolClient, job: dict[str, Any], extranonce2: str, ntime: str, nonce: str) -> tuple[int, int, bool]:
+        extranonce1 = str(client.subscription_id)
+        coinb1 = str(job.get("coinb1") or "")
+        coinb2 = str(job.get("coinb2") or "")
+        coinbase = bytes.fromhex(coinb1 + extranonce1 + extranonce2 + coinb2)
+        merkle_root = sha256d(coinbase)
+        for branch in job.get("merkle_branches") or []:
+            merkle_root = sha256d(merkle_root + bytes.fromhex(str(branch)))
+
+        header = bytes.fromhex(
+            str(job.get("version") or "")
+            + str(job.get("prevhash") or "")
+            + merkle_root[::-1].hex()
+            + ntime
+            + str(job.get("nbits") or "")
+            + nonce
+        )
+        share_hash = int.from_bytes(sha256d(header)[::-1], "big")
+        block_target = bits_to_target(str(job.get("nbits") or "1d00ffff"))
+        return share_hash, difficulty_to_target(client.difficulty), share_hash <= block_target
 
     def remember_job(self, job: dict[str, Any]) -> None:
         created_at = int(job.get("created_at") or time.time())
@@ -658,7 +703,17 @@ class PoolServer:
             return False, "stale-ntime", job
         if share_time > now + MAX_FUTURE_NTIME_DRIFT_SEC:
             return False, "future-ntime", job
-        return True, "accepted", job
+
+        try:
+            share_hash, share_target, is_block_candidate = self.compute_share_hash(client, job, extranonce2, ntime, nonce)
+        except Exception:
+            return False, "hash-build-failed", job
+
+        if share_hash > share_target:
+            return False, "low-difficulty-share", job
+        if is_block_candidate:
+            print(f"block-candidate: worker={worker_name} job={job_id} hash={share_hash:064x}")
+        return True, "block-candidate" if is_block_candidate else "accepted", job
 
     async def shutdown(self) -> None:
         async with self.clients_lock:
@@ -727,7 +782,7 @@ class PoolServer:
                         "result": [[["mining.notify", client.subscription_id], ["mining.set_difficulty", client.subscription_id]], client.subscription_id, 4],
                         "error": None,
                     })
-                    await self.notify(writer, "mining.set_difficulty", [1])
+                    await self.notify(writer, "mining.set_difficulty", [client.difficulty])
                     await self.broadcast_job()
                 elif method == "mining.authorize":
                     worker_name = params[0] if params else f"anonymous.{client.subscription_id}"
@@ -735,7 +790,7 @@ class PoolServer:
                     client.authorized = True
                     self.db.authorize_worker(worker_name)
                     await self.send_json(writer, {"id": req_id, "result": True, "error": None})
-                    await self.notify(writer, "mining.set_difficulty", [1])
+                    await self.notify(writer, "mining.set_difficulty", [client.difficulty])
                     job = self.current_job
                     await self.notify(writer, "mining.notify", [job["job_id"], job["prevhash"], job["coinb1"], job["coinb2"], job["merkle_branches"], job["version"], job["nbits"], job["ntime"], True])
                 elif method == "mining.submit":
@@ -761,7 +816,7 @@ class PoolServer:
                         await self.send_json(writer, {"id": req_id, "result": None, "error": [23, reason, None]})
                 elif method == "mining.suggest_difficulty":
                     try:
-                        client.difficulty = max(float(params[0]), 1.0)
+                        client.difficulty = max(float(params[0]), MIN_SHARE_DIFFICULTY)
                         await self.send_json(writer, {"id": req_id, "result": True, "error": None})
                         await self.notify(writer, "mining.set_difficulty", [client.difficulty])
                     except (TypeError, ValueError, IndexError):
@@ -847,6 +902,7 @@ class PoolServer:
             "share_reward": SHARE_REWARD,
             "payout_threshold": PAYOUT_THRESHOLD,
             "payout_interval_sec": PAYOUT_INTERVAL_SEC,
+            "share_difficulty": DEFAULT_SHARE_DIFFICULTY,
             **db_stats,
         }
         if record_sample:

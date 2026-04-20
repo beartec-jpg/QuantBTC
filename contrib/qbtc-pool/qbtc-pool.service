@@ -25,6 +25,8 @@ Environment=QBTC_POOL_SNAPSHOT_INTERVAL_SEC=60
 Environment=QBTC_POOL_HISTORY_BUCKET_SEC=300
 Environment=QBTC_POOL_MAX_JOB_AGE_SEC=180
 Environment=QBTC_POOL_MAX_FUTURE_NTIME_DRIFT_SEC=90
+Environment=QBTC_POOL_DEFAULT_DIFFICULTY=0.00025
+Environment=QBTC_POOL_MIN_DIFFICULTY=0.000001
 Environment=QBTC_POOL_ENABLE_PAYOUTS=1
 ExecStartPre=/bin/mkdir -p /var/lib/qbtc-pool
 ExecStart=/usr/bin/python3 /root/QuantBTC/contrib/qbtc-pool/qbtc_pool.py
