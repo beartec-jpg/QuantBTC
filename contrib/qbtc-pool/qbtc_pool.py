@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib import request
+from urllib.parse import parse_qs, urlparse
 
 
 RPC_URL = os.environ.get("QBTC_POOL_RPC_URL", "http://127.0.0.1:28332/")
@@ -72,6 +73,16 @@ if REWARD_METHOD not in {"PPS", "PPLNS"}:
 
 def ensure_parent_dir(path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+
+def sanitize_worker_alias(value: str, default: str = "browser") -> str:
+    cleaned = "".join(ch for ch in str(value or default) if ch.isalnum() or ch in {"-", "_"})[:24]
+    return cleaned or default
+
+
+def is_probable_qbtc_address(value: str) -> bool:
+    value = str(value or "").strip().lower()
+    return value.startswith("qbtc") and len(value) >= 12 and len(value) <= 96
 
 
 def is_hex_string(value: str, min_len: int = 1, max_len: int | None = None, *, even_length: bool = True) -> bool:
@@ -740,6 +751,7 @@ class PoolServer:
             "created_at": bootstrap_time,
         }
         self.job_history: dict[str, dict[str, Any]] = {self.current_job["job_id"]: dict(self.current_job)}
+        self.browser_sessions: dict[str, dict[str, Any]] = {}
         self.job_retention_sec = max(MAX_JOB_AGE_SEC * 3, 300)
 
     def compute_share_hash(self, client: PoolClient, job: dict[str, Any], extranonce2: str, ntime: str, nonce: str) -> tuple[int, int, bool]:
@@ -817,6 +829,80 @@ class PoolServer:
         if is_block_candidate:
             print(f"block-candidate: worker={worker_name} job={job_id} hash={share_hash:064x}")
         return True, "block-candidate" if is_block_candidate else "accepted", job
+
+    def issue_browser_job(self, address: str, alias: str = "browser") -> dict[str, Any]:
+        if not is_probable_qbtc_address(address):
+            raise ValueError("Enter a valid QBTC payout address")
+
+        alias = sanitize_worker_alias(alias, "browser")
+        worker_name = f"{address.strip()}.{alias}"
+        extranonce1 = hashlib.sha256(worker_name.encode()).hexdigest()[:16]
+        assigned_tier = self.db.authorize_worker(worker_name, "home")
+        self.browser_sessions[worker_name] = {
+            "subscription_id": extranonce1,
+            "difficulty": MIN_SHARE_DIFFICULTY,
+            "assigned_tier": assigned_tier,
+            "updated_at": int(time.time()),
+        }
+        job = dict(self.current_job)
+        return {
+            "ok": True,
+            "worker_name": worker_name,
+            "pool_tier": assigned_tier,
+            "subscription_id": extranonce1,
+            "extranonce1": extranonce1,
+            "extranonce2_size": 4,
+            "share_difficulty": MIN_SHARE_DIFFICULTY,
+            "job": {
+                "job_id": job.get("job_id"),
+                "prevhash": job.get("prevhash"),
+                "coinb1": job.get("coinb1"),
+                "coinb2": job.get("coinb2"),
+                "merkle_branches": job.get("merkle_branches"),
+                "version": job.get("version"),
+                "nbits": job.get("nbits"),
+                "ntime": job.get("ntime"),
+                "height": job.get("height"),
+            },
+        }
+
+    def submit_browser_share(self, payload: dict[str, Any]) -> dict[str, Any]:
+        worker_name = str(payload.get("worker_name") or "")
+        job_id = str(payload.get("job_id") or "")
+        extranonce2 = str(payload.get("extranonce2") or "")
+        ntime = str(payload.get("ntime") or "")
+        nonce = str(payload.get("nonce") or "")
+        session = self.browser_sessions.get(worker_name)
+        if not worker_name or session is None:
+            return {"ok": False, "reason": "missing-session"}
+
+        client = PoolClient(writer=None)  # type: ignore[arg-type]
+        client.subscription_id = str(session.get("subscription_id") or "")
+        client.authorized = True
+        client.worker_name = worker_name
+        client.requested_tier = "home"
+        client.assigned_tier = str(session.get("assigned_tier") or "home")
+        client.difficulty = float(session.get("difficulty") or MIN_SHARE_DIFFICULTY)
+
+        accepted, validation_reason, job = self.validate_share_submission(client, worker_name, job_id, extranonce2, ntime, nonce)
+        share_ok, record_reason = self.db.record_share(
+            worker_name,
+            job_id,
+            str((job or self.current_job).get("round_id", "")),
+            accepted,
+            nonce,
+            ntime,
+            extranonce2,
+            client.difficulty,
+        )
+        routing = self.db.refresh_worker_routing(worker_name)
+        final_reason = record_reason if record_reason == "duplicate-share" else ("accepted" if share_ok else validation_reason)
+        return {
+            "ok": bool(share_ok),
+            "reason": final_reason,
+            "pool_tier": routing.get("pool_tier"),
+            "recent_hashrate": routing.get("recent_hashrate"),
+        }
 
     async def shutdown(self) -> None:
         async with self.clients_lock:
@@ -1037,19 +1123,51 @@ class StatsHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type,Authorization")
         self.end_headers()
         self.wfile.write(body)
 
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self._json(200, {"ok": True})
+
     def do_GET(self) -> None:  # noqa: N802
         pool: PoolServer = self.server.pool  # type: ignore[attr-defined]
-        if self.path == "/health":
+        parsed = urlparse(self.path)
+        if parsed.path == "/health":
             self._json(200, {"ok": True, "service": "qbtc-pool"})
-        elif self.path == "/stats":
+        elif parsed.path == "/stats":
             self._json(200, pool.stats_snapshot())
-        elif self.path == "/workers":
+        elif parsed.path == "/workers":
             self._json(200, {"workers": pool.db.stats()["workers"]})
+        elif parsed.path == "/browser-miner/job":
+            params = parse_qs(parsed.query)
+            address = (params.get("address") or [""])[0]
+            worker = (params.get("worker") or ["browser"])[0]
+            try:
+                self._json(200, pool.issue_browser_job(address, worker))
+            except ValueError as exc:
+                self._json(400, {"ok": False, "error": str(exc)})
         else:
             self._json(404, {"error": "not found"})
+
+    def do_POST(self) -> None:  # noqa: N802
+        pool: PoolServer = self.server.pool  # type: ignore[attr-defined]
+        parsed = urlparse(self.path)
+        if parsed.path != "/browser-miner/submit":
+            self._json(404, {"error": "not found"})
+            return
+
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+            raw = self.rfile.read(length) if length > 0 else b"{}"
+            payload = json.loads(raw.decode() or "{}")
+        except Exception:
+            self._json(400, {"ok": False, "error": "invalid json"})
+            return
+
+        result = pool.submit_browser_share(payload)
+        self._json(200 if result.get("ok") else 400, result)
 
     def log_message(self, fmt: str, *args: Any) -> None:
         return
