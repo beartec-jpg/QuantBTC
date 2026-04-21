@@ -24,6 +24,7 @@ import hashlib
 import json
 import os
 import secrets
+import struct
 import signal
 import sqlite3
 import threading
@@ -57,6 +58,9 @@ MAX_JOB_AGE_SEC = int(os.environ.get("QBTC_POOL_MAX_JOB_AGE_SEC", "180"))
 MAX_FUTURE_NTIME_DRIFT_SEC = int(os.environ.get("QBTC_POOL_MAX_FUTURE_NTIME_DRIFT_SEC", "90"))
 DEFAULT_SHARE_DIFFICULTY = float(os.environ.get("QBTC_POOL_DEFAULT_DIFFICULTY", "0.00025"))
 MIN_SHARE_DIFFICULTY = float(os.environ.get("QBTC_POOL_MIN_DIFFICULTY", "0.000001"))
+POOL_MINING_ADDRESS = os.environ.get("QBTC_POOL_MINING_ADDRESS", "qbtct1qdtnzfm4r0w5853rjy3gy4xgft3chmklgx2yh6a")
+# P2WPKH scriptPubKey for the mining address: OP_0 <20-byte-hash>
+POOL_MINING_SCRIPT = os.environ.get("QBTC_POOL_MINING_SCRIPT", "00146ae624eea37ba87a447224504a99095c717ddbe8")
 HOME_MAX_HASHRATE = float(os.environ.get("QBTC_POOL_HOME_MAX_HASHRATE", "10000000"))
 STANDARD_MAX_HASHRATE = float(os.environ.get("QBTC_POOL_STANDARD_MAX_HASHRATE", "250000000"))
 DIFF1_TARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000
@@ -97,6 +101,104 @@ def is_hex_string(value: str, min_len: int = 1, max_len: int | None = None, *, e
 
 def sha256d(data: bytes) -> bytes:
     return hashlib.sha256(hashlib.sha256(data).digest()).digest()
+
+
+def compute_txid(segwit_tx: bytes) -> bytes:
+    """Compute txid for a (possibly segwit) transaction.
+
+    For segwit txs, txid = sha256d(non-witness serialization).
+    Strips the segwit marker (0x00) + flag (0x01) at bytes [4:6] and
+    the 34-byte coinbase witness (\\x01\\x20 + 32 zero bytes) before the 4-byte locktime.
+    """
+    if len(segwit_tx) > 42 and segwit_tx[4] == 0x00 and segwit_tx[5] == 0x01:
+        # non-witness = version(4) + [skip marker+flag] + inputs+outputs + locktime(4)
+        # strip witness = \\x01\\x20 + 32_zeros (34 bytes) just before locktime
+        non_witness = segwit_tx[:4] + segwit_tx[6:-(34 + 4)] + segwit_tx[-4:]
+        return sha256d(non_witness)
+    return sha256d(segwit_tx)
+
+
+def build_coinbase_parts(
+    height: int,
+    coinbase_value: int,
+    witness_script_hex: str,
+    script_pubkey_hex: str,
+    extranonce1_size: int = 8,
+    extranonce2_size: int = 4,
+) -> tuple[str, str]:
+    """Build coinb1/coinb2 for stratum split around extranonce bytes.
+
+    The miner concatenates: coinb1 + extranonce1 + extranonce2 + coinb2
+    to form a valid segwit coinbase transaction.
+    """
+    # BIP34 height encoding: minimal LE bytes, add 0x00 sign byte if high bit set
+    h = height
+    if h < 0x80:
+        height_bytes = bytes([h])
+    elif h < 0x8000:
+        height_bytes = struct.pack("<H", h)
+    elif h < 0x800000:
+        height_bytes = struct.pack("<I", h)[:3]
+    else:
+        height_bytes = struct.pack("<I", h)
+    if height_bytes[-1] & 0x80:
+        height_bytes += b"\x00"
+    height_push = bytes([len(height_bytes)]) + height_bytes
+
+    extranonce_size = extranonce1_size + extranonce2_size
+    coinbase_script_len = len(height_push) + extranonce_size
+
+    script_pubkey = bytes.fromhex(script_pubkey_hex)
+    witness_script = bytes.fromhex(witness_script_hex)
+
+    # Output 0: coinbase reward to pool mining address
+    out0 = struct.pack("<q", coinbase_value) + bytes([len(script_pubkey)]) + script_pubkey
+    # Output 1: segwit witness commitment (OP_RETURN + aa21a9ed + 32-byte hash)
+    out1 = struct.pack("<q", 0) + bytes([len(witness_script)]) + witness_script
+    # Coinbase witness: 1 item of 32 zero bytes (required for segwit)
+    coinbase_witness = b"\x01\x20" + b"\x00" * 32
+
+    # coinb1 = tx up through height push (extranonces follow)
+    coinb1 = (
+        struct.pack("<I", 2)        # version 2
+        + b"\x00\x01"              # segwit marker + flag
+        + b"\x01"                  # 1 input
+        + b"\x00" * 32             # null prevhash (coinbase)
+        + b"\xff\xff\xff\xff"      # previndex 0xffffffff
+        + bytes([coinbase_script_len])  # script length
+        + height_push              # BIP34 height (extranonces come next)
+    )
+    # coinb2 = sequence + outputs + witness + locktime
+    coinb2 = (
+        b"\xff\xff\xff\xff"       # sequence
+        + b"\x02"                 # 2 outputs
+        + out0
+        + out1
+        + coinbase_witness
+        + b"\x00\x00\x00\x00"    # locktime
+    )
+    return coinb1.hex(), coinb2.hex()
+
+
+def _compute_merkle_branches(txids: list[str]) -> list[str]:
+    """Compute stratum merkle branches (path from coinbase to root)."""
+    if not txids:
+        return []
+    # Convert display txids to LE bytes hashes
+    hashes = [bytes.fromhex(txid)[::-1] for txid in txids]
+    branches = []
+    while hashes:
+        branches.append(hashes[0].hex())
+        if len(hashes) == 1:
+            break
+        # Build next level
+        next_level = []
+        for i in range(0, len(hashes), 2):
+            left = hashes[i]
+            right = hashes[i + 1] if i + 1 < len(hashes) else hashes[i]
+            next_level.append(sha256d(left + right))
+        hashes = next_level
+    return branches
 
 
 def bits_to_target(bits_hex: str) -> int:
@@ -740,6 +842,7 @@ class PoolServer:
             "job_id": "bootstrap",
             "round_id": "bootstrap",
             "prevhash": "00" * 32,
+            "prevhash_raw": "00" * 32,
             "coinb1": "",
             "coinb2": "",
             "merkle_branches": [],
@@ -759,19 +862,30 @@ class PoolServer:
         coinb1 = str(job.get("coinb1") or "")
         coinb2 = str(job.get("coinb2") or "")
         coinbase = bytes.fromhex(coinb1 + extranonce1 + extranonce2 + coinb2)
-        merkle_root = sha256d(coinbase)
+        # Use txid (non-witness hash) for the merkle root, matching what the node verifies
+        merkle_root = compute_txid(coinbase)
         for branch in job.get("merkle_branches") or []:
+            # branches are display hex (as sent in mining.notify); use as-is bytes
             merkle_root = sha256d(merkle_root + bytes.fromhex(str(branch)))
 
-        header = bytes.fromhex(
-            str(job.get("version") or "")
-            + str(job.get("prevhash") or "")
-            + merkle_root[::-1].hex()
-            + ntime
-            + str(job.get("nbits") or "")
-            + nonce
-        )
-        share_hash = int.from_bytes(sha256d(header)[::-1], "big")
+        # QBTC DAG block: 112-byte header. For classical chain blocks, hashParentsRoot=0x00…00
+        # (hashParents is empty; only hashPrevBlock is the parent)
+        prevhash_raw = str(job.get("prevhash_raw") or "00" * 32)
+        prevhash_le = bytes.fromhex(prevhash_raw)[::-1]  # LE = full byte reversal of display hex
+        parents_root = b"\x00" * 32  # all-zeros for classical chain (0 extra parents)
+
+        header = (
+            bytes.fromhex(str(job.get("version") or ""))  # 4 bytes version LE
+            + prevhash_le                                    # 32 bytes hashPrevBlock LE
+            + merkle_root                                    # 32 bytes hashMerkleRoot (raw sha256d)
+            + bytes.fromhex(ntime)                          # 4 bytes nTime (LE from stratum)
+            + struct.pack("<I", int(str(job.get("nbits") or "1d00ffff"), 16))  # 4 bytes nBits LE
+            + parents_root                                   # 32 bytes hashParentsRoot (all-zeros)
+            + bytes.fromhex(nonce)                          # 4 bytes nNonce
+        )  # = 112 bytes total
+        assert len(header) == 112, f"Expected 112-byte header, got {len(header)}"
+        raw_hash = sha256d(header)
+        share_hash = int.from_bytes(raw_hash[::-1], "big")
         block_target = bits_to_target(str(job.get("nbits") or "1d00ffff"))
         return share_hash, difficulty_to_target(client.difficulty), share_hash <= block_target
 
@@ -812,8 +926,8 @@ class PoolServer:
         if extranonce2 and not is_hex_string(extranonce2, 2, 64):
             return False, "invalid-extranonce2", job
 
-        share_time = int(ntime, 16)
-        template_time = int(str(job.get("ntime") or "0"), 16)
+        share_time = struct.unpack("<I", bytes.fromhex(ntime))[0]
+        template_time = struct.unpack("<I", bytes.fromhex(str(job.get("ntime") or "00000000")))[0]
         if share_time < template_time - MAX_JOB_AGE_SEC:
             return False, "stale-ntime", job
         if share_time > now + MAX_FUTURE_NTIME_DRIFT_SEC:
@@ -821,14 +935,62 @@ class PoolServer:
 
         try:
             share_hash, share_target, is_block_candidate = self.compute_share_hash(client, job, extranonce2, ntime, nonce)
-        except Exception:
+        except Exception as exc:
+            print(f"hash-build-failed: {exc} worker={worker_name}", flush=True)
             return False, "hash-build-failed", job
 
+        print(f"[SHARE] h={share_hash:064x} t={share_target:064x} meets={share_hash<=share_target} worker={worker_name}", flush=True)
         if share_hash > share_target:
             return False, "low-difficulty-share", job
         if is_block_candidate:
             print(f"block-candidate: worker={worker_name} job={job_id} hash={share_hash:064x}")
         return True, "block-candidate" if is_block_candidate else "accepted", job
+
+    def _build_block_hex(self, job: dict[str, Any], extranonce1: str, extranonce2: str, ntime: str, nonce: str) -> str:
+        """Assemble full QBTC block hex for submitblock."""
+        # Coinbase
+        coinb1 = str(job.get("coinb1") or "")
+        coinb2 = str(job.get("coinb2") or "")
+        coinbase_hex = coinb1 + extranonce1 + extranonce2 + coinb2
+        coinbase_bytes = bytes.fromhex(coinbase_hex)
+
+        # Compute merkle root using txid (non-witness hash) — matches what the node validates
+        merkle = compute_txid(coinbase_bytes)
+        for branch in job.get("merkle_branches") or []:
+            # branches are LE internal bytes (as stored by _compute_merkle_branches)
+            merkle = sha256d(merkle + bytes.fromhex(str(branch)))
+
+        # 112-byte header — hashParentsRoot = 0x00...00 for classical chain (0 extra parents)
+        prevhash_raw = str(job.get("prevhash_raw") or "00" * 32)
+        prevhash_le = bytes.fromhex(prevhash_raw)[::-1]
+        parents_root = b"\x00" * 32  # all-zeros: no extra DAG parents
+        header = (
+            bytes.fromhex(str(job.get("version") or ""))
+            + prevhash_le
+            + merkle
+            + bytes.fromhex(ntime)                                          # nTime LE (from stratum)
+            + struct.pack("<I", int(str(job.get("nbits") or "1d00ffff"), 16))  # nBits LE
+            + parents_root
+            + bytes.fromhex(nonce)
+        )
+
+        # Parents vector: varint(0) = empty (classical chain, prevhash is the only parent)
+        parents_vector = b"\x00"
+
+        # Transaction data from template
+        tmpl = job.get("_tmpl") or {}
+        txs = tmpl.get("transactions") or []
+        # Coinbase is first tx; encode tx count as varint
+        tx_count = 1 + len(txs)
+        if tx_count < 0xfd:
+            tx_count_bytes = bytes([tx_count])
+        else:
+            tx_count_bytes = b"\xfd" + struct.pack("<H", tx_count)
+        tx_data = tx_count_bytes + coinbase_bytes
+        for tx in txs:
+            tx_data += bytes.fromhex(str(tx.get("data") or ""))
+
+        return header.hex() + parents_vector.hex() + tx_data.hex()
 
     def issue_browser_job(self, address: str, alias: str = "browser") -> dict[str, Any]:
         if not is_probable_qbtc_address(address):
@@ -925,6 +1087,7 @@ class PoolServer:
     async def broadcast_job(self) -> None:
         async with self.clients_lock:
             clients = list(self.clients.values())
+        nbits_wire = self.current_job.get("nbits_le") or struct.pack("<I", int(str(self.current_job.get("nbits") or "1d00ffff"), 16)).hex()
         params = [
             self.current_job["job_id"],
             self.current_job["prevhash"],
@@ -932,7 +1095,7 @@ class PoolServer:
             self.current_job["coinb2"],
             self.current_job["merkle_branches"],
             self.current_job["version"],
-            self.current_job["nbits"],
+            nbits_wire,
             self.current_job["ntime"],
             self.current_job["clean_jobs"],
         ]
@@ -983,7 +1146,8 @@ class PoolServer:
                     await self.send_json(writer, {"id": req_id, "result": True, "error": None})
                     await self.notify(writer, "mining.set_difficulty", [client.difficulty])
                     job = self.current_job
-                    await self.notify(writer, "mining.notify", [job["job_id"], job["prevhash"], job["coinb1"], job["coinb2"], job["merkle_branches"], job["version"], job["nbits"], job["ntime"], True])
+                    nbits_wire = job.get("nbits_le") or struct.pack("<I", int(str(job.get("nbits") or "1d00ffff"), 16)).hex()
+                    await self.notify(writer, "mining.notify", [job["job_id"], job["prevhash"], job["coinb1"], job["coinb2"], job["merkle_branches"], job["version"], nbits_wire, job["ntime"], True])
                 elif method == "mining.submit":
                     worker_name = params[0] if len(params) > 0 else (client.worker_name or "unknown")
                     job_id = params[1] if len(params) > 1 else ""
@@ -991,6 +1155,17 @@ class PoolServer:
                     ntime = params[3] if len(params) > 3 else ""
                     nonce = params[4] if len(params) > 4 else ""
                     accepted, reason, job = self.validate_share_submission(client, worker_name, job_id, extranonce2, ntime, nonce)
+                    if accepted and reason == "block-candidate" and job:
+                        # Submit block to node
+                        try:
+                            block_hex = self._build_block_hex(job, str(client.subscription_id), extranonce2, ntime, nonce)
+                            result = await asyncio.to_thread(self.rpc.call, "submitblock", [block_hex])
+                            if result is None:
+                                print(f"block ACCEPTED: worker={worker_name} job={job_id}")
+                            else:
+                                print(f"block rejected by node: {result} worker={worker_name}")
+                        except Exception as exc:
+                            print(f"submitblock error: {exc} worker={worker_name}")
                     share_ok, reason = self.db.record_share(
                         worker_name,
                         job_id,
@@ -1031,18 +1206,31 @@ class PoolServer:
                 tmpl = await asyncio.to_thread(self.rpc.call, "getblocktemplate", [{"rules": ["segwit"]}])
                 async with self.job_lock:
                     prevhash = tmpl.get("previousblockhash", "")
-                    ntime = f"{int(tmpl.get('curtime', int(time.time()))):08x}"
+                    ntime = struct.pack("<I", int(tmpl.get("curtime", int(time.time())))).hex()  # LE bytes
                     height = int(tmpl.get("height", 0))
                     round_id = f"{height}:{prevhash[:16]}"
+                    # Version as 4-byte LE hex (getblocktemplate returns integer)
+                    version_le = struct.pack("<I", int(tmpl.get("version", 0))).hex()
+                    bits_be = tmpl.get("bits", "1d00ffff")
+                    witness_script_hex = str(tmpl.get("default_witness_commitment") or "6a24aa21a9ed" + "ee" * 32)
+                    coinb1, coinb2 = build_coinbase_parts(
+                        height,
+                        int(tmpl.get("coinbasevalue") or 0),
+                        witness_script_hex,
+                        POOL_MINING_SCRIPT,
+                    )
                     next_job = {
                         "job_id": secrets.token_hex(6),
                         "round_id": round_id,
-                        "prevhash": prevhash,
-                        "coinb1": "",
-                        "coinb2": "",
+                        "prevhash": "".join(prevhash[i:i+8] for i in range(56,-1,-8)),  # stratum format
+                        "prevhash_raw": prevhash,  # display hex for hash computation
+                        "coinb1": coinb1,
+                        "coinb2": coinb2,
                         "merkle_branches": [],
-                        "version": f"{int(tmpl.get('version', 0)):08x}",
-                        "nbits": tmpl.get("bits", "1d00ffff"),
+                        "_tmpl": tmpl,
+                        "version": version_le,
+                        "nbits": bits_be,           # BE compact for bits_to_target computation
+                        "nbits_le": struct.pack("<I", int(bits_be, 16)).hex(),  # LE for stratum/header
                         "ntime": ntime,
                         "clean_jobs": True,
                         "height": height,
@@ -1185,7 +1373,10 @@ async def main() -> None:
     db = PoolDB(DB_PATH)
     pool = PoolServer(rpc, db)
 
-    await asyncio.to_thread(rpc.call, "startsv2transport", [])
+    try:
+        await asyncio.to_thread(rpc.call, "startsv2transport", [])
+    except Exception:
+        pass  # optional, not all nodes support sv2 transport
     await asyncio.to_thread(rpc.call, "getblockcount", [])
 
     httpd = start_http_server(pool)
