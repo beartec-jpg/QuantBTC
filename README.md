@@ -59,22 +59,23 @@ Replaced Bitcoin's linear chain with parallel block production via the GHOSTDAG 
 
 The current DAA v2 is designed to keep qBTC near its 10-second target while resisting sustained spam. Instead of a harsh linear jump, the load multiplier grows approximately as the square root of recent average transaction load above a baseline and is capped by consensus parameters. This means normal traffic stays smooth, while sustained attack traffic can harden difficulty sharply and then relax back down once the load clears.
 
-### Real Cryptography (ML-DSA-44)
+### Real Cryptography (Falcon-First)
 
 Replaced the upstream HMAC-based placeholder stubs with production NIST reference implementations:
 
-- **Vendored ML-DSA-44 (Dilithium2)** — NIST FIPS 204, real sign/verify wired into the script interpreter, wallet signing, and consensus (`src/crypto/pqc/ml-dsa/`)
+- **Vendored Falcon-padded-512 (FN-DSA)** — NIST FIPS 206 profile, real sign/verify wired into the script interpreter, wallet signing, and consensus (`src/crypto/pqc/falcon-padded/`)
+- **ML-DSA-44 (Dilithium2)** — retained as an alternative scheme for research and comparison (`-pqcsig=dilithium`)
 - **Vendored SPHINCS+** (SLH-DSA-SHA2-128f) — stateless hash-based signatures (`src/crypto/pqc/sphincsplus/`)
 - **Vendored ML-KEM (Kyber-768)** — lattice-based KEM (`src/crypto/pqc/ml-kem/`)
 - **Single `randombytes()` implementation** using Bitcoin Core's `GetStrongRandBytes` with proper memory cleansing
-- **Fixed `#define N 256` macro leakage** from Dilithium `params.h` that conflicted with Bitcoin Core symbols
+- **Fixed upstream macro leakage** from vendored PQC code that conflicted with Bitcoin Core symbols
 
 ### Consensus Verification
 
 Hardened the consensus layer for real cryptographic verification:
 
-- **`CheckPQCSignature()`** in the script interpreter performs real Dilithium verification
-- **4-element PQC witness format** validated when hybrid witnesses are present: `[ECDSA sig, EC pubkey, Dilithium sig (2420B), Dilithium pubkey (1312B)]`
+- **`CheckPQCSignature()`** in the script interpreter performs real PQC verification (Falcon, Falcon1024, ML-DSA, SPHINCS+ by size dispatch)
+- **4-element PQC witness format** validated when hybrid witnesses are present: `[ECDSA sig, EC pubkey, PQC sig, PQC pubkey]`
 - **Dedicated error codes**: `SCRIPT_ERR_PQC_VERIFY_FAILED`, `SCRIPT_ERR_PQC_WITNESS_MALFORMED`, `SCRIPT_ERR_PQC_ALGO_UNSUPPORTED`, `SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH`
 - **Unique chain identity** — distinct magic bytes, ports, and genesis block hashes per chain
 
@@ -87,7 +88,7 @@ Proactive fixes to prevent unbounded resource growth as the chain scales:
 - **m_known_scores pruning** — DAG tip-set scores are now pruned when more than 1,000 blue_score behind the best tip, capping memory at ~82 KB instead of growing ~82 MB/day.
 - **SelectedParentChain depth limit** — chain walk limited to `2K+1` blocks (37 for K=18) instead of walking to genesis on every block, reducing O(height) to O(K).
 - **Mergeset pruning** — `mergeset_blues` / `mergeset_reds` vectors are cleared for blocks buried more than 1,000 deep, preventing permanent RAM growth.
-- **PQC signature cache** — Dilithium verification results are now cached in the CuckooCache alongside ECDSA and Schnorr entries, avoiding redundant 2,420-byte signature checks during block relay.
+- **PQC signature cache** — PQC verification results are cached in the CuckooCache alongside ECDSA and Schnorr entries, avoiding redundant witness verification during block relay.
 - **mapDeltas bounding** — `PrioritiseTransaction` entries are capped at 100,000 to prevent unbounded growth from orphaned priorities.
 
 ### PQC-Aware Fee Estimation
@@ -95,7 +96,7 @@ Proactive fixes to prevent unbounded resource growth as the chain scales:
 Fixed a critical bug where the wallet calculated fees based on ECDSA-only virtual size (~141 vB) while PQC hybrid transactions are ~7.6x larger (~1,075 vB):
 
 - `WPKHDescriptor::MaxSatSize()` returns correct PQC witness sizes when hybrid signatures are active
-- `DummySignatureCreator::CreatePQCSig()` produces dummy 2420B sig + 1312B pubkey for accurate size estimation
+- `DummySignatureCreator::CreatePQCSig()` produces scheme-matched dummy PQC signature/public-key sizes for accurate fee estimation
 - Coin selection now correctly accounts for PQC witness weight
 
 ### Standalone Testnet & Mainnet Parameters
@@ -116,11 +117,11 @@ Standard P2WPKH Input Witness (2 elements):
   [0] ECDSA signature        ~71 bytes
   [1] EC public key            33 bytes
 
-Hybrid P2WPKH Input Witness (4 elements):
+Hybrid P2WPKH Input Witness (4 elements, default Falcon-padded-512):
   [0] ECDSA signature        ~71 bytes
   [1] EC public key            33 bytes
-  [2] Dilithium signature   2,420 bytes
-  [3] Dilithium public key  1,312 bytes
+  [2] Falcon signature         666 bytes
+  [3] Falcon public key        897 bytes
 ```
 
 Hybrid mode is reserved for high-value transfers and vault workflows where quantum-safe guarantees are prioritized over transaction size.
@@ -131,13 +132,13 @@ Hybrid mode is reserved for high-value transfers and vault workflows where quant
 P2WPKH Input Witness (4 elements):
   [0] ECDSA signature        ~71 bytes   (secp256k1)
   [1] EC public key            33 bytes   (compressed)
-  [2] Dilithium signature   2,420 bytes   (ML-DSA-44)
-  [3] Dilithium public key  1,312 bytes   (ML-DSA-44)
+  [2] Falcon signature         666 bytes   (FN-DSA-512)
+  [3] Falcon public key        897 bytes   (FN-DSA-512)
 
-Total witness per input:    ~3,836 bytes
-Virtual size (1-in/2-out):  ~1,075 vB
-Weight (1-in/2-out):        ~4,299 WU
-Classical equivalent:         ~141 vB (7.6x smaller)
+Total witness per input:    ~1,667 bytes
+Virtual size (1-in/2-out):  ~533 vB
+Weight (1-in/2-out):        ~2,131 WU
+Classical equivalent:        ~141 vB
 ```
 
 ---
@@ -145,9 +146,10 @@ Classical equivalent:         ~141 vB (7.6x smaller)
 ## PQC Algorithms
 
 ### Digital Signature Algorithms
-- **CRYSTALS-Dilithium (ML-DSA-44)** — lattice-based, NIST FIPS 204. **Primary signature algorithm used in consensus.**
+- **Falcon (FN-DSA-512)** — lattice-based, NIST FIPS 206 profile. **Primary signature algorithm used in default hybrid flow.**
+- **CRYSTALS-Dilithium (ML-DSA-44)** — lattice-based, NIST FIPS 204. Available as optional `-pqcsig=dilithium`.
 - **SPHINCS+ (SLH-DSA-SHA2-128f)** — stateless hash-based signatures. Crypto primitives implemented; not yet wired to wallet signing.
-- **Falcon** — implemented via vendored PQClean Falcon-padded reference implementation and used as the default signing scheme.
+- **Falcon1024 (FN-DSA-1024)** — optional higher-security profile for vault-style workflows.
 - **SQIsign** — stub only, not wired to a real implementation.
 
 ### Key Encapsulation Mechanisms (KEM)
@@ -359,7 +361,7 @@ The `contrib/qbtc-testnet/qbtc-testnet.sh` launch script already passes these fl
 ```ini
 [qbtctestnet]
 dbcache=150         # coins cache (MiB); default 450 is generous for 10-second blocks
-maxsigcachesize=32  # PQC signature cache (MiB); Dilithium sigs are 2420 bytes each
+maxsigcachesize=32  # PQC signature cache (MiB)
 ```
 
 ### RPC Extensions
@@ -388,8 +390,8 @@ PQC unit tests cover:
 
 | Test Suite | Cases | Coverage |
 |------------|-------|----------|
-| `pqc_dilithium_tests` | 9 | Keygen, sign/verify, tampered message/sig, wrong pubkey, deterministic derivation |
-| `pqc_witness_tests` | 4 | Valid PQC witness, wrong Dilithium sig, wrong-size sig, wrong-size pubkey |
+| `pqc_dilithium_tests` | 9 | ML-DSA optional-path keygen, sign/verify, tampered message/sig, wrong pubkey, deterministic derivation |
+| `pqc_witness_tests` | 4 | Valid PQC witness, wrong PQC sig, wrong-size sig, wrong-size pubkey |
 | `pqc_fee_tests` | 2 | MaxSatisfactionWeight with/without PQC, DummySignatureCreator witness structure |
 | `pqc_kyber_tests` | 5 | Encaps/decaps roundtrip, tampered ciphertext, cross-key mismatch |
 | `pqc_sphincs_tests` | 8 | Keygen, sign/verify, tampered message/sig |
@@ -675,7 +677,7 @@ The qBTC testnet is a live, publicly accessible 3-node network producing ~1 bloc
 |--------|-------|
 | Chain | `qbtctestnet` v2 (10-second blocks) |
 | Consensus | GHOSTDAG K=32, DAG mode |
-| PQC status | Active (all transactions carry hybrid ECDSA + ML-DSA-44 witnesses) |
+| PQC status | Active (hybrid ECDSA + Falcon witnesses enabled by default) |
 | Block target | 10 seconds |
 | Block reward | 0.83333333 QBTC (83,333,333 qSats) |
 | Active miners | 3 (solo, `generatetoaddress`) |
@@ -737,7 +739,7 @@ See [doc/join-testnet.md](doc/join-testnet.md#home-mining-guide) for detailed mi
 
 ### Performance
 
-QuantumBTC achieves high throughput despite PQC-sized transactions (~4,100 bytes each with Dilithium-2 witnesses) by using 10-second BlockDAG blocks. ~87 tx/s peak confirmed — quantum-safe, 8–19× Bitcoin's throughput.
+QuantumBTC achieves high throughput despite larger hybrid-PQC transactions by using 10-second BlockDAG blocks. ~87 tx/s peak confirmed — quantum-safe, 8–19× Bitcoin's throughput.
 
 | Metric | Measured | Notes |
 |--------|----------|-------|
@@ -756,9 +758,9 @@ QuantumBTC achieves high throughput despite PQC-sized transactions (~4,100 bytes
 | **Block relay (P95)** | 368 ms | 10-node full mesh |
 | **vs Bitcoin throughput** | **8–19× higher** | Despite 12× larger transactions |
 
-**PQC signing overhead:** Dilithium-2 signing takes ~2.7ms vs ECDSA's ~0.2ms (13.5×), with signatures 34× larger (2,420 bytes vs 72 bytes). The `sendtoaddress` RPC at ~130ms creates a serial bottleneck of ~7–8 tx/s per node — the chain itself handles 89 tx/s. Batch/async sending eliminates this limit.
+**PQC signing overhead:** Hybrid signing introduces additional CPU and witness-size overhead versus ECDSA-only spends. The dominant bottleneck in throughput tests was RPC submission serialization (`sendtoaddress`), not consensus validation capacity. Batch/async sending eliminates most of this bottleneck.
 
-All transactions carry dual ECDSA + ML-DSA-44 (Dilithium-2) signatures verified at consensus. Full reports: [Max-TPS Blast](TESTREPORT-2026-04-09-MAX-TPS.md) | [7-Phase Stress](TESTREPORT-2026-04-09-STRESS.md) | [Sustained Endurance & GHOSTDAG](TESTREPORT-2026-04-09-SUSTAINED-GHOSTDAG.md) | [50K High-Throughput](TESTREPORT-2026-04-15-PROJECTIONS.md) | [72-Hour Surge](TESTREPORT-2026-04-14-72HR-FINAL.md) | [Security Audit](TESTREPORT-2026-07-15-SECURITY-AUDIT.md).
+Transactions on the public qBTC testnet are produced in hybrid mode (ECDSA + PQC, default Falcon profile). Full reports: [Max-TPS Blast](TESTREPORT-2026-04-09-MAX-TPS.md) | [7-Phase Stress](TESTREPORT-2026-04-09-STRESS.md) | [Sustained Endurance & GHOSTDAG](TESTREPORT-2026-04-09-SUSTAINED-GHOSTDAG.md) | [50K High-Throughput](TESTREPORT-2026-04-15-PROJECTIONS.md) | [72-Hour Surge](TESTREPORT-2026-04-14-72HR-FINAL.md) | [Security Audit](TESTREPORT-2026-07-15-SECURITY-AUDIT.md).
 
 **Testnet status (April 15, 2026):** Chain height ~154,000+ across 3 seed nodes, ~417,000+ transactions confirmed, 72-hour surge endurance test completed with zero consensus splits. Security audit: 86/90 pass, 0 unexpected failures ([full report](TESTREPORT-2026-07-15-SECURITY-AUDIT.md)). See [doc/join-testnet.md](doc/join-testnet.md) to connect and mine.
 
@@ -777,7 +779,7 @@ All transactions carry dual ECDSA + ML-DSA-44 (Dilithium-2) signatures verified 
 |  |Hybrid  |  |  fee-rate    |  | VerifyScript()      |    |
 |  |Key Mgmt|  |  estimation  |  |  +- CheckSig(ECDSA) |    |
 |  |ECDSA + |  |  (PQC-aware) |  |  +- CheckPQCSig()   |    |
-|  |ML-DSA  |  |              |  |      (ML-DSA-44)    |    |
+|  |Falcon  |  |              |  |      (FN-DSA-512)   |    |
 |  +--------+  |              |  +---------------------+    |
 +--------------+--------------+-----------------------------+
 |              GHOSTDAG Consensus Engine                     |

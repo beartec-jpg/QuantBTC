@@ -8,7 +8,7 @@
 |---------|---------------|
 | **Network** | Independent chain (not a Bitcoin testnet fork) |
 | **Consensus** | GHOSTDAG (K=32, 10-second blocks) |
-| **PQC** | ML-DSA-44 hybrid signatures (always active) |
+| **PQC** | Falcon-padded-512 hybrid signatures (default) |
 | **Port** | 28333 (P2P), 28332 (RPC) |
 | **Address prefix** | `qbtct1...` (bech32) |
 | **Base58 prefix** | `q...` (P2PKH), `r...` (P2SH) |
@@ -202,13 +202,13 @@ Testnet data is stored in:
 
 Every transaction on the testnet carries hybrid signatures:
 - **ECDSA** (secp256k1) — classical security
-- **ML-DSA-44** (Dilithium2) — quantum-safe security
+- **Falcon-padded-512** (FN-DSA) — quantum-safe security (default profile)
 
 The witness stack for each P2WPKH input contains 4 elements:
 1. ECDSA signature (~71 bytes)
 2. EC public key (33 bytes, compressed)
-3. Dilithium signature (2420 bytes)
-4. Dilithium public key (1312 bytes)
+3. Falcon signature (666 bytes)
+4. Falcon public key (897 bytes)
 
 Inspect a transaction:
 ```bash

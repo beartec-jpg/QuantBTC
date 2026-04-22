@@ -78,11 +78,11 @@ The practical consequence for Bitcoin — and any ECDSA-based system — is that
 qBTC uses a **hybrid signature scheme** combining two cryptographic systems:
 
 1. **ECDSA (secp256k1)** — the classical Bitcoin signature algorithm, providing security against classical adversaries under current computational assumptions.
-2. **ML-DSA-44 (CRYSTALS-Dilithium2)** — a lattice-based digital signature scheme standardised as **NIST FIPS 204**, providing quantum resistance via the hardness of the Module Learning With Errors (MLWE) problem.
+2. **Falcon-padded-512 (FN-DSA-512)** — a lattice-based digital signature scheme profile aligned with **NIST FIPS 206**, providing quantum resistance with materially smaller witness overhead than ML-DSA-44.
 
-A transaction is valid only if **both** signatures verify correctly. This approach provides a **dual-failure model**: security is maintained if either system is unbroken. An adversary must simultaneously break ECDSA (classically hard) and ML-DSA-44 (quantum-hard) to forge a signature. Conversely, if ML-DSA-44 is later found to have a classical weakness, ECDSA still provides the classical security guarantee.
+A transaction is valid only if **both** signatures verify correctly. This approach provides a **dual-failure model**: security is maintained if either system is unbroken. An adversary must simultaneously break ECDSA (classically hard) and Falcon (quantum-hard) to forge a signature.
 
-The hybrid design is implemented by vendoring the official pq-crystals ML-DSA-44 reference implementation at `src/crypto/pqc/ml-dsa/`, using Bitcoin Core's `GetStrongRandBytes()` as the entropy source for all key generation and signing operations. In the current profile, hybrid signing is used selectively for high-value and vault flows rather than being mandatory for all transactions.
+The hybrid design is implemented by vendoring the PQClean Falcon-padded reference implementation at `src/crypto/pqc/falcon-padded/`, using Bitcoin Core's `GetStrongRandBytes()` as the entropy source for all key generation and signing operations. ML-DSA-44 remains available via `-pqcsig=dilithium` for research and comparison.
 
 ### 2.3 Transaction Witness Format
 
@@ -92,16 +92,16 @@ PQC hybrid transactions use a **4-element P2WPKH witness stack**:
 P2WPKH Input Witness (4 elements):
   [0] ECDSA signature        ~71 bytes   (secp256k1)
   [1] EC public key            33 bytes   (compressed)
-  [2] Dilithium signature   2,420 bytes   (ML-DSA-44)
-  [3] Dilithium public key  1,312 bytes   (ML-DSA-44)
+  [2] Falcon signature         666 bytes   (FN-DSA-512)
+  [3] Falcon public key        897 bytes   (FN-DSA-512)
 
-Total witness per input:    ~3,836 bytes
-Virtual size (1-in/2-out):  ~1,075 vB
-Weight (1-in/2-out):        ~4,299 WU
-Classical equivalent:         ~141 vB (7.6× smaller)
+Total witness per input:    ~1,667 bytes
+Virtual size (1-in/2-out):  ~533 vB
+Weight (1-in/2-out):        ~2,131 WU
+Classical equivalent:        ~141 vB
 ```
 
-The 4-element witness stack is automatically detected by the consensus layer in `src/script/interpreter.cpp`. When a 4-element witness is present with elements matching Dilithium sizes (signature 2,420 bytes; public key 1,312 bytes), `CheckPQCSignature()` is invoked for cryptographic Dilithium verification in addition to the standard ECDSA path.
+The 4-element witness stack is automatically detected by the consensus layer in `src/script/interpreter.cpp`. When a 4-element witness is present with valid PQC element-size pairs (Falcon/Falcon1024/ML-DSA/SPHINCS+), `CheckPQCSignature()` is invoked for cryptographic verification in addition to the standard ECDSA path.
 
 Witness data is stored in the SegWit witness area and benefits from the witness weight discount (4× discount factor), making PQC transactions approximately 34.9× heavier than a standard P2WPKH transaction by virtual size — a known and accepted cost of quantum resistance. Fee estimation in the wallet correctly accounts for PQC witness weight.
 
@@ -111,9 +111,9 @@ Witness data is stored in the SegWit witness area and benefits from the witness 
 
 | Algorithm | Standard | Status | Notes |
 |-----------|----------|--------|-------|
-| ML-DSA-44 (Dilithium2) | NIST FIPS 204 | ✅ **Primary — fully implemented and consensus-enforced** | Vendored pq-crystals reference; sign/verify wired into interpreter and wallet |
+| Falcon (FN-DSA-512) | NIST FIPS 206 profile | ✅ **Primary default profile** | Vendored PQClean Falcon-padded implementation; sign/verify wired into interpreter and wallet |
+| ML-DSA-44 (Dilithium2) | NIST FIPS 204 | ✅ Optional | Retained for research/comparison via `-pqcsig=dilithium` |
 | SPHINCS+ (SLH-DSA-SHA2-128f) | NIST FIPS 205 | ✅ Crypto primitives implemented | Sig: 17,088 B, PK: 32 B; not yet wired to wallet signing |
-| Falcon (FN-DSA-512) | — | ❌ Stub only | All operations return errors; not wired to real implementation |
 | SQIsign | — | ❌ Stub only | All operations return errors; awaiting NIST standardisation |
 
 #### Key Encapsulation Mechanisms (KEMs)
@@ -131,7 +131,7 @@ Witness data is stored in the SegWit witness area and benefits from the witness 
 PQC key management is integrated into the descriptor wallet:
 
 - **Storage prefix:** `walletdescriptorpqckey`, keyed by `(descriptor_id, EC_public_key)` in the wallet database.
-- **Generation:** Approximately **8,000 Dilithium keypairs** are generated per wallet (8 descriptors × 1,000 keys) during wallet creation and top-up.
+- **Generation:** Approximately **8,000 PQC keypairs** are generated per wallet (8 descriptors × 1,000 keys) during wallet creation and top-up.
 - **Derivation:** Deterministic key derivation from 32-byte seeds using `GetStrongRandBytes()`.
 - **Memory security:** Private key material is stored in `PQCPrivateKey` — a `std::vector<unsigned char, secure_allocator<unsigned char>>` — providing memory locking and automatic cleansing on destruction. There is no public getter for raw private key material; signing is performed via the scoped `SignPQCMessage()` method which cleanses intermediate buffers after use.
 - **Scale:** At a 10-second block interval, a wallet with 8,000 pre-generated keys provides years of address capacity without requiring on-the-fly key generation.
@@ -140,7 +140,7 @@ PQC key management is integrated into the descriptor wallet:
 
 PQC signature verification in the consensus layer is implemented in `src/script/interpreter.cpp`:
 
-- **Detection:** A 4-element witness stack triggers PQC verification. The dispatch is by signature size: elements matching `DILITHIUM_SIGNATURE_SIZE` (2,420 bytes) route to `CheckPQCSignature()` (ML-DSA-44), and elements matching `SPHINCS_SIGNATURE_SIZE` (17,088 bytes) route to `CheckSPHINCSSignature()`.
+- **Detection:** A 4-element witness stack triggers PQC verification. Dispatch is by signature/public-key size pair, with Falcon/Falcon1024/ML-DSA routed through `CheckPQCSignature()` and SPHINCS+ through `CheckSPHINCSSignature()`.
 - **Error codes:** Dedicated error codes provide precise rejection reasons: `SCRIPT_ERR_PQC_VERIFY_FAILED`, `SCRIPT_ERR_PQC_WITNESS_MALFORMED`, `SCRIPT_ERR_PQC_ALGO_UNSUPPORTED`, `SCRIPT_ERR_PQC_KEY_SIZE_MISMATCH`.
 - **Script flag:** `SCRIPT_VERIFY_PQC` (bit 21) enables PQC enforcement.
 - **BIP 9 deployment:** `DEPLOYMENT_PQC` uses version bit 3. On qBTC chains (testnet and mainnet), the deployment is `ALWAYS_ACTIVE` — no signalling period is required.
@@ -246,7 +246,7 @@ qBTC preserves Bitcoin's core monetary properties:
 | Initial block reward | 50 BTC | 0.83333333 QBTC (83,333,333 qSats) |
 | Total supply cap | ~21,000,000 BTC | ~21,000,000 QBTC |
 | Consensus | Linear chain (longest chain) | BlockDAG (GHOSTDAG) |
-| Signature | ECDSA only | ECDSA + ML-DSA-44 (hybrid) |
+| Signature | ECDSA only | ECDSA + Falcon-padded-512 (hybrid) |
 | Block throughput | ~1 block/10 min | ~6 blocks/min (DAG, parallel) |
 
 The emission schedule is scaled so that the halving cadence matches Bitcoin's ~4-year rhythm despite the 60× faster block interval. This preserves the supply schedule's economic properties: a predictable, decreasing emission rate with a hard cap.
@@ -315,7 +315,7 @@ qBTC uses distinct address prefixes that prevent confusion with Bitcoin or other
 - **Mainnet base58 P2PKH:** prefix byte 58, producing addresses starting with `Q`
 - **Mainnet base58 P2SH:** prefix byte 60, producing addresses starting with `R`
 
-PQC is **always active** on qBTC chains — no manual `-pqc=1` flag is required. New wallets automatically receive both ECDSA and Dilithium key material.
+PQC is **always active** on qBTC chains — no manual `-pqc=1` flag is required. New wallets automatically receive both ECDSA and PQC key material.
 
 ### 5.3 P2P Protocol
 
@@ -333,7 +333,7 @@ qBTC adds several RPC fields and commands beyond standard Bitcoin Core:
 | RPC | Description |
 |-----|-------------|
 | `getpqcinfo` | Returns PQC configuration status: enabled flag, mode, algorithm, key counts per wallet |
-| `getpqcsigcachestats` | Returns real-time signature cache statistics: hit/miss counts and rates for Dilithium and ECDSA |
+| `getpqcsigcachestats` | Returns real-time signature cache statistics: hit/miss counts and rates for PQC and ECDSA (legacy field names retained) |
 | `getblockchaininfo` | Extended with `pqc: true` on qBTC chains |
 | `getblockheader` | Extended with `dagparents` (array of parent block hashes) and `dagblock` (bool) |
 | `getblock` | Extended with the same DAG fields as `getblockheader`, plus `dagmode` and `ghostdag_k` |
@@ -358,12 +358,12 @@ qBTC's 10-second DAG blocks generate significant memory churn: block templates, 
 
 ### 6.2 PQC Signature Cache
 
-ML-DSA-44 verification is approximately **35× slower** than ECDSA verification (`secp256k1_ecdsa_verify`), and each Dilithium witness occupies approximately 3.7 KB (2,420-byte signature + 1,312-byte public key). Without caching, block relay would require re-verifying every Dilithium signature seen in the mempool.
+PQC verification is materially slower than ECDSA verification (`secp256k1_ecdsa_verify`). Even with Falcon's smaller witness footprint, block relay would require expensive re-verification without caching.
 
-The `SignatureCache` (`src/script/sigcache.h`) caches verified Dilithium signatures alongside ECDSA and Schnorr entries in a single `CuckooCache`:
+The `SignatureCache` (`src/script/sigcache.h`) caches verified PQC signatures alongside ECDSA and Schnorr entries in a single `CuckooCache`:
 
 - **Cache key computation:** `ComputeEntryDilithiumRaw()` hashes `(pqc_sig, pqc_pubkey, ecdsa_sig, scriptCode, sigversion)` using a salted hasher with padding byte `'D'`.
-- **Cache lookup:** `CachingTransactionSignatureChecker::CheckDilithiumSignature()` checks the cache before falling back to full ML-DSA-44 verification.
+- **Cache lookup:** `CachingTransactionSignatureChecker::CheckPQCSignature()` checks the cache before falling back to full verification.
 - **Hit rate monitoring:** `getpqcsigcachestats` provides real-time counters. A healthy hit rate on a synced node should be above 50% (most transactions are verified once at mempool acceptance, then served from cache at block connection).
 
 ### 6.3 Stress Test Results
@@ -431,7 +431,7 @@ A subsequent high-throughput test validated the optional hybrid architecture at 
 | Parameter | Value |
 |-----------|-------|
 | Nodes | 10 (9 classical + 1 hybrid) |
-| Transactions | 50,000 (90% ECDSA / 10% ML-DSA) |
+| Transactions | 50,000 (90% ECDSA / 10% hybrid-PQC) |
 | Succeeded | 49,998 (100.0%) |
 | Effective TPS | **61.2 tx/s** |
 | Multi-parent DAG blocks | 29.2% |
@@ -473,10 +473,10 @@ All chain parameters (subsidy halving interval, block reward, difficulty window)
 
 ### 7.1 Hybrid Security Model
 
-The hybrid ECDSA + ML-DSA-44 signature scheme provides **layered security**:
+The hybrid ECDSA + Falcon signature scheme provides **layered security**:
 
 - **If ECDSA remains secure** (classical computers only), the classical signature alone provides the same security guarantee as Bitcoin.
-- **If a quantum computer breaks ECDSA**, the Dilithium signature provides quantum-resistant security independently.
+- **If a quantum computer breaks ECDSA**, the Falcon signature provides quantum-resistant security independently.
 - **Both must be broken simultaneously** for a transaction to be forgeable.
 
 This design ensures that qBTC is not merely post-quantum-ready in name — it is quantum-secure under the current state of both classical and quantum adversary capabilities.
@@ -485,7 +485,7 @@ This design ensures that qBTC is not merely post-quantum-ready in name — it is
 
 All PQC algorithms in qBTC are implemented using **constant-time operations** to prevent timing side-channel attacks:
 
-- The vendored pq-crystals ML-DSA-44 reference implementation uses constant-time arithmetic throughout.
+- The vendored PQClean Falcon implementation uses constant-time arithmetic throughout.
 - The SPHINCS+ (SLH-DSA) reference implementation uses SHA-256 in a manner that is not branch-dependent on secret material.
 - Bitcoin Core's `GetStrongRandBytes()` is used as the entropy source for all key generation.
 - A single canonical `randombytes()` implementation is defined, using `GetStrongRandBytes` with proper memory cleansing — preventing the multiple-definition bug (ODR violation) that was present in the upstream pqc-bitcoin codebase.
@@ -506,14 +506,14 @@ An internal code review of the PQC consensus and key management code was conduct
 
 | Severity | Finding | Resolution |
 |----------|---------|-----------|
-| CRITICAL | SPHINCS+ witness routing — interpreter hard-gated on Dilithium sig size, SPHINCS+ always rejected | 4-element witness path now branches on sig size: Dilithium routes to `CheckPQCSignature()`, SPHINCS+ to `CheckSPHINCSSignature()` |
+| CRITICAL | SPHINCS+ witness routing — interpreter hard-gated on a single PQC size path | 4-element witness path now branches on signature-size families: Falcon/ML-DSA route to `CheckPQCSignature()`, SPHINCS+ to `CheckSPHINCSSignature()` |
 | CRITICAL | PQC private key in plain `std::vector<unsigned char>` with no memory locking | Changed to `PQCPrivateKey` with `secure_allocator`; removed public getter; added scoped `SignPQCMessage()` |
 | CRITICAL | `CheckPQCSignatures()` name implied cryptographic verification but only checked element sizes | Added explicit docstring clarifying it is a structural precheck only; cryptographic verification is in `VerifyScript()` |
 | HIGH | Hot-path `LogPrintf` in witness verification | Replaced with `LogDebug(BCLog::VALIDATION, ...)` |
 | HIGH | `GetPQCPrivateKey()` public getter exposed raw secret key material | Removed getter; added `HasPQCPrivateKey()` (bool) and `SignPQCMessage()` |
 | HIGH | `HybridKey::Sign()` hybrid blob format undocumented | Added docstring clarifying internal format vs. consensus witness format |
 | HIGH | `-pqcalgo=kyber,frodo,ntru` silently accepted despite all being stubs | Now logs warning; default `enabled_kems` changed to `{}` |
-| HIGH | Falcon/SQIsign stubs | Already safe — all operations return `false` |
+| HIGH | Falcon/SQIsign stubs | Falcon path now implemented; SQIsign remains stubbed and disabled |
 | MEDIUM | Default `enabled_kems` advertised `{KYBER, FRODOKEM, NTRU}` despite all being stubs | Fixed as part of H7 resolution |
 | MEDIUM | SPHINCS+ size check over-permissive (range check) | Tightened to exact match: `sig_elem.size() == SPHINCS::SIGNATURE_SIZE` |
 | MEDIUM | `Verify()` used config flag as branch condition, silently downgrading hybrid txs | Now detects hybrid format from signature structure, regardless of config flag |
@@ -538,7 +538,7 @@ The Early Protection System's ephemeral per-node data (peer activation times, ra
 | Capability | Status | Details |
 |------------|--------|---------|
 | Solo mining | ✅ | `generatetoaddress` produces DAG-mode blocks with trivial difficulty |
-| PQC transactions | ✅ | Every spend carries hybrid ECDSA + ML-DSA-44 witness |
+| PQC transactions | ✅ | Hybrid ECDSA + PQC witness flow is active on qBTC networks (Falcon default profile) |
 | Peer-to-peer sync | ✅ | Nodes discover, connect, and sync full chain including PQC transactions |
 | Wallet operations | ✅ | Create, load, encrypt, send, receive with PQC keys |
 | Fee estimation | ✅ | Correctly accounts for PQC witness size (~1,075 vB per input) |
@@ -550,7 +550,7 @@ The Early Protection System's ephemeral per-node data (peer activation times, ra
 | Wallet encryption | ✅ | Encrypt/unlock/lock cycle with PQC signing |
 | DAG parallel blocks | ✅ | Multiple concurrent tips, GHOSTDAG blue ordering |
 | Unique addresses | ✅ | `qbtct1...` / `qbtc1...` prefixes, no confusion with Bitcoin |
-| Signature cache | ✅ | Dilithium verification cached alongside ECDSA/Schnorr |
+| Signature cache | ✅ | PQC verification cached alongside ECDSA/Schnorr |
 | PQC-aware fee estimation | ✅ | `WPKHDescriptor::MaxSatSize()` returns correct PQC witness sizes |
 | jemalloc integration | ✅ | Linked at build time for reduced heap fragmentation |
 
@@ -560,8 +560,8 @@ The Early Protection System's ephemeral per-node data (peer activation times, ra
 
 | Test Suite | Cases | Coverage |
 |------------|-------|----------|
-| `pqc_dilithium_tests` | 9 | Keygen, sign/verify, tampered message/sig, wrong pubkey, deterministic derivation |
-| `pqc_witness_tests` | 4 | Valid PQC witness, wrong Dilithium sig, wrong-size sig, wrong-size pubkey |
+| `pqc_dilithium_tests` | 9 | Optional ML-DSA path: keygen, sign/verify, tampered message/sig, wrong pubkey, deterministic derivation |
+| `pqc_witness_tests` | 4 | Valid PQC witness, wrong PQC sig, wrong-size sig, wrong-size pubkey |
 | `pqc_fee_tests` | 2 | MaxSatisfactionWeight with/without PQC, DummySignatureCreator witness structure |
 | `pqc_kyber_tests` | 5 | Encaps/decaps roundtrip, tampered ciphertext, cross-key mismatch |
 | `pqc_sphincs_tests` | 8 | Keygen, sign/verify, tampered message/sig |
@@ -640,11 +640,11 @@ qBTC follows an 11-phase development roadmap. Phases 1–8 are complete. The rem
 ### Phase 10: Protocol Hardening (Planned)
 
 - Wire SPHINCS+ (SLH-DSA-SHA2-128f) as an alternative signature algorithm in the wallet
-- Replace Falcon/SQIsign stubs with real implementations, or formally remove them
+- Continue hardening alternate PQC schemes (SQIsign remains explicitly disabled)
 - Integrate ML-KEM (Kyber) for encrypted P2P node communication
 - Formal third-party security audit of PQC consensus rules
 - BIP specification for the QBTC hybrid witness format
-- SPHINCS+ signature cache entries alongside Dilithium
+- SPHINCS+ signature cache entries alongside existing PQC cache paths
 - Pruning strategy for DAG metadata as the chain grows beyond 100k blocks
 
 ### Phase 11: Mainnet Preparation (Planned)
@@ -663,7 +663,7 @@ qBTC follows an 11-phase development roadmap. Phases 1–8 are complete. The rem
 
 qBTC occupies a unique position in the blockchain landscape: it is the only production-tested Bitcoin fork that simultaneously provides (1) **quantum-resistant signatures** enforced as a consensus rule from genesis, (2) **BlockDAG parallel block production** via GHOSTDAG for high throughput, and (3) **Bitcoin's economic model** — the 21M supply cap, SHA-256 proof-of-work, and halving schedule — preserved intact.
 
-The protocol addresses the long-term existential threat that quantum computing poses to ECDSA-based blockchains, doing so today rather than deferring the problem to future governance battles. The hybrid ECDSA + ML-DSA-44 design ensures backwards compatibility with classical security assumptions while providing forward security against quantum adversaries.
+The protocol addresses the long-term existential threat that quantum computing poses to ECDSA-based blockchains, doing so today rather than deferring the problem to future governance battles. The hybrid ECDSA + Falcon design ensures backwards compatibility with classical security assumptions while providing forward security against quantum adversaries.
 
 The live testnet demonstrates that the design is technically sound: over 154,000 blocks and 417,000 transactions have been produced with full PQC consensus enforcement, the network has sustained 61.2 tx/s under high-throughput testing (87 tx/s peak), completed a 72-hour surge endurance test with zero consensus splits, and passed a security audit with 86/90 tests passing and zero unexpected failures.
 
@@ -708,21 +708,21 @@ P2WPKH Input Witness (4 elements):
 │  Element [1]: EC public key                       33 bytes      │
 │               (secp256k1, compressed)                           │
 ├─────────────────────────────────────────────────────────────────┤
-│  Element [2]: Dilithium signature               2,420 bytes     │
-│               (ML-DSA-44 / NIST FIPS 204)                      │
+│  Element [2]: Falcon signature                    666 bytes      │
+│               (FN-DSA-512 / FIPS 206 profile)                  │
 ├─────────────────────────────────────────────────────────────────┤
-│  Element [3]: Dilithium public key              1,312 bytes     │
-│               (ML-DSA-44 / NIST FIPS 204)                      │
+│  Element [3]: Falcon public key                  897 bytes      │
+│               (FN-DSA-512 / FIPS 206 profile)                  │
 └─────────────────────────────────────────────────────────────────┘
 
-Total raw witness data per input:  ~3,836 bytes
-Virtual size (1-in / 2-out tx):    ~1,075 vB
-Weight units (1-in / 2-out tx):    ~4,299 WU
+Total raw witness data per input:  ~1,667 bytes
+Virtual size (1-in / 2-out tx):    ~533 vB
+Weight units (1-in / 2-out tx):    ~2,131 WU
 Classical P2WPKH equivalent:         ~141 vB
 PQC overhead factor:                  7.6× vsize / 34.9× raw
 ```
 
-Both the ECDSA and Dilithium signatures are verified by the script interpreter for every input. A transaction is rejected if either signature fails verification. The 4-element witness stack is automatically detected by `HasPQCSignatures()` in `src/consensus/pqc_validation.cpp` without requiring a special witness version marker.
+Both the ECDSA and PQC signatures are verified by the script interpreter for every input. A transaction is rejected if either signature fails verification. The 4-element witness stack is automatically detected by `HasPQCSignatures()` in `src/consensus/pqc_validation.cpp` without requiring a special witness version marker.
 
 ---
 
@@ -739,7 +739,7 @@ The following diagram illustrates the high-level architecture of a qBTC node:
 │  │Hybrid  │  │  fee-rate    │  │ VerifyScript()      │  │
 │  │Key Mgmt│  │  estimation  │  │  ├─ CheckSig(ECDSA) │  │
 │  │ECDSA + │  │  (PQC-aware) │  │  └─ CheckPQCSig()   │  │
-│  │ML-DSA  │  │              │  │      (ML-DSA-44)    │  │
+│  │Falcon  │  │              │  │      (FN-DSA-512)   │  │
 │  └────────┘  │              │  └─────────────────────┘  │
 ├──────────────┴──────────────┴───────────────────────────┤
 │              GHOSTDAG Consensus Engine                   │
@@ -757,16 +757,18 @@ The following diagram illustrates the high-level architecture of a qBTC node:
 **PQC cryptography stack (`src/crypto/pqc/`):**
 ```
 src/crypto/pqc/
-  ml-dsa/               — Vendored ML-DSA-44 (Dilithium2) reference (NIST FIPS 204)
+  falcon-padded/        — Vendored Falcon-padded-512 reference (FN-DSA / FIPS 206 profile)
+  ml-dsa/               — Vendored ML-DSA-44 reference (research/comparison mode)
   sphincsplus/          — Vendored SLH-DSA-SHA2-128f (SPHINCS+) reference (NIST FIPS 205)
   ml-kem/               — Vendored ML-KEM-768 (Kyber) reference
-  dilithium.cpp/h       — High-level Dilithium keygen / sign / verify API
+  falcon.cpp/h          — High-level Falcon keygen / sign / verify API
+  dilithium.cpp/h       — Optional ML-DSA keygen / sign / verify API
   kyber.cpp/h           — ML-KEM-768 via liboqs
   ntru.cpp/h            — NTRU-HPS-4096-821 with Fujisaki-Okamoto transform
   frodokem.cpp/h        — FrodoKEM-976 with Fujisaki-Okamoto transform
   pqc_config.cpp/h      — PQC mode configuration system
   hybrid_key.cpp/h      — HybridKey: combined ECDSA + PQC key management
-  falcon.h              — Falcon-512 stub (disabled — returns false on all ops)
+  falcon.h              — Falcon/Falcon1024 API and constants
   sqisign.cpp/h         — SQIsign stub (disabled — returns false on all ops)
 
 src/dag/
