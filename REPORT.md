@@ -164,20 +164,29 @@ Key files with PQC/DAG integration points:
 
 ## 6. Live Testnet Status
 
-### 6.1 Network Health (as of April 5, 2026)
+### 6.1 Network Health (as of April 21, 2026)
 
-| Server | IP | Height | Peers | Balance (QBTC) |
-|--------|-----|--------|-------|-----------------|
-| S1 (seed) | 46.62.156.169 | 96,637 | 3 | 1,563.98 |
-| S2 (seed) | 37.27.47.236 | 96,654 | 4 | 1,937.28 |
-| S3 (verify) | 89.167.109.241 | 96,654 | 3 | 1,903.29 |
+| Node | Role | IP | Height | dag_tips | IBD |
+|------|------|----|--------|----------|-----|
+| N1 | pool host | 89.167.109.241 | ~27,332 | 1 | No |
+| N2 | seed / pool RPC | 46.62.156.169 | ~27,331 | 1 | No |
+| N3 | seed | 37.27.47.236 | ~27,327 | 1 | No |
 
-- **Total supply mined:** ~8,050 QBTC
-- **Total transactions:** ~134,900
-- **Chain size on disk:** ~1,341 MB
-- **Transaction rate:** ~7.2 tx/s
-- **Mining:** 3 miners with `sleep 10` between rounds
-- **TX traffic:** Recurring generators (S1: 0.01/0.5s, S2: 0.025/1s, S3: 0.05/2s)
+- **Chain height:** ~27,330 (started April 9, 2026 at 10s block target)
+- **Block target:** 10 seconds (GHOSTDAG K=32)
+- **Pool stratum:** `89.167.109.241:3333` — 4 connected miners, 100% share acceptance
+- **Mining:** Stratum pool (`contrib/qbtc-pool/`) on N1, CPU miners on N2 and N3
+- **Pool mining address:** `qbtct1qdtnzfm4r0w5853rjy3gy4xgft3chmklgx2yh6a`
+- **Chain size on disk:** ~160 MB (blocks + chainstate)
+
+#### Previous status snapshots
+
+| Date | Height | Notes |
+|------|--------|-------|
+| April 5, 2026 | 96,654 | Pre-Falcon testnet (1s blocks); S1/S2/S3 naming |
+| April 17, 2026 | — | Falcon/ML-DSA-44 implementation deployed |
+| April 19, 2026 | — | Dual-EMA DAA rollout; chain migrated to 10s blocks |
+| April 21, 2026 | ~27,332 | Stratum pool deployed; N1 bootstrapped from N2 |
 
 ### 6.2 UTXO Consolidation (Completed)
 
@@ -205,9 +214,76 @@ Consolidation used batched `createrawtransaction` with `-stdin` flag to avoid `A
 - **Backend:** RPC `sendtoaddress` via S1's `miner` wallet (1,626 QBTC available)
 - **Status:** Operational (verified via API)
 
-### 7.3 Contrib Tools
+### 7.3 Stratum Mining Pool
+
+A Python Stratum V1 pool (`contrib/qbtc-pool/qbtc_pool.py`) that mines real on-chain QBTC blocks.
+
+**Deployment:**
+- **Host:** N1 (89.167.109.241), systemd service `qbtc-pool.service`
+- **Stratum port:** 3333
+- **HTTP stats API:** port 8088 (`/stats`, `/workers`, `/history`)
+- **RPC target:** N2 (46.62.156.169:28332) via `QBTC_POOL_RPC_URL`
+- **Database:** SQLite at `/var/lib/qbtc-pool/pool.db`
+- **Reward model:** PPS (1% pool fee)
+
+**QBTC 112-byte PoW Header Layout:**
+
+```
+Field              Bytes  Encoding
+---------          -----  --------
+version            4      LE uint32
+hashPrevBlock      32     LE (reversed from RPC BE)
+hashMerkleRoot     32     SHA256d of non-witness coinbase txid
+nTime              4      LE uint32
+nBits              4      LE uint32 (compact target)
+hashParentsRoot    32     all-zeros (classical single-parent chain)
+nNonce             4      LE uint32
+```
+
+**Block serialization:** `header(112) + parents_vector(\x00) + varint(tx_count) + coinbase_tx + [txs]`
+
+**Key implementation fixes resolved during development:**
+
+| Bug | Root Cause | Fix |
+|-----|-----------|-----|
+| 100% share rejection | Nonce sent as `f"{nonce:08x}"` (BE display) but hashed LE | Changed to `struct.pack("<I", nonce).hex()` |
+| HTTP 500 on submitblock | `coinb1=""` — coinbase was empty bytes | `build_coinbase_parts()` generates real segwit coinbase tx |
+| `high-hash` rejection | nBits stored as `bytes.fromhex(bits_be)` (BE order) | `struct.pack("<I", int(bits,16))` for LE wire encoding |
+| `bad-txnmrklroot` | `sha256d(segwit_tx)` used for merkle root | `compute_txid()` strips witness marker+flag+data for non-witness txid |
+| `bad-txnmrklroot` | `hashParentsRoot = sha256d(prevhash)` | Set to `b"\x00" * 32` (all-zeros for classical chain) |
+| `bad-txnmrklroot` | `parents_vector = \x01 + prevhash_le` | Set to `b"\x00"` (varint 0 = empty parent vector) |
+
+**Environment variables (all optional):**
+
+```bash
+QBTC_POOL_RPC_URL=http://46.62.156.169:28332/
+QBTC_POOL_RPC_USER=qbtcverify
+QBTC_POOL_RPC_PASS=verify_node3_2026
+QBTC_POOL_MINING_ADDRESS=qbtct1q...
+QBTC_POOL_MINING_SCRIPT=0014<20-byte-hash>
+QBTC_POOL_PORT=3333
+QBTC_POOL_HTTP_PORT=8088
+QBTC_POOL_REWARD_METHOD=PPS
+QBTC_POOL_FEE=1.0
+```
+
+**Miner client:** `contrib/qbtc-pool/qbtc_miner.py` (deployed to `/root/qbtc_miner.py` on N2 and N3)
+- Computes QBTC 112-byte header hash (sha256d)
+- Stratum V1: `mining.subscribe` → `mining.authorize` → `mining.notify` → `mining.submit`
+- 2 workers per node (`n2w1`, `n2w2`, `n3w1`, `n3w2`)
+- ~195 kH/s per node, 100% share acceptance rate
+
+**Current pool stats (April 21, 2026):**
+- Connected miners: 4
+- Share acceptance: 100% (0 rejections)
+- Blocks found: multiple per hour
+- Round hashrate: ~380 kH/s aggregate
+
+### 7.4 Contrib Tools
 - `contrib/beartec-wallet/qbtc_wallet.py` — Python wallet library
 - `contrib/qbtc-testnet/` — Testnet config and startup scripts
+- `contrib/qbtc-pool/qbtc_pool.py` — Stratum V1 mining pool (see §7.3)
+- `contrib/qbtc-pool/qbtc-pool.service` — systemd unit for the pool daemon
 
 ---
 
