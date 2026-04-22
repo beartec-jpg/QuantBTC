@@ -145,25 +145,26 @@ the consensus rules in `validation.cpp`.
 
 ### Verification Overhead
 
-ML-DSA-44 (Dilithium) hybrid witnesses contain ~3.7 kB of PQC data per
-input (2420-byte signature + 1312-byte public key).  Raw verification is
-approximately **35× slower** than ECDSA (`secp256k1_ecdsa_verify`).
+Falcon-padded-512 hybrid witnesses carry smaller PQC data per input
+(666-byte signature + 897-byte public key) while preserving hybrid security.
+Raw PQC verification is still materially more expensive than ECDSA
+(`secp256k1_ecdsa_verify`), so cache efficiency remains important.
 
 ### Signature Cache
 
 The `SignatureCache` (in `src/script/sigcache.h`) caches verified
-Dilithium signatures alongside ECDSA and Schnorr entries in a single
+PQC signatures alongside ECDSA and Schnorr entries in a single
 `CuckooCache`.  A block accepted into the mempool has its signatures
 cached; when the same transaction appears in a mined block, the cache
 avoids re-verifying the expensive PQC signature.
 
-Cache operations for Dilithium:
+Cache operations for PQC:
 
 - `ComputeEntryDilithiumRaw()` — hashes `(pqc_sig, pqc_pubkey,
    ecdsa_sig, scriptCode, sigversion)` with a salted hasher (padding
    byte `'D'`).
-- `CachingTransactionSignatureChecker::CheckDilithiumSignature()` —
-   checks the cache before falling back to full ML-DSA verification.
+- `CachingTransactionSignatureChecker::CheckPQCSignature()` —
+   checks the cache before falling back to full signature verification.
 
 ### Monitoring Cache Hit Rates
 
@@ -183,7 +184,8 @@ $ bitcoin-cli getpqcsigcachestats
 
 A healthy hit rate on a synced node should be > 50 % (most transactions
 are verified once at mempool acceptance, then hit the cache at block
-connection).  If the Dilithium hit rate is persistently low:
+connection). RPC fields keep legacy `dilithium_*` names for compatibility.
+If the PQC hit rate is persistently low:
 
 - The signature cache may be too small (`-maxsigcachesize`).
 - Block templates may contain transactions not previously seen in the
@@ -206,5 +208,5 @@ PQC verification is controlled by BIP 9 deployment `DEPLOYMENT_PQC`
 
 - Sompolinsky, Y. & Zohar, A. (2018). *PHANTOM: A Scalable BlockDAG Protocol.*
 - Kaspa project — reference GHOSTDAG implementation.
-- NIST FIPS 204 — ML-DSA (Dilithium) digital signature standard.
+- NIST FIPS 206 — FN-DSA (Falcon) digital signature standard.
 - Commit `74ab011` — "fix: stabilize block hash and persist DAG parents across restarts"

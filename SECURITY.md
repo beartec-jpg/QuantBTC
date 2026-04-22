@@ -18,12 +18,12 @@ Do **not** open public issues for security vulnerabilities.
 
 QBTC-specific areas of particular interest:
 
-- **PQC consensus** — ML-DSA-44 (Dilithium2) and SLH-DSA-SHA2-128f (SPHINCS+) signature verification in the script interpreter
+- **PQC consensus** — Falcon (FN-DSA) default-path verification, plus ML-DSA and SLH-DSA compatibility paths in the script interpreter
 - **GHOSTDAG consensus** — blue/red classification, mergeset computation, selected parent chain
-- **Hybrid witness format** — 4-element P2WPKH witness (ECDSA + Dilithium)
+- **Hybrid witness format** — 4-element P2WPKH witness (ECDSA + PQC, Falcon-first profile)
 - **DAG tip-set management** — tip tracking, score pruning, parent selection
 - **Early protection system** — activation delay, ramp weight, IP throttling
-- **Signature cache** — ECDSA, Schnorr, and Dilithium cache entry computation
+- **Signature cache** — ECDSA, Schnorr, and PQC cache entry computation
 - **Atomic swap protocol** — HTLC scripts, EVM HTLC contract, swap server coordination
 
 For vulnerabilities in upstream Bitcoin Core code, please report to the Bitcoin Core security team at security@bitcoincore.org.
@@ -115,4 +115,3 @@ Internal audit of the EVM HTLC contract identified and fixed:
 
 Fixed contract source: `contrib/evm-htlc/contracts/QBTCUSDCHTLC.sol`.
 Deploy with `npm run deploy:sepolia` from `contrib/evm-htlc/` before next testnet cycle.
-

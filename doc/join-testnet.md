@@ -11,9 +11,9 @@ Anyone can join, sync, mine, and send transactions.
 | Network name | `qbtctestnet` |
 | P2P port | 28333 |
 | RPC port | 28332 |
-| Block target | ~1 second |
+| Block target | ~10 seconds |
 | GHOSTDAG K | 32 |
-| PQC algorithm | ML-DSA-44 (Dilithium) hybrid |
+| PQC algorithm | Falcon-padded-512 (FN-DSA) hybrid (default) |
 | Ticker | QBTC |
 | Chain height | 96,600+ blocks (and growing) |
 | Chain size | ~1.3 GB |
@@ -272,8 +272,9 @@ $CLI getpqcsigcachestats
 ```
 
 Fields: `ecdsa_hits`, `ecdsa_misses`, `ecdsa_hit_rate`, `dilithium_hits`,
-`dilithium_misses`, `dilithium_hit_rate`. A healthy synced node should
-show > 50 % hit rate for both ECDSA and Dilithium.
+`dilithium_misses`, `dilithium_hit_rate`. (Field names are retained for
+backward compatibility.) A healthy synced node should show > 50 % hit rate for
+both ECDSA and PQC signatures.
 
 ### DAG block details
 
